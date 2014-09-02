@@ -1,0 +1,555 @@
+#!/usr/bin/env/python
+
+"""
+Database Builder for 
+"""
+
+import os
+import numpy as np
+import h5py
+import cPickle
+import smtk.intensity_measures as ims
+
+SCALAR_LIST = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia", "D5-95"]
+
+class SMDatabaseBuilder(object):
+    """
+    Constructor of an hdf5-pkl pseudo-database
+    :param dbtype:
+        Metadata reader as instance of class :class: SMDatabaseReader
+    :param str location:
+        Path to location of metadata (either directory name or file name)
+    :param database:
+        Strong motion database as instance of :class: SMDatabase
+    :param time_series_parser:
+        Parser for time series files, as instance of :class: SMTimeSeriesReader
+    :param spectra_parser:
+        Parser for spectra files, as instance of :class: SMSpectraReader
+    :param str metafile:
+        Path to output metadata file
+    """
+    TS_ATTRIBUTE_LIST = ["Year", "Month", "Day", "Hour", "Minute", "Second",
+                         "Station Code", "Station Name", "Orientation",
+                         "Processing", "Low Frequency Cutoff", 
+                         "High Frequency Cutoff"]
+
+    IMS_SCALAR_LIST = SCALAR_LIST
+
+    SPECTRA_LIST = ["Acceleration", "Velocity", "Displacement", "PSA", "PSV"]
+
+    def __init__(self, dbtype, db_location):
+        """
+        Instantiation will create target database directory
+        """
+        self.dbtype = dbtype
+        self.dbreader = None
+        if os.path.exists(db_location):
+            raise IOError("Target database directory %s already exists!"
+                          % db_location)
+        self.location = db_location
+        os.mkdir(self.location)
+        self.database = None
+        self.time_series_parser = None
+        self.spectra_parser = None
+        self.metafile = None  
+        
+    def build_database(self, db_id, db_name, record_directory):
+        """
+        Constructs the metadata database and exports to a .pkl file
+        :param str db_id:
+            Unique ID string of the database
+        :param str db_name:
+            Name of the database
+        :param str record_directory:
+            Path to directory containing records
+        """
+        self.dbreader = self.dbtype(db_id, db_name, record_directory)
+        # Build database
+        print "Reading database ..."
+        self.database = self.dbreader.parse()
+        self.metafile = os.path.join(self.location, "metadatafile.pkl")
+        f = open(self.metafile, "w+")
+        print "Storing metadata to file %s" % self.metafile
+        cPickle.dump(self.database, f)
+        f.close()
+
+
+    def parse_records(self, time_series_parser, spectra_parser=None):
+        """
+        Parses the strong motion records to hdf 5
+        """
+        record_dir = os.path.join(self.location, "records")
+        os.mkdir(record_dir)
+        print "Creating repository for strong motion hdf5 records ... %s" \
+            % record_dir
+        nrecords = self.database.number_records()
+        valid_records = []
+        for iloc, record in enumerate(self.database.records):
+            print "Processing record %s of %s" % (iloc, nrecords)
+            has_spectra = isinstance(record.spectra_file, list) and\
+                (spectra_parser is not None)
+            # Parse strong motion record
+            sm_parser = time_series_parser(record.time_series_file,
+                                           self.dbreader.filename)
+            if len(sm_parser.input_files) < 2:
+                print "Record contains < 2 components - skipping!"
+                continue
+            sm_data = sm_parser.parse_records()
+            if not sm_data.get("X", {}).get("Original", {}):
+                print 'No processed records - skipping'
+                continue
+
+            # Create hdf file and parse time series data
+            fle, output_file = self.build_time_series_hdf5(record, sm_data,
+                                                           record_dir)
+            # Parse spectra data
+            if has_spectra:
+                spec_parser = spectra_parser(record.spectra_file,
+                                             self.dbreader.filename)
+                spec_data = spec_parser.parse_spectra()
+                fle = self.build_spectra_hdf5(fle, spec_data)
+            fle.close()
+            print "Record %s written to output file %s" % (record.id,
+                                                           output_file)
+            record.datafile = output_file
+            valid_records.append(record)
+        self.database.records = valid_records
+        print "Updating metadata file"
+        os.remove(self.metafile)
+        f = open(self.metafile, "w+")
+        cPickle.dump(self.database, f)
+        f.close()
+        print "Done!"
+
+    def build_time_series_hdf5(self, record, sm_data, record_dir):
+        """
+        Constructs the hdf5 file for storing the strong motion record
+        :param record:
+            Strong motion record as instance of :class: GroundMotionRecord
+        :param dict sm_data:
+            Data dictionary for the strong motion record
+        :param str record_dir:
+            Directory in which to save the record
+        """
+        output_file = os.path.join(record_dir, record.id + ".hdf5")
+        fle = h5py.File(output_file, "w-")
+        grp = fle.create_group("Time Series")
+        for key in sm_data.keys():
+            if not sm_data[key]["Original"]:
+                continue
+            grp_comp = grp.create_group(key)
+            grp_orig = grp_comp.create_group("Original Record")
+            for attribute in self.TS_ATTRIBUTE_LIST:
+                if attribute in sm_data[key]["Original"].keys():
+                    grp_orig.attrs[attribute] =\
+                        sm_data[key]["Original"][attribute]
+            ts_dset = grp_orig.create_dataset(
+                "Acceleration",
+                (sm_data[key]["Original"]["Number Steps"],),
+                dtype="f")
+            ts_dset.attrs["Units"] = sm_data[key]["Original"]["Units"]
+            ts_dset.attrs["Time-step"] = sm_data[key]["Original"]["Time-step"]
+            ts_dset.attrs["Number Steps"] =\
+                sm_data[key]["Original"]["Number Steps"]
+            ts_dset.attrs["PGA"] = sm_data[key]["Original"]["PGA"]
+            ts_dset[:] = sm_data[key]["Original"]["Acceleration"]
+        return fle, output_file
+
+    def build_spectra_hdf5(self, fle, data):
+        """
+        Adds intensity measure data (scalar and spectra) to hdf5 datafile
+        :param fle:
+            h5py.File object for storing record data
+        :param dict data:
+            Intensity MEasure Data dictionary
+        """
+        grp0 = fle.create_group("IMS")
+        for key in data.keys():
+            if not data[key]["Spectra"]["Response"]:
+                continue
+            grp_comp0 = grp0.create_group(key)
+            grp_scalar = grp_comp0.create_group("Scalar")
+            for scalar_im in self.IMS_SCALAR_LIST:
+                if scalar_im in data[key]["Scalar"].keys():
+                    #print scalar_im, data[key]["Scalar"][scalar_im]
+                    dset_scalar = grp_scalar.create_dataset(scalar_im, (1,),
+                                                            dtype="f")
+                    dset_scalar.attrs["Units"] =\
+                        data[key]["Scalar"][scalar_im]["Units"]
+                    dset_scalar[:] = data[key]["Scalar"][scalar_im]["Value"]
+            grp_spectra = grp_comp0.create_group("Spectra")
+            grp_four = grp_spectra.create_group("Fourier")
+            grp_resp = grp_spectra.create_group("Response")
+            # Add periods
+            periods = data[key]["Spectra"]["Response"]["Periods"]
+            num_per = len(data[key]["Spectra"]["Response"]["Periods"])
+            dset_per = grp_resp.create_dataset("Periods", (num_per,),
+                                               dtype="f")
+            dset_per.attrs["Number Periods"] = num_per
+            dset_per.attrs["Low Period"] = np.min(periods)
+            dset_per.attrs["High Period"] = np.max(periods)
+            dset_per[:] = periods
+            # Add spectra
+            for spec_type in self.SPECTRA_LIST:
+                if not data[key]["Spectra"]["Response"][spec_type]:
+                    continue
+                # Parser spectra
+                spec_data = data[key]["Spectra"]["Response"][spec_type]
+                grp_spec = grp_resp.create_group(spec_type)
+                grp_spec.attrs["Units"] = spec_data["Units"]
+                for spc_key in spec_data.keys():
+                    if spc_key == "Units":
+                        continue
+                    resp_dset = grp_spec.create_dataset(spc_key, (num_per,),
+                                                        dtype="f")
+                    resp_dset.attrs["Damping"] = float(spc_key.split("_")[1])
+                    resp_dset[:] = spec_data[spc_key]
+        return fle
+
+
+
+def get_name_list(fle):
+    """
+
+    """
+    name_list = []
+    def append_name_list(name, obj):
+        name_list.append(name)
+    fle.visititems(append_name_list)
+    return name_list
+
+def add_recursive_nameset(fle, string):
+    """
+
+    """
+    if string in get_name_list(fle):
+        return
+    levels = string.split("/")
+    current_level = levels[0]
+    if not current_level in fle.keys():
+        fle.create_group(current_level)
+    
+    for iloc in range(1, len(levels)):
+        new_level = levels[iloc]
+        if not new_level in fle[current_level].keys():
+            fle[current_level].create_group(new_level)
+            current_level = "/".join([current_level, new_level])
+
+
+SCALAR_IMS = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia"]
+
+SPECTRAL_IMS = ["Geometric", "Arithmetic", "Envelope", "Larger PGA"]
+
+
+
+SCALAR_XY = {"Geometric": lambda x, y : np.sqrt(x * y),
+             "Arithmetic": lambda x, y : (x + y) / 2.,
+             "Larger": lambda x, y: np.max(np.array([x, y])),
+             "Vectorial": lambda x, y : np.sqrt(x ** 2. + y ** 2.)}
+
+ORDINARY_SA_COMBINATION = {
+    "Geometric": ims.geometric_mean_spectrum,
+    "Arithmetic": ims.arithmetic_mean_spectrum,
+    "Envelope": ims.envelope_spectrum,
+    "Larger PGA": ims.larger_pga
+    }
+
+class HorizontalMotion(object):
+    """
+    Base Class to implement methods to add horizontal motions to database
+    """
+    def __init__(self, fle, component="Geometric", periods=[], damping=0.05):
+        """
+
+        """
+        self.fle = fle
+        self.periods = periods
+        self.damping = damping
+        self.component = component
+
+    def add_data(self):
+        """
+        Adds the data
+        """
+
+class AddPGA(HorizontalMotion):
+    """
+
+    """
+    def add_data(self):
+        """
+
+        """
+        if not "PGA" in self.fle["IMS/X/Scalar"].keys():
+            x_pga = self._get_pga_from_time_series(
+                "Time Series/X/Original Record/Acceleration",
+                "IMS/X/Scalar")
+        else:
+            x_pga = self.fle["IMS/X/Scalar/PGA"].value
+        
+        if not "PGA" in self.fle["IMS/Y/Scalar"].keys():
+            y_pga = self._get_pga_from_time_series(
+                "Time Series/Y/Original Record/Acceleration",
+                "IMS/Y/Scalar")
+        else:
+            y_pga = self.fle["IMS/Y/Scalar/PGA"].value
+
+        h_pga = self.fle["IMS/H/Scalar"].create_dataset("PGA", (1,),
+                                                        dtype=float)
+        h_pga.attrs["Units"] = "cm/s/s"
+        h_pga.attrs["Component"] = self.component
+        h_pga[:] = SCALAR_XY[self.component](x_pga, y_pga)
+
+    def _get_pga_from_time_series(self, time_series_location, target_location):
+        """
+        """
+        pga = np.max(np.fabs(self.fle[time_series_location].value))
+        pga_dset = self.fle[target_location].create_dataset("PGA", (1,),
+                                                            dtype=float)
+        pga_dset.attrs["Units"] = "cm/s/s"
+        pga_dset[:] = pga
+        return pga
+
+
+class AddPGV(HorizontalMotion):
+    """
+
+    """
+    def add_data(self):
+        """
+
+        """
+        if not "PGV" in self.fle["IMS/X/Scalar"].keys():
+            x_pgv = self._get_pgv_from_time_series(
+                "Time Series/X/Original Record/",
+                "IMS/X/Scalar")
+        else:
+            x_pgv = self.fle["IMS/X/Scalar/PGV"].value
+        
+        if not "PGV" in self.fle["IMS/Y/Scalar"].keys():
+            y_pgv = self._get_pgv_from_time_series(
+                "Time Series/Y/Original Record",
+                "IMS/Y/Scalar")
+        else:
+            y_pgv = self.fle["IMS/Y/Scalar/PGV"].value
+
+        h_pgv = self.fle["IMS/H/Scalar"].create_dataset("PGV", (1,),
+                                                        dtype=float)
+        h_pgv.attrs["Units"] = "cm/s"
+        h_pgv.attrs["Component"] = self.component
+        h_pgv[:] = SCALAR_XY[self.component](x_pgv, y_pgv)
+
+    def _get_pgv_from_time_series(self, time_series_location, target_location):
+        """
+        """
+        if not "Velocity" in self.fle[time_series_location].keys():
+            accel_loc = time_series_location + "/Acceleration"
+            # Add velocity to the record
+            velocity, _ = ims.get_velocity_displacement(
+                self.fle[accel_loc].attrs["Time-step"],
+                self.fle[accel_loc].value)
+
+            vel_dset = self.fle[time_series_location].create_dataset(
+                "Velocity",
+                (len(velocity),),
+                dtype=float)
+
+        else:
+            velocity = self.fle[time_series_location + "/Velocity"].value
+
+         
+        pgv = np.max(np.fabs(velocity))
+        pgv_dset = self.fle[target_location].create_dataset("PGV", (1,),
+                                                            dtype=float)
+        pgv_dset.attrs["Units"] = "cm/s/s"
+        pgv_dset[:] = pgv
+        return pgv
+
+SCALAR_IM_COMBINATION = {"PGA": AddPGA,
+                         "PGV": AddPGV}
+
+
+
+
+class AddResponseSpectrum(HorizontalMotion):
+    """
+
+    """
+    def add_data(self):
+        """
+
+        """
+        if len(self.periods) == 0:
+            periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
+
+        x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
+        y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
+        sax, say = ims.get_response_spectrum_pair(x_acc.value,
+                                                  x_acc.attrs["Time-step"],
+                                                  y_acc.value,
+                                                  y_acc.attrs["Time-step"],
+                                                  periods,
+                                                  self.damping)
+        sa_hor = ORDINARY_SA_COMBINATION[self.component](sax, say)
+        dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
+        nvals = len(sa_hor["Acceleration"])
+        self._build_group("IMS/H/Spectra/Response", "Acceleration", 
+            "Acceleration", sa_hor, nvals, "cm/s/s", dstring)
+        self._build_group("IMS/H/Spectra/Response", "Velocity", 
+            "Velocity", sa_hor, nvals, "cm/s", dstring)
+        self._build_group("IMS/H/Spectra/Response", "Displacement", 
+            "Displacement", sa_hor, nvals, "cm", dstring)
+        self._build_group("IMS/H/Spectra/Response", "PSA", 
+            "Pseudo-Acceleration", sa_hor, nvals, "cm/s/s", dstring)
+        self._build_group("IMS/H/Spectra/Response", "PSV", 
+            "Pseudo-Velocity", sa_hor, nvals, "cm/s", dstring)
+        self._add_periods(periods)
+
+    def _build_group(self, base_string, key, im_key, sa_hor, nvals, units,
+            dstring):
+        """
+        """
+        if not key in self.fle[base_string].keys():
+            base_grp = self.fle[base_string].create_group(key)
+        else:
+            base_grp = self.fle["/".join([base_string, key])]
+        base_cmp_grp = base_grp.create_group(self.component)
+        dset = base_cmp_grp.create_dataset(dstring, (nvals,), dtype=float)
+        dset.attrs["Units"] = units
+        dset[:] = sa_hor[im_key]
+
+
+    def _add_periods(self, periods):
+        """
+
+        """
+        if "Periods" in self.fle["IMS/H/Spectra/Response"].keys():
+            return
+        dset = self.fle["IMS/H/Spectra/Response"].create_dataset(
+            "Periods",
+            (len(periods),),
+            dtype="f")
+        dset.attrs["High Period"] = np.max(periods)
+        dset.attrs["Low Period"] = np.min(periods)
+        dset.attrs["Number Periods"] = len(periods)
+        dset[:] = periods
+
+
+
+class AddGMRotDppSpectrum(AddResponseSpectrum):
+    """
+
+    """
+    def add_data(self, percentile=50.0):
+        """
+
+        """
+        if len(self.periods) == 0:
+            periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
+
+        x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
+        y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
+        gmrotdpp = ims.gmrotdpp(x_acc.value, x_acc.attrs["Time-step"],
+                                y_acc.value, y_acc.attrs["Time-step"],
+                                periods, percentile, self.damping)[0]
+        dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
+        nvals = len(gmrotdpp)
+        # Acceleration
+        if not "Acceleration" in self.fle["IMS/H/Spectra/Response"]:
+            acc_grp = self.fle["IMS/H/Spectra/Response"].create_group(
+                "Acceleration")
+        else:
+            acc_grp = self.fle["IMS/H/Spectra/Response/Acceleration"]
+        acc_cmp_grp = acc_grp.create_group("GMRotD" + 
+                                           str(int(percentile)).zfill(2))
+        acc_dset = acc_cmp_grp.create_dataset(dstring, (nvals,), dtype=float)
+        acc_dset.attrs["Units"] = "cm/s/s"
+        acc_dset[:] = gmrotdpp
+        self._add_periods(periods)
+
+
+class AddGMRotIppSpectrum(AddResponseSpectrum):
+    """
+
+
+    """
+    def add_data(self, percentile=50.0):
+        """
+
+        """
+        if len(self.periods) == 0:
+            periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
+
+        x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
+        y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
+        sa_hor = ims.gmrotipp(x_acc.value, x_acc.attrs["Time-step"],
+                              y_acc.value, y_acc.attrs["Time-step"],
+                              periods, percentile, self.damping)
+        nvals = len(sa_hor["Acceleration"])
+        dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
+        # Acceleration
+        self._build_group("IMS/H/Spectra/Response", "Acceleration", 
+            "Acceleration", sa_hor, nvals, "cm/s/s", dstring)
+        # Velocity
+        self._build_group("IMS/H/Spectra/Response", "Velocity", 
+            "Velocity", sa_hor, nvals, "cm/s", dstring)
+        # Displacement
+        self._build_group("IMS/H/Spectra/Response", "Displacement", 
+            "Displacement", sa_hor, nvals, "cm", dstring)
+        # Pseudo-Acceletaion
+        self._build_group("IMS/H/Spectra/Response", "PSA", 
+            "Pseudo-Acceleration", sa_hor, nvals, "cm/s/s", dstring)
+        # Pseudo-Velocity
+        self._build_group("IMS/H/Spectra/Response", "PSV", 
+            "Pseudo-Velocity", sa_hor, nvals, "cm/s", dstring)
+        self._add_periods(periods)
+
+
+SPECTRUM_COMBINATION = {"Geometric": AddResponseSpectrum,
+                        "Arithmetic": AddResponseSpectrum,  
+                        "Envelope": AddResponseSpectrum,  
+                        "Larger PGA": AddResponseSpectrum} 
+
+def add_horizontal_im(database, intensity_measures, component="Geometric",
+        damping="05", periods=[]):
+    """
+
+    """
+    nrecs = len(database.records)
+    for iloc, record in enumerate(database.records):
+        print "Processing %s (Record %s of %s)" % (record.datafile, 
+                                                   iloc + 1,
+                                                   nrecs)
+        fle = h5py.File(record.datafile, "r+")
+        add_recursive_nameset(fle, "IMS/H/Spectra/Response")
+        fle["IMS/H/"].create_group("Scalar")
+        for intensity_measure in intensity_measures:
+            if len(intensity_measure.split("GMRotI")) > 1:
+                # GMRotIpp
+                percentile = float(intensity_measure.split("GMRotI")[1])
+                i_m = AddGMRotIppSpectrum(fle, intensity_measure, periods, 
+                                          float(damping) / 100.)
+                i_m.add_data(percentile)
+            elif len(intensity_measure.split("GMRotD")) > 1:
+                # GMRotDpp
+                percentile = float(intensity_measure.split("GMRotD")[1])
+                i_m = AddGMRotDppSpectrum(fle, intensity_measure, periods, 
+                                          float(damping) / 100.)
+                i_m.add_data(percentile)
+            elif intensity_measure in SCALAR_IMS:
+                # Is a scalar value
+                i_m = SCALAR_IM_COMBINATION[intensity_measure](fle,
+                    component,
+                    periods,
+                    float(damping) / 100.)
+                i_m.add_data()
+            elif intensity_measure in SPECTRAL_IMS:
+                # Is a normal spectrum combination
+                i_m = SPECTRUM_COMBINATION[intensity_measure](fle,
+                    component,
+                    periods,
+                    float(damping) / 100.)
+                i_m.add_data()
+            else:
+                raise ValueError("Unrecognised Intensity Measure!")
+        fle.close()
