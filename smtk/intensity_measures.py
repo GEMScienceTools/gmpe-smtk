@@ -177,10 +177,12 @@ def gmrotdpp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
             rot_x, rot_y = rotate_horizontal(x_a, y_a, theta)
             max_a_theta[iloc, :] = np.sqrt(np.max(np.fabs(rot_x), axis=0) *
                                            np.max(np.fabs(rot_y), axis=0))
-    return scoreatpercentile(max_a_theta, percentile), max_a_theta, angles
+
+    gmrotd = np.percentile(max_a_theta, percentile, axis=0)
+    return gmrotd, max_a_theta, angles
 
 KEY_LIST = ["PGA", "PGV", "PGD", "Acceleration", "Velocity", 
-            "Displacement", "Pseudo-Acceleration", "Pseudo-Displacement"]
+            "Displacement", "Pseudo-Acceleration", "Pseudo-Velocity"]
 
 def gmrotdpp_slow(acceleration_x, time_step_x, acceleration_y, time_step_y,
         periods, percentile, damping=0.05, units="cm/s/s",
@@ -194,9 +196,10 @@ def gmrotdpp_slow(acceleration_x, time_step_x, acceleration_y, time_step_y,
     if (percentile > 100. + 1E-9) or (percentile < 0.):
         raise ValueError("Percentile for GMRotDpp must be between 0. and 100.")
     accel_x, accel_y = equalise_series(acceleration_x, acceleration_y)
-    max_a_theta = np.zeros([len(angles), len(periods) + 3], dtype=float)
-    max_a_theta[0, :] = np.sqrt(np.max(np.fabs(x_a), axis=0) *
-                                np.max(np.fabs(y_a), axis=0))
+    angles = np.arange(0., 90., 1.)
+    #max_a_theta = np.zeros([len(angles), len(periods) + 3], dtype=float)
+    #max_a_theta[0, :] = np.sqrt(np.max(np.fabs(accel_x), axis=0) *
+    #                            np.max(np.fabs(accel_y), axis=0))
     gmrotdpp = {
         "Period": periods,
         "PGA": np.zeros(len(angles), dtype=float),
@@ -220,6 +223,7 @@ def gmrotdpp_slow(acceleration_x, time_step_x, acceleration_y, time_step_y,
                                               units, method)
 
         sa_gm = geometric_mean_spectrum(sax, say)
+        print iloc, theta, sa_gm["Pseudo-Acceleration"]
         for key in KEY_LIST:
             if key in ["PGA", "PGV", "PGD"]:
                  gmrotdpp[key][iloc] = sa_gm[key]
@@ -228,7 +232,7 @@ def gmrotdpp_slow(acceleration_x, time_step_x, acceleration_y, time_step_y,
               
     # Get the desired fractile
     for key in KEY_LIST:
-        gmrotdpp[key] = scoreatpercentile(gmrotdpp[key], percentile)
+        gmrotdpp[key] = np.percentile(gmrotdpp[key], percentile, axis=0)
     return gmrotdpp
 
 def _get_gmrotd_penalty(gmrotd, gmtheta):
@@ -363,7 +367,7 @@ def get_arms(acceleration, time_step):
     Returns the root mean square acceleration, defined as
     sqrt{(1 / duration) * \int{acc ^ 2} dt}
     """
-    dur = time_step * float(len(acceleration))
+    dur = time_step * float(len(acceleration) - 1)
     return np.sqrt((1. / dur) * np.trapz(acceleration  ** 2., dx=time_step))
 
 def get_response_spectrum_intensity(spec):
@@ -395,7 +399,7 @@ def get_quadratic_intensity(acc_x, acc_y, time_step):
     (1. / duration) * \int_0^{duration} a_1(t) a_2(t) dt
     """
     assert len(acc_x) == len(acc_y)
-    dur = time_step * float(len(acc_x))
+    dur = time_step * float(len(acc_x) - 1)
     return (1. /  dur) * np.trapz(acc_x * acc_y, dx=time_step)
 
 def get_principal_axes(time_step, acc_x, acc_y, acc_z=None):
