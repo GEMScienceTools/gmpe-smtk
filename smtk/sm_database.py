@@ -96,6 +96,7 @@ class FocalMechanism(object):
         self.name = name
         self.nodal_planes = nodal_planes
         self.eigenvalues = eigenvalues
+        self.scalar_moment=None
         self.tensor = moment_tensor
         self.mechanism_type = mechanism_type
 
@@ -144,7 +145,9 @@ class RecordDistance(object):
         self.rjb = rjb
         self.rrup = rrup
         self.r_x = r_x
+        self.azimuth = None
         self.flag = flag
+        self.hanging_wall = None
 
 
 class RecordSite(object):
@@ -166,6 +169,7 @@ class RecordSite(object):
         self.vs30 = vs30
         self.vs30_measured = vs30_measured
         self.vs30_measured_type = None
+        self.vs30_uncertainty = None
         self.nspt = None 
         self.nehrp = None
         self.ec8 = None
@@ -177,7 +181,9 @@ class RecordSite(object):
         self.network_code = network_code
         self.country = country
         self.z1pt0 = None
+        self.z1pt5 = None
         self.z2pt5 = None
+        self.arc_location = None
 
     def to_openquake_site(self, missing_vs30=None):
         """
@@ -270,7 +276,7 @@ class GroundMotionRecord(object):
     """
     def __init__(self, gm_id, time_series_file, event, distance, record_site,
         x_comp, y_comp, vertical=None, ims={}, longest_period=None,
-        spectra_file=None):
+        shortest_period=None, spectra_file=None):
         """
         """
         self.id = gm_id
@@ -289,6 +295,7 @@ class GroundMotionRecord(object):
             assert isinstance(vertical, Component)
         self.vertical = vertical
         self.average_lup = longest_period
+        self.average_sup = shortest_period
         self.ims = ims
         self.directivity = None
         self.datafile = None
