@@ -53,7 +53,8 @@ class SMDatabaseBuilder(object):
         self.spectra_parser = None
         self.metafile = None  
         
-    def build_database(self, db_id, db_name, record_directory):
+    def build_database(self, db_id, db_name, metadata_location,
+            record_location=None):
         """
         Constructs the metadata database and exports to a .pkl file
         :param str db_id:
@@ -63,7 +64,8 @@ class SMDatabaseBuilder(object):
         :param str record_directory:
             Path to directory containing records
         """
-        self.dbreader = self.dbtype(db_id, db_name, record_directory)
+        self.dbreader = self.dbtype(db_id, db_name, metadata_location,
+            record_location)
         # Build database
         print "Reading database ..."
         self.database = self.dbreader.parse()
@@ -74,7 +76,8 @@ class SMDatabaseBuilder(object):
         f.close()
 
 
-    def parse_records(self, time_series_parser, spectra_parser=None):
+    def parse_records(self, time_series_parser, spectra_parser=None,
+            units="cm/s/s"):
         """
         Parses the strong motion records to hdf 5
         """
@@ -90,7 +93,8 @@ class SMDatabaseBuilder(object):
                 (spectra_parser is not None)
             # Parse strong motion record
             sm_parser = time_series_parser(record.time_series_file,
-                                           self.dbreader.filename)
+                                           self.dbreader.record_folder,
+                                           units)
             if len(sm_parser.input_files) < 2:
                 print "Record contains < 2 components - skipping!"
                 continue
