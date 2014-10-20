@@ -1,7 +1,7 @@
 #!/usr/bin/env/python
 
 """
-Database Builder for 
+Constructs the HDF5 database 
 """
 
 import os
@@ -9,6 +9,7 @@ import numpy as np
 import h5py
 import cPickle
 import smtk.intensity_measures as ims
+import smtk.sm_utils as utils
 
 SCALAR_LIST = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia", "D5-95"]
 
@@ -40,6 +41,11 @@ class SMDatabaseBuilder(object):
     def __init__(self, dbtype, db_location):
         """
         Instantiation will create target database directory
+        :param dbtype:
+            Instance of :class:
+                smtk.parsers.base_database_parser.SMDatabaseReader
+        :param str db_location:
+            Path to database to be written
         """
         self.dbtype = dbtype
         self.dbreader = None
@@ -61,8 +67,10 @@ class SMDatabaseBuilder(object):
             Unique ID string of the database
         :param str db_name:
             Name of the database
+        :param str metadata_location:
+            Path to location of metadata
         :param str record_directory:
-            Path to directory containing records
+            Path to directory containing records (if different from metadata)
         """
         self.dbreader = self.dbtype(db_id, db_name, metadata_location,
             record_location)
@@ -79,7 +87,15 @@ class SMDatabaseBuilder(object):
     def parse_records(self, time_series_parser, spectra_parser=None,
             units="cm/s/s"):
         """
-        Parses the strong motion records to hdf 5
+        Parses the strong motion records to hdf5
+        :param time_series_parser:
+            Reader of the time series as instance of :class:
+            smtk.parsers.base_database_parser.SMTimeSeriesReader
+        :param spectra_parser:
+            Reader of the spectra files as instance of :class:
+            smtk.parsers.base_database_parser.SMSpectraReader
+        :param str units:
+            Units of the records
         """
         record_dir = os.path.join(self.location, "records")
         os.mkdir(record_dir)
@@ -106,12 +122,16 @@ class SMDatabaseBuilder(object):
             # Create hdf file and parse time series data
             fle, output_file = self.build_time_series_hdf5(record, sm_data,
                                                            record_dir)
-            # Parse spectra data
+
             if has_spectra:
+                # Parse spectra data
                 spec_parser = spectra_parser(record.spectra_file,
                                              self.dbreader.filename)
                 spec_data = spec_parser.parse_spectra()
                 fle = self.build_spectra_hdf5(fle, spec_data)
+            else:
+                # Build the data structure for IMS
+                self._build_hdf5_structure(fle, sm_data)
             fle.close()
             print "Record %s written to output file %s" % (record.id,
                                                            output_file)
@@ -151,13 +171,64 @@ class SMDatabaseBuilder(object):
                 "Acceleration",
                 (sm_data[key]["Original"]["Number Steps"],),
                 dtype="f")
-            ts_dset.attrs["Units"] = sm_data[key]["Original"]["Units"]
-            ts_dset.attrs["Time-step"] = sm_data[key]["Original"]["Time-step"]
-            ts_dset.attrs["Number Steps"] =\
-                sm_data[key]["Original"]["Number Steps"]
+            ts_dset.attrs["Units"] = "cm/s/s"
+            time_step = sm_data[key]["Original"]["Time-step"]
+            ts_dset.attrs["Time-step"] = time_step
+            number_steps = sm_data[key]["Original"]["Number Steps"]
+            ts_dset.attrs["Number Steps"] = number_steps
             ts_dset.attrs["PGA"] = sm_data[key]["Original"]["PGA"]
-            ts_dset[:] = sm_data[key]["Original"]["Acceleration"]
+            # Store acceleration as cm/s/s
+            ts_dset[:] = utils.convert_accel_units(
+                sm_data[key]["Original"]["Acceleration"],
+                sm_data[key]["Original"]["Units"])
+            # Get velocity and displacement
+            vel, dis = utils.get_velocity_displacement(
+                time_step,
+                ts_dset[:],
+                "cm/s/s")
+            # Build velocity data set
+            v_dset = grp_orig.create_dataset("Velocity",
+                (number_steps,),
+                dtype="f")
+            v_dset.attrs["Units"] = "cm/s"
+            v_dset.attrs["Time-step"] = time_step
+            v_dset.attrs["Number Steps"] = number_steps
+            v_dset[:] = vel
+            # Build displacement data set
+            d_dset = grp_orig.create_dataset("Displacement",
+                (number_steps,),
+                dtype="f")
+            d_dset.attrs["Units"] = "cm"
+            d_dset.attrs["Time-step"] = time_step
+            d_dset.attrs["Number Steps"] = number_steps
+            d_dset[:] = dis
+                
+        # Get the velocity and displacement time series and build scalar IMS
+
         return fle, output_file
+
+    def _build_hdf5_structure(self, fle, data):
+        """
+        :param fle:
+            Datastream of hdf file
+        :param data:
+            Strong motion database
+        """
+        grp0 = fle.create_group("IMS")
+        for key in data.keys():
+            grp_comp0 = grp0.create_group(key)
+            grp_scalar = grp_comp0.create_group("Scalar")
+            pga_dset = grp_scalar.create_dataset("PGA", (1,), dtype="f")
+            pga_dset.attrs["Units"] = "cm/s/s"
+            pgv_dset = grp_scalar.create_dataset("PGV", (1,), dtype="f")
+            pgv_dset.attrs["Units"] = "cm/s"
+            pgd_dset = grp_scalar.create_dataset("PGD", (1,), dtype="f")
+            pgd_dset.attrs["Units"] = "cm"
+            locn = "/".join(["Time Series", key, "Original Record"])
+            pga_dset[:] = np.max(np.fabs(fle[locn + "/Acceleration"].value))
+            pgv_dset[:] = np.max(np.fabs(fle[locn + "/Velocity"].value))
+            pgd_dset[:] = np.max(np.fabs(fle[locn + "/Displacement"].value))
+
 
     def build_spectra_hdf5(self, fle, data):
         """
@@ -214,7 +285,7 @@ class SMDatabaseBuilder(object):
 
 def get_name_list(fle):
     """
-
+    Returns structure of the hdf5 file as a list
     """
     name_list = []
     def append_name_list(name, obj):
@@ -224,7 +295,8 @@ def get_name_list(fle):
 
 def add_recursive_nameset(fle, string):
     """
-
+    For an input structure (e.g. AN/INPUT/STRUCTURE) will create the
+    the corresponding name space at the level.
     """
     if string in get_name_list(fle):
         return
@@ -264,7 +336,14 @@ class HorizontalMotion(object):
     """
     def __init__(self, fle, component="Geometric", periods=[], damping=0.05):
         """
-
+        :param fle:
+            Opem datastream of hdf5 file
+        :param str component:
+            The component of horizontal motion
+        :param np.ndarray periods:
+            Spectral periods
+        :param float damping:
+            Fractional coefficient of damping
         """
         self.fle = fle
         self.periods = periods
@@ -278,11 +357,12 @@ class HorizontalMotion(object):
 
 class AddPGA(HorizontalMotion):
     """
-
+    Adds the resultant Horizontal PGA to the database
     """
     def add_data(self):
         """
-
+        Takes PGA from X and Y component and determines the resultant
+        horizontal component
         """
         if not "PGA" in self.fle["IMS/X/Scalar"].keys():
             x_pga = self._get_pga_from_time_series(
@@ -306,6 +386,8 @@ class AddPGA(HorizontalMotion):
 
     def _get_pga_from_time_series(self, time_series_location, target_location):
         """
+        If PGA is not found as an attribute of the X or Y dataset then
+        this extracts them from the time series.
         """
         pga = np.max(np.fabs(self.fle[time_series_location].value))
         pga_dset = self.fle[target_location].create_dataset("PGA", (1,),
@@ -317,11 +399,12 @@ class AddPGA(HorizontalMotion):
 
 class AddPGV(HorizontalMotion):
     """
-
+    Adds the resultant Horizontal PGV to the database
     """
     def add_data(self):
         """
-
+        Takes PGV from X and Y component and determines the resultant
+        horizontal component
         """
         if not "PGV" in self.fle["IMS/X/Scalar"].keys():
             x_pgv = self._get_pgv_from_time_series(
@@ -345,6 +428,8 @@ class AddPGV(HorizontalMotion):
 
     def _get_pgv_from_time_series(self, time_series_location, target_location):
         """
+        If PGV is not found as an attribute of the X or Y dataset then
+        this extracts them from the time series.
         """
         if not "Velocity" in self.fle[time_series_location].keys():
             accel_loc = time_series_location + "/Acceleration"
@@ -361,7 +446,6 @@ class AddPGV(HorizontalMotion):
         else:
             velocity = self.fle[time_series_location + "/Velocity"].value
 
-         
         pgv = np.max(np.fabs(velocity))
         pgv_dset = self.fle[target_location].create_dataset("PGV", (1,),
                                                             dtype=float)
@@ -373,18 +457,16 @@ SCALAR_IM_COMBINATION = {"PGA": AddPGA,
                          "PGV": AddPGV}
 
 
-
-
 class AddResponseSpectrum(HorizontalMotion):
     """
-
+    Adds the resultant horizontal response spectrum to the database 
     """
     def add_data(self):
         """
-
+        Adds the response spectrum
         """
         if len(self.periods) == 0:
-            periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
+            self.periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
 
         x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
         y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
@@ -392,7 +474,7 @@ class AddResponseSpectrum(HorizontalMotion):
                                                   x_acc.attrs["Time-step"],
                                                   y_acc.value,
                                                   y_acc.attrs["Time-step"],
-                                                  periods,
+                                                  self.periods,
                                                   self.damping)
         sa_hor = ORDINARY_SA_COMBINATION[self.component](sax, say)
         dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
@@ -407,11 +489,13 @@ class AddResponseSpectrum(HorizontalMotion):
             "Pseudo-Acceleration", sa_hor, nvals, "cm/s/s", dstring)
         self._build_group("IMS/H/Spectra/Response", "PSV", 
             "Pseudo-Velocity", sa_hor, nvals, "cm/s", dstring)
-        self._add_periods(periods)
+        self._add_periods()
 
     def _build_group(self, base_string, key, im_key, sa_hor, nvals, units,
             dstring):
         """
+        Builds the group corresponding to the full definition of the
+        resultant component
         """
         if not key in self.fle[base_string].keys():
             base_grp = self.fle[base_string].create_group(key)
@@ -423,39 +507,40 @@ class AddResponseSpectrum(HorizontalMotion):
         dset[:] = sa_hor[im_key]
 
 
-    def _add_periods(self, periods):
+    def _add_periods(self):
         """
-
+        Adds the periods to the database
         """
         if "Periods" in self.fle["IMS/H/Spectra/Response"].keys():
             return
         dset = self.fle["IMS/H/Spectra/Response"].create_dataset(
             "Periods",
-            (len(periods),),
+            (len(self.periods),),
             dtype="f")
-        dset.attrs["High Period"] = np.max(periods)
-        dset.attrs["Low Period"] = np.min(periods)
-        dset.attrs["Number Periods"] = len(periods)
-        dset[:] = periods
+        dset.attrs["High Period"] = np.max(self.periods)
+        dset.attrs["Low Period"] = np.min(self.periods)
+        dset.attrs["Number Periods"] = len(self.periods)
+        dset[:] = self.periods
 
 
 
 class AddGMRotDppSpectrum(AddResponseSpectrum):
     """
-
+    Adds the GMRotDpp spectrum to the database
     """
     def add_data(self, percentile=50.0):
         """
-
+        :param float percentile:
+            Percentile (pp)
         """
         if len(self.periods) == 0:
-            periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
+            self.periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
 
         x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
         y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
         gmrotdpp = ims.gmrotdpp(x_acc.value, x_acc.attrs["Time-step"],
                                 y_acc.value, y_acc.attrs["Time-step"],
-                                periods, percentile, self.damping)[0]
+                                self.periods, percentile, self.damping)[0]
         dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
         nvals = len(gmrotdpp)
         # Acceleration
@@ -469,26 +554,26 @@ class AddGMRotDppSpectrum(AddResponseSpectrum):
         acc_dset = acc_cmp_grp.create_dataset(dstring, (nvals,), dtype=float)
         acc_dset.attrs["Units"] = "cm/s/s"
         acc_dset[:] = gmrotdpp
-        self._add_periods(periods)
+        self._add_periods()
 
 
 class AddGMRotIppSpectrum(AddResponseSpectrum):
     """
-
-
+    Adds the GMRotIpp spectrum to the database
     """
     def add_data(self, percentile=50.0):
         """
-
+        :param float percentile:
+            Percentile (pp)
         """
         if len(self.periods) == 0:
-            periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
+            self.periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
 
         x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
         y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
         sa_hor = ims.gmrotipp(x_acc.value, x_acc.attrs["Time-step"],
                               y_acc.value, y_acc.attrs["Time-step"],
-                              periods, percentile, self.damping)
+                              self.periods, percentile, self.damping)
         nvals = len(sa_hor["Acceleration"])
         dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
         # Acceleration
@@ -506,7 +591,7 @@ class AddGMRotIppSpectrum(AddResponseSpectrum):
         # Pseudo-Velocity
         self._build_group("IMS/H/Spectra/Response", "PSV", 
             "Pseudo-Velocity", sa_hor, nvals, "cm/s", dstring)
-        self._add_periods(periods)
+        self._add_periods()
 
 
 SPECTRUM_COMBINATION = {"Geometric": AddResponseSpectrum,
@@ -517,7 +602,19 @@ SPECTRUM_COMBINATION = {"Geometric": AddResponseSpectrum,
 def add_horizontal_im(database, intensity_measures, component="Geometric",
         damping="05", periods=[]):
     """
-
+    For a database this adds the resultant horizontal components to the
+    hdf databse for each record
+    :param database:
+        Strong motion databse as instance of :class:
+        smtk.sm_database.GroundMotionDatabase
+    :param list intensity_measures:
+        List of strings of intensity measures
+    :param str Geometric:
+        For scalar measures only, defines the resultant horizontal component
+    :param str damping:
+        Percentile damping
+    :param list/np.ndarray periods:
+        Periods
     """
     nrecs = len(database.records)
     for iloc, record in enumerate(database.records):

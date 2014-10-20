@@ -15,6 +15,11 @@ def get_time_vector(time_step, number_steps):
     return np.cumsum(time_step * np.ones(number_steps, dtype=float)) -\
         time_step
 
+def nextpow2(nval):
+    m_f = np.log2(nval)
+    m_i = np.ceil(m_f)
+    return int(2.0 ** m_i)
+
 def convert_accel_units(acceleration, units):
     """
     Converts acceleration to different units

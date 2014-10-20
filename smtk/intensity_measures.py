@@ -59,6 +59,28 @@ def get_peak_measures(time_step, acceleration, get_vel=False,
         pgd = None
     return pga, pgv, pgd, velocity, displacement
 
+
+def get_fourier_spectrum(time_series, time_step):
+    """
+    Returns the Fourier spectrum of the time series
+    :param numpy.ndarray time_series:
+        Array of values representing the time series
+    :param float time_step:
+        Time step of the time series
+    :returns:
+        Frequency (as numpy array)
+        Fourier Amplitude (as numpy array)
+    """
+    n_val = utils.nextpow2(len(time_series))
+    # numpy.fft.fft will zero-pad records whose length is less than the
+    # specified nval
+    # Get Fourier spectrum
+    fspec = np.fft.fft(x_record, n_val)
+    # Get frequency axes
+    d_f = 1. / (n_val * time_step)
+    freq = d_f * np.arange(0., (n_val / 2.0), 1.0)
+    return freq, time_step * np.absolute(fspec[:int(n_val / 2.0)])
+
 def get_response_spectrum(acceleration, time_step, periods, damping=0.05, 
         units="cm/s/s", method="Nigam-Jennings"):
     '''
@@ -250,9 +272,8 @@ def gmrotdpp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
     gmrotd = np.percentile(max_a_theta, percentile, axis=0)
     return {"angles": angles,
             "periods": periods,
-            "GMRotDpp": gmrotdpp,
+            "GMRotDpp": gmrotd,
             "GeoMeanPerAngle": max_a_theta}
-    #return gmrotd, max_a_theta, angles
 
 KEY_LIST = ["PGA", "PGV", "PGD", "Acceleration", "Velocity", 
             "Displacement", "Pseudo-Acceleration", "Pseudo-Velocity"]
@@ -320,7 +341,8 @@ def _get_gmrotd_penalty(gmrotd, gmtheta):
     penalty = np.zeros(n_angles, dtype=float)
     coeff = 1. / float(n_per)
     for iloc in range(0, n_angles):
-        penalty[iloc] = coeff * np.sum(((gmtheta[iloc] / gmrotd) - 1.) ** 2.)
+        penalty[iloc] = coeff * np.sum(
+            ((gmtheta[iloc, :] / gmrotd) - 1.) ** 2.)
 
     locn = np.argmin(penalty)
     return locn, penalty
@@ -349,6 +371,67 @@ def gmrotipp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
                                           periods, damping, units, method)
 
     return geometric_mean_spectrum(sax, say)
+
+def rotdpp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
+        percentile, damping=0.05, units="cm/s/s", method="Nigam-Jennings"):
+    """
+    Returns the rotationally dependent spectrum RotDpp as defined by Boore
+    (2010)
+    """
+    if np.fabs(time_step_x - time_step_y) > 1E-10:
+        raise ValueError("Record pair must have the same time-step!")
+    acceleration_x, acceleration_y = equalise_series(acceleration_x,
+                                                     acceleration_y)
+    theta_set = np.arange(0., 180., 1.)
+    max_a_theta = np.zeros([len(theta_set), len(periods) + 1])
+    max_v_theta = np.zeros_like(max_a_theta)
+    max_d_theta = np.zeros_like(max_a_theta)
+    for iloc, theta in enumerate(theta_set):
+        theta_rad = np.radians(theta)
+        arot = acceleration_x * np.cos(theta_rad) +\
+            acceleration_y * np.sin(theta_rad)
+        saxy = get_response_spectrum(arot, time_step_x, periods, damping,
+            units, method)[0]
+        max_a_theta[iloc, 0] = saxy["PGA"]
+        max_a_theta[iloc, 1:] = saxy["Pseudo-Acceleration"]
+        max_v_theta[iloc, 1] = saxy["PGV"]
+        max_v_theta[iloc, 1:] = saxy["Pseudo-Velocity"]
+        max_d_theta[iloc, 0] = saxy["PGD"]
+        max_d_theta[iloc, 1:] = saxy["Displacement"]
+    rotadpp = np.percentile(max_a_theta, percentile, axis=0)
+    rotvdpp = np.percentile(max_v_theta, percentile, axis=0)
+    rotddpp = np.percentile(max_d_theta, percentile, axis=0)
+    output = {"Pseudo-Acceleration": rotadpp[1:],
+              "Pseudo-Velocity": rotvdpp[1:],
+              "Displacement": rotddpp[1:],
+              "PGA": rotadpp[0],
+              "PGV": rotvdpp[0],
+              "PGD": rotddpp[0]}
+    return output, max_a_theta, max_v_theta, max_d_theta, theta_set
+
+def rotipp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
+        percentile, damping=0.05, units="cm/s/s", method="Nigam-Jennings"):
+    """
+    Returns the rotationally independent spectrum RotIpp as defined by
+    Boore (2010)
+    """
+    if np.fabs(time_step_x - time_step_y) > 1E-10:
+        raise ValueError("Record pair must have the same time-step!")
+    acceleration_x, acceleration_y = equalise_series(acceleration_x,
+                                                     acceleration_y)
+    target, rota, rotv, rotd, angles = rotdpp(acceleration_x, time_step_x,
+                                              acceleration_y, time_step_y,
+                                              periods, percentile, damping,
+                                              units, method)
+    locn, penalty = _get_gmrotd_penalty(
+        np.hstack([target["PGA"],target["Pseudo-Acceleration"]]),
+        rota)
+    target_theta = np.radians(angles[locn])
+    arotpp = acceleration_x * np.cos(target_theta) +\
+        acceleration_y * np.sin(target_theta)
+    return get_response_spectrum(arotpp, time_step_x, periods, damping, units,
+        method)
+
 
 ARIAS_FACTOR = pi / (2.0 * (constants.g * 100.))
 
