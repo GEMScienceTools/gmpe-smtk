@@ -483,14 +483,12 @@ class GSIMRupture(object):
             self.strike,
             self.surface)
 
-        #targets = [origin_point]
         self.target_sites = [Site(origin_point,
                                   vs30,
                                   vs30measured,
                                   z1pt0,
                                   z2pt5)]
         distance = 0.
-        #self.target_sites = [origin_point.point_at(0.0, 0.0, azimuth)]
         cum_dist = distance + spacing
         while distance < maximum_distance:
             target_loc= origin_point.point_at(cum_dist, 0., azimuth)
