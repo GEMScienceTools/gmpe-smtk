@@ -421,9 +421,12 @@ class GSIMRupture(object):
         # Rupture
         rctx = RuptureContext()
         setattr(rctx, 'mag', self.magnitude)
+        setattr(rctx, 'strike', self.strike)
         setattr(rctx, 'dip', self.dip)
         setattr(rctx, 'rake', self.rake)
         setattr(rctx, 'ztor', self.ztor)
+        setattr(rctx, 'hypo_lon', self.rupture.hypocenter.longitude)
+        setattr(rctx, 'hypo_lat', self.rupture.hypocenter.latitude)
         setattr(rctx, 'hypo_depth', self.rupture.hypocenter.depth)
         setattr(rctx, 'width', self.rupture.surface.get_width())
         return sctx, rctx, dctx
