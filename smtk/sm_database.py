@@ -429,8 +429,6 @@ class GroundMotionDatabase(object):
         rctx = RuptureContext()
         rup = self.records[idx]
         
-        print rup.event
-        
         setattr(rctx, 'mag', rup.event.magnitude.value)
         setattr(rctx, 'hypo_latitude', rup.event.latitude)
         setattr(rctx, 'hypo_longitude', rup.event.longitude)
