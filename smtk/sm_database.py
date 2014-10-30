@@ -430,11 +430,15 @@ class GroundMotionDatabase(object):
         rup = self.records[idx]
         setattr(rctx, 'mag', rup.event.magnitude.value)
         if nodal_plane_index == 2:
+            setattr(rctx, 'strike',
+                rup.event.mechanism.nodal_planes.nodal_plane_2['strike'])
             setattr(rctx, 'dip',
                 rup.event.mechanism.nodal_planes.nodal_plane_2['dip'])
             setattr(rctx, 'rake', 
                 rup.event.mechanism.nodal_planes.nodal_plane_2['rake'])
         else:
+            setattr(rctx, 'strike',
+                rup.event.mechanism.nodal_planes.nodal_plane_1['strike'])
             setattr(rctx, 'dip',
                 rup.event.mechanism.nodal_planes.nodal_plane_1['dip'])
             setattr(rctx, 'rake',
@@ -443,8 +447,9 @@ class GroundMotionDatabase(object):
             rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
         if rup.event.rupture:
             setattr(rctx, 'ztor', rup.event.rupture.depth)
-            setattr(rctx, 'width', rup.event.rupture.width)
         setattr(rctx, 'hypo_depth', rup.event.depth)
+        setattr(rctx, 'hypo_lat', rup.event.latitude)
+        setattr(rctx, 'hypo_lon', rup.event.longitude)
         return rctx
 
     def get_site_collection(self, missing_vs30=None):
