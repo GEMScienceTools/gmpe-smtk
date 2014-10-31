@@ -421,6 +421,7 @@ class GSIMRupture(object):
         # Rupture
         rctx = RuptureContext()
         setattr(rctx, 'mag', self.magnitude)
+        setattr(rctx, 'strike', self.dip)
         setattr(rctx, 'dip', self.dip)
         setattr(rctx, 'rake', self.rake)
         setattr(rctx, 'ztor', self.ztor)
