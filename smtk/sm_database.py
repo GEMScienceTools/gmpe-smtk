@@ -447,6 +447,7 @@ class GroundMotionDatabase(object):
             rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
         if rup.event.rupture:
             setattr(rctx, 'ztor', rup.event.rupture.depth)
+            setattr(rctx, 'width', rup.event.rupture.width)
         setattr(rctx, 'hypo_depth', rup.event.depth)
         setattr(rctx, 'hypo_lat', rup.event.latitude)
         setattr(rctx, 'hypo_lon', rup.event.longitude)
