@@ -421,10 +421,13 @@ class GSIMRupture(object):
         # Rupture
         rctx = RuptureContext()
         setattr(rctx, 'mag', self.magnitude)
+        setattr(rctx, 'strike', self.strike)
         setattr(rctx, 'dip', self.dip)
         setattr(rctx, 'rake', self.rake)
         setattr(rctx, 'ztor', self.ztor)
         setattr(rctx, 'hypo_depth', self.rupture.hypocenter.depth)
+        setattr(rctx, 'hypo_lat', self.rupture.hypocenter.latitude)
+        setattr(rctx, 'hypo_lon', self.rupture.hypocenter.longitude)
         setattr(rctx, 'width', self.rupture.surface.get_width())
         return sctx, rctx, dctx
 
@@ -606,9 +609,9 @@ class GSIMRupture(object):
             locations = np.array([len(self.target_sites.sites), 3], 
                                    dtype=float)
             for iloc, site in enumerate(self.target_sites.sites):
-                locations[i, 0] = site.location.longitude
-                locations[i, 1] = site.location.latitude
-                locations[i, 2] = site.location.depth
+                locations[iloc, 0] = site.location.longitude
+                locations[iloc, 1] = site.location.latitude
+                locations[iloc, 2] = site.location.depth
             return Mesh(locations[:, 0], locations[:, 1], locations[:, 2])
         else:
             raise ValueError('Target sites must be an instance of '
