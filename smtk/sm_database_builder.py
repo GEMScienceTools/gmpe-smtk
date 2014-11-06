@@ -176,7 +176,9 @@ class SMDatabaseBuilder(object):
             ts_dset.attrs["Time-step"] = time_step
             number_steps = sm_data[key]["Original"]["Number Steps"]
             ts_dset.attrs["Number Steps"] = number_steps
-            ts_dset.attrs["PGA"] = sm_data[key]["Original"]["PGA"]
+            ts_dset.attrs["PGA"] = utils.convert_accel_units(
+                sm_data[key]["Original"]["PGA"],
+                sm_data[key]["Original"]["Units"])
             # Store acceleration as cm/s/s
             ts_dset[:] = utils.convert_accel_units(
                 sm_data[key]["Original"]["Acceleration"],

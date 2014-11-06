@@ -251,11 +251,13 @@ class SimpleFlatfileParser(SMDatabaseReader):
         xcomp = Component(wfid, "1",
             ims=intensity_measures,
             longest_period=lup1,
-            waveform_filter=filter_params1)
+            waveform_filter=filter_params1,
+            units=metadata["Unit"])
         ycomp = Component(wfid, "2",
             ims=intensity_measures,
             longest_period=lup2,
-            waveform_filter=filter_params2) 
+            waveform_filter=filter_params2,
+            units=metadata["Unit"]) 
         return xcomp, ycomp, None
 
 
@@ -277,6 +279,7 @@ class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
         target_names = time_series.keys()
         for iloc, ifile in enumerate(self.input_files):
             if not os.path.exists(ifile):
+                print "File %s not found" % ifile
                 continue
             else:
                 time_series[target_names[iloc]]["Original"] = \

@@ -26,9 +26,9 @@ def convert_accel_units(acceleration, units):
     """
     if units=="g":
         return 981. * acceleration
-    elif units=="m/s/s":
+    elif (units=="m/s/s") or (units=="m/s**2"):
         return 100. * acceleration
-    elif units=="cm/s/s":
+    elif (units=="cm/s/s") or (units=="cm/s**2"):
         return acceleration
     else:
         raise ValueError("Unrecognised time history units. "
