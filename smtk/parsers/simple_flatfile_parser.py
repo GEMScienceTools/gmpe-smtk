@@ -279,11 +279,20 @@ class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
         target_names = time_series.keys()
         for iloc, ifile in enumerate(self.input_files):
             if not os.path.exists(ifile):
-                print "File %s not found" % ifile
-                continue
+                if iloc < 2:
+                    # Expected horizontal component is missing - raise error
+                    raise ValueError("Horizontal record %s is expected but "
+                        "not found!" % ifile)
+                else:
+                    print "Vertical record file %s not found" % ifile
+                    del time_series["V"]
+                    continue
             else:
                 time_series[target_names[iloc]]["Original"] = \
                     self._parse_time_history(ifile)
+        if iloc < 2:
+            del time_series["V"]
+
         return time_series
 
     def _parse_time_history(self, ifile):
