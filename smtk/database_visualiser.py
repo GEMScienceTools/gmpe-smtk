@@ -47,9 +47,6 @@ def get_magnitude_distances(db1, dist_type):
             dists.append(DISTANCES[dist_type](record))
     return mags, dists
 
-
-
-
 def db_magnitude_distance(db1, dist_type, figure_size=(7, 5),
         figure_title=None,filename=None, filetype="png", dpi=300):
     """
@@ -66,7 +63,6 @@ def db_magnitude_distance(db1, dist_type, figure_size=(7, 5),
     plt.grid()
     plt.show()
 
-
 NEHRP_BOUNDS = {"A": (1500.0, np.inf),
                 "B": (760.0, 1500.0),
                 "C": (360.0, 760.),
@@ -77,7 +73,6 @@ EC8_BOUNDS = {"A": (800., np.inf),
               "B": (360.0, 800.),
               "C": (180.0, 360.),
               "D": (0., 360)}
-
 
 def _site_selection(db1, site_class, classifier):
     """
@@ -107,12 +102,11 @@ def _site_selection(db1, site_class, classifier):
             raise ValueError("Unrecognised Site Classifier!")
             
     return idx
-        
 
 def db_magnitude_distance_by_site(db1, dist_type, classification="NEHRP",
         figure_size=(7, 5), filename=None, filetype="png", dpi=300):
     """
-
+    Plot magnitude-distance comparison by site NEHRP or Eurocode 8 Site class   
     """ 
     if classification == "NEHRP":
         site_bounds = NEHRP_BOUNDS
