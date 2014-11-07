@@ -306,6 +306,6 @@ class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
         nvals, time_step = (getline(ifile, 1).rstrip("\n")).split()
         output["Time-step"] = float(time_step)
         output["Number Steps"] = int(nvals)
-        output["Units"] = self.units
+        output["Units"] = "cm/s/s"
         output["PGA"] = np.max(np.fabs(output["Acceleration"]))
         return output
