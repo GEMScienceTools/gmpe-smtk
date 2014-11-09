@@ -15,7 +15,8 @@ import smtk.response_spectrum as rsp
 from smtk.sm_utils import (get_velocity_displacement,
                            get_time_vector,
                            convert_accel_units,
-                           _save_image)
+                           _save_image,
+                           nextpow2)
 
 RESP_METHOD = {'Newmark-Beta': rsp.NewmarkBeta,
                'Nigam-Jennings': rsp.NigamJennings}
@@ -71,15 +72,28 @@ def get_fourier_spectrum(time_series, time_step):
         Frequency (as numpy array)
         Fourier Amplitude (as numpy array)
     """
-    n_val = utils.nextpow2(len(time_series))
+    n_val = nextpow2(len(time_series))
     # numpy.fft.fft will zero-pad records whose length is less than the
     # specified nval
     # Get Fourier spectrum
-    fspec = np.fft.fft(x_record, n_val)
+    fspec = np.fft.fft(time_series, n_val)
     # Get frequency axes
     d_f = 1. / (n_val * time_step)
     freq = d_f * np.arange(0., (n_val / 2.0), 1.0)
     return freq, time_step * np.absolute(fspec[:int(n_val / 2.0)])
+
+def plot_fourier_spectrum(time_series, time_step, figure_size=(7, 5),
+        filename=None, filetype="png", dpi=300):
+    """
+    Plots the Fourier spectrum of a time series 
+    """
+    freq, amplitude = get_fourier_spectrum(time_series, time_step)
+    plt.figure(figsize=figure_size)
+    plt.loglog(freq, amplitude, 'b-')
+    plt.xlabel("Frequency (Hz)", fontsize=14)
+    plt.ylabel("Fourier Amplitude", fontsize=14)
+    _save_image(filename, filetype, dpi)
+    plt.show()
 
 def get_response_spectrum(acceleration, time_step, periods, damping=0.05, 
         units="cm/s/s", method="Nigam-Jennings"):

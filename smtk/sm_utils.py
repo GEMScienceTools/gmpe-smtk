@@ -26,13 +26,13 @@ def convert_accel_units(acceleration, units):
     """
     if units=="g":
         return 981. * acceleration
-    elif units=="m/s":
+    elif (units=="m/s/s") or (units=="m/s**2"):
         return 100. * acceleration
-    elif units=="cm/s/s":
+    elif (units=="cm/s/s") or (units=="cm/s**2"):
         return acceleration
     else:
         raise ValueError("Unrecognised time history units. "
-                         "Should take either ''g'', ''m/s'' or ''cm/s/s''")
+                         "Should take either ''g'', ''m/s/s'' or ''cm/s/s''")
 
 def get_velocity_displacement(time_step, acceleration, units="cm/s/s"):
     '''

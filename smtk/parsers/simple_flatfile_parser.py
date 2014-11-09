@@ -251,11 +251,13 @@ class SimpleFlatfileParser(SMDatabaseReader):
         xcomp = Component(wfid, "1",
             ims=intensity_measures,
             longest_period=lup1,
-            waveform_filter=filter_params1)
+            waveform_filter=filter_params1,
+            units=metadata["Unit"])
         ycomp = Component(wfid, "2",
             ims=intensity_measures,
             longest_period=lup2,
-            waveform_filter=filter_params2) 
+            waveform_filter=filter_params2,
+            units=metadata["Unit"]) 
         return xcomp, ycomp, None
 
 
@@ -277,10 +279,20 @@ class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
         target_names = time_series.keys()
         for iloc, ifile in enumerate(self.input_files):
             if not os.path.exists(ifile):
-                continue
+                if iloc < 2:
+                    # Expected horizontal component is missing - raise error
+                    raise ValueError("Horizontal record %s is expected but "
+                        "not found!" % ifile)
+                else:
+                    print "Vertical record file %s not found" % ifile
+                    del time_series["V"]
+                    continue
             else:
                 time_series[target_names[iloc]]["Original"] = \
                     self._parse_time_history(ifile)
+        if iloc < 2:
+            del time_series["V"]
+
         return time_series
 
     def _parse_time_history(self, ifile):
@@ -294,6 +306,6 @@ class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
         nvals, time_step = (getline(ifile, 1).rstrip("\n")).split()
         output["Time-step"] = float(time_step)
         output["Number Steps"] = int(nvals)
-        output["Units"] = self.units
+        output["Units"] = "cm/s/s"
         output["PGA"] = np.max(np.fabs(output["Acceleration"]))
         return output
