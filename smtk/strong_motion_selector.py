@@ -301,7 +301,7 @@ class SMRecordSelector(object):
             Mechanism type
         """
         idx = []
-        for iloc, record in self.database.records:
+        for iloc, record in enumerate(self.database.records):
             if record.event.mechanism.mechanism_type == mechanism_type:
                 idx.append(iloc)
         return self.select_records(idx, as_db)
@@ -312,7 +312,7 @@ class SMRecordSelector(object):
         :param str country
         """
         idx = []
-        for iloc, record in self.database.records:
+        for iloc, record in enumerate(self.database.records):
             if record.event.mechanism.country == country:
                 idx.append(iloc)
         return self.select_records(idx, as_db)
