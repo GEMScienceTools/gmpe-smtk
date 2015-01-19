@@ -82,6 +82,21 @@ def get_fourier_spectrum(time_series, time_step):
     freq = d_f * np.arange(0., (n_val / 2.0), 1.0)
     return freq, time_step * np.absolute(fspec[:int(n_val / 2.0)])
 
+def get_hvsr_landweber(time_series_x, time_series_y, time_series_z, time_step,
+    iterations=50.0, tau=None):
+    """
+    Returns the horizontal to vertical spectral ratio
+    """
+    freq_x, xfs = get_fourier_spectrum(time_series_x, time_step)
+    freq_y, yfs = get_fourier_spectrum(time_series_y, time_step)
+    freq_z, zfs = get_fourier_spectrum(time_series_z, time_step)
+    if not tau:
+        tau = 1.0 / (np.max(zfs) ** 2.0)
+    hvsr = np.sqrt(xfs * yfs) / zfs
+    nval = min(np.array([len(freq_x), len(freq_y), len(freq_z)]))
+    landweber = 1.0 - ((1.0 - (tau * (np.absolute(zfs) ** 2.0))) ** iterations)
+    return freq_x[:nval], landweber[:nval] * hvsr[:nval]
+
 def plot_fourier_spectrum(time_series, time_step, figure_size=(7, 5),
         filename=None, filetype="png", dpi=300):
     """
@@ -384,7 +399,9 @@ def gmrotipp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
                                           rot_hist_y, time_step_y,
                                           periods, damping, units, method)
 
-    return geometric_mean_spectrum(sax, say)
+    gmroti = geometric_mean_spectrum(sax, say)
+    gmroti["GMRotD{:.2f}".format(percentile)] = gmrot["GMRotDpp"]
+    return gmroti
 
 def rotdpp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
         percentile, damping=0.05, units="cm/s/s", method="Nigam-Jennings"):
@@ -443,8 +460,10 @@ def rotipp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
     target_theta = np.radians(angles[locn])
     arotpp = acceleration_x * np.cos(target_theta) +\
         acceleration_y * np.sin(target_theta)
-    return get_response_spectrum(arotpp, time_step_x, periods, damping, units,
+    spec = get_response_spectrum(arotpp, time_step_x, periods, damping, units,
         method)
+    spec["GMRot{:2.0f}".format(percentile)] = target
+    return spec
 
 
 ARIAS_FACTOR = pi / (2.0 * (constants.g * 100.))
