@@ -412,6 +412,9 @@ class GSIMRupture(object):
                 self.rupture.hypocenter.distance_to_mesh(
                     self.target_sites.mesh, 
                     with_depths=False))
+        # Ry0
+        setattr(dctx, 'ry0',
+                self.rupture.surface.get_ry0_distance(self.target_sites.mesh))
         # Sites
         sctx = SitesContext()
         key_list = ['_vs30', '_vs30measured', '_z1pt0', '_z2pt5']
