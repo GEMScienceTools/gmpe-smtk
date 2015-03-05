@@ -78,10 +78,15 @@ class GCMTPrincipalAxes(object):
         self.b_axis = None
         self.p_axis = None
 
-MECHANISM_TYPE = {"Normal": -90.0,
-                  "Strike-Slip": 0.0,
-                  "Reverse": 90.0,
-                  "Oblique": 0.0}
+# MECHANISM_TYPE = {"Normal": -90.0,
+#                   "Strike-Slip": 0.0,
+#                   "Reverse": 90.0,
+#                   "Oblique": 0.0}
+
+MECHANISM_TYPE = {"N": -90.0,
+                  "S": 0.0,
+                  "R": 90.0,
+                  "U": 0.0}
 
 class FocalMechanism(object):
     """

@@ -26,7 +26,7 @@ HEADER_LIST = Set(['Record Sequence Number', 'EQID', 'Station Sequence Number',
     'Uncertainty', 'Mo (dyne.cm)', 'Strike (deg)', 'Dip (deg)',
     'Rake Angle (deg)', 'Mechanism Based on Rake Angle', 'Style-of-Faulting',
     'Depth to Top Of Fault Rupture Model', 'Fault Rupture Length (km)',
-    'Fault Rupture Width (km)', 
+    'Fault Rupture Width (km)',
     'Earthquake in Extensional Regime: 1=Yes; 0=No', 'Station ID  No.',
     'Preferred NEHRP Based on Vs30', 'Preferred Vs30 (m/s)',
     'Measured/Inferred Class', 'Sigma of Vs30 (in natural log Units)',
@@ -35,13 +35,40 @@ HEADER_LIST = Set(['Record Sequence Number', 'EQID', 'Station Sequence Number',
     'Z2.5 (m)', 'EpiD (km)', 'HypD (km)', 'Joyner-Boore Dist. (km)',
     'Campbell R Dist. (km)', 'FW/HW Indicator', 'Source to Site Azimuth (deg)',
     'Forearc/Backarc for subduction events', 'File Name (Horizontal 1)',
-    'File Name (Horizontal 2)', 'File Name (Vertical)', 'Type of Recording', 
+    'File Name (Horizontal 2)', 'File Name (Vertical)', 'Type of Recording',
     'Acceleration/Velocity', 'Unit', 'File format', 'Processing flag',
     'Type of Filter', 'npass', 'nroll', 'HP-H1 (Hz)', 'HP-H2 (Hz)',
     'LP-H1 (Hz)', 'LP-H2 (Hz)', 'Factor', 'Lowest Usable Freq - H1 (Hz)', 
     'Lowest Usable Freq - H2 (Hz)', 'Lowest Usable Freq - Ave. Component (Hz)',
     'Maximum Usable Freq - Ave. Component (Hz)', 'Comments'])
 
+HEADER_LIST = Set([
+    'Record Sequence Number', 'EQID', 'Earthquake Name', 'Country', 'Year', 'Month', 'Day',
+    'Hour', 'Minute', 'Second', 'Epicenter Latitude (deg; positive N)',
+    'Epicenter Longitude (deg; positive E)', 'Hypocenter Depth (km)', 'Magnitude',
+    'Magnitude type', 'Magnitude uncertainty', 'Mo (dyne.cm)',
+    'Tectonic environment (Crustal; Inslab; Interface; Stable; Geothermal; Volcanic; Oceanic_crust)',
+    'Earthquake in Extensional Regime: 1=Yes; 0=No', 'Nodal Plane 1 Strike (deg)',
+    'Nodal Plane 1 Dip (deg)', 'Nodal Plane 1 Rake Angle (deg)', 'Nodal Plane 2 Strike (deg)',
+    'Nodal Plane 2 Dip (deg)', 'Nodal Plane 2 Rake Angle (deg)', 'Fault Plane (1; 2; X)',
+    'Style-of-Faulting (S; R; N; U)', 'Fault Name', 'Depth to Top Of Fault Rupture Model',
+    'Fault Rupture Length (km)', 'Fault Rupture Width (km)',
+    'Along-strike Hypocenter location on the fault (fraction between 0 and 1)',
+    'Along-width Hypocenter location on the fault (fraction between 0 and 1)',
+    'Static Stress Drop (bars)', 'Type Static Stress Drop', 'Directivity flag (Y; N; U)',
+    'Station ID', 'Station Code', 'Station Latitude (deg positive N)',
+    'Station Longitude (deg positive E)', 'Station Elevation (m)',
+    'Site Class (Hard Rock; Rock; Stiff Soil; Soft Soil)', 'Preferred NEHRP Based on Vs30',
+    'Preferred Vs30 (m/s)', 'Measured(1)/Inferred(2) Class', 'Sigma of Vs30 (in natural log Units)',
+    'Depth to Basement Rock', 'Z1 (m)','Z2.5 (m)', 'Epicentral Distance (km)',
+    'Hypocentral Distance (km)', 'Joyner-Boore Distance (km)', 'Rupture Distance (km)',
+    'Source to Site Azimuth (deg)', 'FW/HW Indicator','Forearc/Backarc for subduction events',
+    'File Name (Horizontal 1)','File Name (Horizontal 2)','File Name (Vertical)',
+    'Digital (D)/Analog (A) Recording','Acceleration (A)/Velocity (V)', 'Unit (cm/s/s; m/s/s; g)',
+    'File format','Processing flag','Type of Filter','npass','nroll','HP-H1 (Hz)','HP-H2 (Hz)',
+    'LP-H1 (Hz)','LP-H2 (Hz)','Factor','Lowest Usable Freq - H1 (Hz)','Lowest Usable Freq - H2 (Hz)',
+    'Lowest Usable Freq - Ave. Component (Hz)','Maximum Usable Freq - Ave. Component (Hz)',
+    'HP-V (Hz)','LP-V (Hz)','Lowest Usable Freq - V (Hz)','Comments'])
 
 FILTER_TYPE = {"BW": "Butterworth",
                "OR": "Ormsby"}
@@ -124,15 +151,18 @@ class SimpleFlatfileParser(SMDatabaseReader):
         :class: smtk.sm_database.Earthquake
 
         """
-        metadata["MODY"] = metadata["MODY"].zfill(4)
-        metadata["HRMN"] = metadata["HRMN"].zfill(4)
+        data_fields = ['Month', 'Day', 'Hour', 'Minute', 'Second']
+        for f in data_fields:
+            metadata[f] = metadata[f].zfill(2)
+
         # Date and Time
-        year = get_int(metadata["YEAR"])
-        month = get_int(metadata["MODY"][:2])
-        day = get_int(metadata["MODY"][2:])
-        hour = get_int(metadata["HRMN"][:2])
-        minute = get_int(metadata["HRMN"][2:])
-        eq_datetime = datetime(year, month, day, hour, minute)
+        year = get_int(metadata["Year"])
+        month = get_int(metadata["Month"])
+        day = get_int(metadata["Day"])
+        hour = get_int(metadata["Hour"])
+        minute = get_int(metadata["Minute"])
+        second = get_int(metadata["Second"])
+        eq_datetime = datetime(year, month, day, hour, minute, second)
         # Event ID and Name
         eq_id = metadata["EQID"]
         eq_name = metadata["Earthquake Name"]
@@ -141,13 +171,13 @@ class SimpleFlatfileParser(SMDatabaseReader):
         focal_mechanism.scalar_moment = get_float(metadata["Mo (dyne.cm)"]) *\
             1E-7
         # Read magnitude
-        pref_mag = Magnitude(get_float(metadata["Earthquake Magnitude"]),
-                             metadata["Magnitude Type"],
-                             sigma=get_float(metadata["Uncertainty"]))
+        pref_mag = Magnitude(get_float(metadata["Magnitude"]),
+                             metadata["Magnitude type"],
+                             sigma=get_float(metadata["Magnitude uncertainty"]))
         # Create Earthquake Class
         eqk = Earthquake(eq_id, eq_name, eq_datetime,
-            get_float(metadata["Hypocenter Longitude (deg)"]),
-            get_float(metadata["Hypocenter Latitude (deg)"]),
+            get_float(metadata["Epicenter Longitude (deg; positive E)"]),
+            get_float(metadata["Epicenter Latitude (deg; positive N)"]),
             get_float(metadata["Hypocenter Depth (km)"]),
             pref_mag,
             focal_mechanism,
@@ -167,16 +197,21 @@ class SimpleFlatfileParser(SMDatabaseReader):
         """
         nodal_planes = GCMTNodalPlanes()
         nodal_planes.nodal_plane_1 = {
-            "strike": get_float(metadata["Strike (deg)"]),
-            "dip": get_float(metadata["Dip (deg)"]),
-            "rake": get_float(metadata["Rake Angle (deg)"])}
+            "strike": get_float(metadata['Nodal Plane 1 Strike (deg)']),
+            "dip": get_float(metadata['Nodal Plane 1 Strike (deg)']),
+            "rake": get_float(metadata['Nodal Plane 1 Strike (deg)'])}
 
-        nodal_planes.nodal_plane2 = {"strike": None,
-                                     "dip": None,
-                                     "rake": None}
+        nodal_planes.nodal_plane_2 = {
+            "strike": get_float(metadata['Nodal Plane 2 Strike (deg)']),
+            "dip": get_float(metadata['Nodal Plane 2 Strike (deg)']),
+            "rake": get_float(metadata['Nodal Plane 2 Strike (deg)'])}
+
+
         principal_axes = GCMTPrincipalAxes()
         return FocalMechanism(eq_id, eq_name, nodal_planes, principal_axes,
-            mechanism_type=metadata["Mechanism Based on Rake Angle"])
+            mechanism_type=metadata['Style-of-Faulting (S; R; N; U)'])
+            # mechanism_type=metadata["Mechanism Based on Rake Angle"])
+
 
     def _parse_distance_data(self, metadata):
         """
@@ -184,10 +219,10 @@ class SimpleFlatfileParser(SMDatabaseReader):
         :class: smtk.sm_database.RecordDistance
         """
         distance = RecordDistance(
-            get_float(metadata["EpiD (km)"]),
-            get_float(metadata["HypD (km)"]),
-            get_float(metadata["Joyner-Boore Dist. (km)"]),
-            get_float(metadata["Campbell R Dist. (km)"]))
+            get_float(metadata["Epicentral Distance (km)"]),
+            get_float(metadata["Hypocentral Distance (km)"]),
+            get_float(metadata["Joyner-Boore Distance (km)"]),
+            get_float(metadata["Rupture Distance (km)"]))
         distance.azimuth = get_float(metadata["Source to Site Azimuth (deg)"])
         distance.hanging_wall = get_float(metadata["FW/HW Indicator"])
         return distance
@@ -197,16 +232,17 @@ class SimpleFlatfileParser(SMDatabaseReader):
         Returns the site data as an instance of the :class:
         smtk.sm_database.RecordSite
         """
-        site = RecordSite(metadata["Station Sequence Number"],
-                          metadata["Station ID  No."],
-                          metadata["Station ID  No."],
-                          get_float(metadata["Station Longitude"]),
-                          get_float(metadata["Station Latitude"]),
-                          None, # Elevation data not given
+        site = RecordSite(metadata["Station ID"],
+                          metadata["Station Code"],
+                          metadata["Station Code"],
+                          get_float(metadata["Station Longitude (deg positive E)"]),
+                          get_float(metadata["Station Latitude (deg positive N)"]),
+                          get_float(metadata["Station Elevation (m)"]),
                           get_float(metadata["Preferred Vs30 (m/s)"]),
-                          network_code=metadata["Owner"])
+                          network_code=None) # not provided
+                          # network_code=metadata["Owner"])
         site.nehrp = metadata["Preferred NEHRP Based on Vs30"]
-        site.vs30_measured_type = metadata["Measured/Inferred Class"]
+        site.vs30_measured_type = metadata["Measured(1)/Inferred(2) Class"]
         if site.vs30_measured_type in ["0", "5"]:
             site.vs30_measured = True
         else:
@@ -214,10 +250,11 @@ class SimpleFlatfileParser(SMDatabaseReader):
         site.vs30_uncertainty = get_float(
             metadata["Sigma of Vs30 (in natural log Units)"])
         site.z1pt0 = get_float(metadata["Z1 (m)"])
-        site.z1pt5 = get_float(metadata["Z1.5 (m)"])
+        site.z1pt5 = None
+        # site.z1pt5 = get_float(metadata["Z1.5 (m)"])
         site.z2pt5 = get_float(metadata["Z2.5 (m)"])
         site.arc_location = metadata["Forearc/Backarc for subduction events"]
-        site.instrument_type = metadata["Type of Recording"]
+        site.instrument_type = metadata["Digital (D)/Analog (A) Recording"]
         return site
                            
     def _parse_processing_data(self, wfid, metadata):
@@ -225,7 +262,7 @@ class SimpleFlatfileParser(SMDatabaseReader):
         Parses the information for each component
         """
         filter_params1 = {
-            'Type': FILTER_TYPE[metadata["Type of Filter"]] ,
+            'Type': FILTER_TYPE[metadata["Type of Filter"]],
             'Order': None,
             'Passes': get_int(metadata['npass']),
             'NRoll': get_int(metadata['nroll']),
@@ -233,7 +270,7 @@ class SimpleFlatfileParser(SMDatabaseReader):
             'Low-Cut': get_float(metadata["HP-H1 (Hz)"])}
 
         filter_params2 = {
-            'Type': FILTER_TYPE[metadata["Type of Filter"]] ,
+            'Type': FILTER_TYPE[metadata["Type of Filter"]],
             'Order': None,
             'Passes': get_int(metadata['npass']),
             'NRoll': get_int(metadata['nroll']),
@@ -252,12 +289,12 @@ class SimpleFlatfileParser(SMDatabaseReader):
             ims=intensity_measures,
             longest_period=lup1,
             waveform_filter=filter_params1,
-            units=metadata["Unit"])
+            units=metadata["Unit (cm/s/s; m/s/s; g)"])
         ycomp = Component(wfid, "2",
             ims=intensity_measures,
             longest_period=lup2,
             waveform_filter=filter_params2,
-            units=metadata["Unit"]) 
+            units=metadata["Unit (cm/s/s; m/s/s; g)"])
         return xcomp, ycomp, None
 
 
