@@ -189,7 +189,7 @@ class SimpleFlatfileParser(SMDatabaseReader):
             get_float(metadata["Depth to Top Of Fault Rupture Model"]))
         eqk.rupture.get_area()
         return eqk
-            
+
     def _get_focal_mechanism(self, eq_id, eq_name, metadata):
         """
         Returns the focal mechanism information as an instance of the
@@ -206,8 +206,15 @@ class SimpleFlatfileParser(SMDatabaseReader):
             "dip": get_float(metadata['Nodal Plane 2 Strike (deg)']),
             "rake": get_float(metadata['Nodal Plane 2 Strike (deg)'])}
 
+        if metadata['Nodal Plane 2 Strike (deg)'] == '1':
+            fault_plane = 1
+        elif metadata['Nodal Plane 2 Strike (deg)'] == '2':
+            fault_plane = 2
+        else:
+            fault_plane = None            
 
         principal_axes = GCMTPrincipalAxes()
+
         return FocalMechanism(eq_id, eq_name, nodal_planes, principal_axes,
             mechanism_type=metadata['Style-of-Faulting (S; R; N; U)'])
             # mechanism_type=metadata["Mechanism Based on Rake Angle"])
@@ -276,6 +283,7 @@ class SimpleFlatfileParser(SMDatabaseReader):
             'NRoll': get_int(metadata['nroll']),
             'High-Cut': get_float(metadata["LP-H2 (Hz)"]),
             'Low-Cut': get_float(metadata["HP-H2 (Hz)"])}
+
         intensity_measures = {
             # All m - convert to cm
             'PGA': None,
@@ -285,17 +293,39 @@ class SimpleFlatfileParser(SMDatabaseReader):
 
         lup1 = 1. / get_float(metadata["Lowest Usable Freq - H1 (Hz)"])
         lup2 = 1. / get_float(metadata["Lowest Usable Freq - H2 (Hz)"])
+
         xcomp = Component(wfid, "1",
             ims=intensity_measures,
             longest_period=lup1,
             waveform_filter=filter_params1,
             units=metadata["Unit (cm/s/s; m/s/s; g)"])
+
         ycomp = Component(wfid, "2",
             ims=intensity_measures,
             longest_period=lup2,
             waveform_filter=filter_params2,
             units=metadata["Unit (cm/s/s; m/s/s; g)"])
-        return xcomp, ycomp, None
+
+        if get_float(metadata["Lowest Usable Freq - V (Hz)"]) is None:
+            return xcomp, ycomp, None
+        else:
+            filter_params3 = {
+                'Type': FILTER_TYPE[metadata["Type of Filter"]],
+                'Order': None,
+                'Passes': get_int(metadata['npass']),
+                'NRoll': get_int(metadata['nroll']),
+                'High-Cut': get_float(metadata["LP-V (Hz)"]),
+                'Low-Cut': get_float(metadata["HP-V (Hz)"])}
+
+            lup3 = 1. / get_float(metadata["Lowest Usable Freq - V (Hz)"])
+
+            zcomp = Component(wfid, "V",
+                ims=intensity_measures,
+                longest_period=lup3,
+                waveform_filter=filter_params3,
+                units=metadata["Unit (cm/s/s; m/s/s; g)"])
+
+            return xcomp, ycomp, zcomp
 
 
 class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):

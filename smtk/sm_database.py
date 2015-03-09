@@ -20,7 +20,7 @@ class Magnitude(object):
     """
     def __init__(self, value, mtype, sigma=None):
         """
-        
+
         """
         self.value = value
         self.mtype = mtype
@@ -93,7 +93,7 @@ class FocalMechanism(object):
     Class to hold the full focal mechanism attribute set
     """
     def __init__(self, eq_id, name, nodal_planes, eigenvalues,
-        moment_tensor=None, mechanism_type=None):
+        moment_tensor=None, mechanism_type=None, fault_plane=None):
         """
 
         """
@@ -101,7 +101,8 @@ class FocalMechanism(object):
         self.name = name
         self.nodal_planes = nodal_planes
         self.eigenvalues = eigenvalues
-        self.scalar_moment=None
+        self.fault_plane = fault_plane
+        self.scalar_moment = None
         self.tensor = moment_tensor
         self.mechanism_type = mechanism_type
 
@@ -175,13 +176,13 @@ class RecordSite(object):
         self.vs30_measured = vs30_measured
         self.vs30_measured_type = None
         self.vs30_uncertainty = None
-        self.nspt = None 
+        self.nspt = None
         self.nehrp = None
         self.ec8 = None
         self.building_structure = None
         self.number_floors = None
         self.floor = None
-        self.instrument_type= None
+        self.instrument_type = None
         self.digitiser = None
         self.network_code = network_code
         self.country = country
@@ -201,7 +202,7 @@ class RecordSite(object):
         else:
             vs30 = missing_vs30
             vs30_measured = False
-        
+
         if self.z1pt0:
             z1pt0 = self.z1pt0
         else:
@@ -228,7 +229,7 @@ class RecordSite(object):
         if not self.vs30:
             print "Cannot return EC8 site class - no Vs30!"
             return None
-        
+
     def get_nehrp_class(self):
         """
 
@@ -255,7 +256,7 @@ ims_dict = {'PGA': None,
             'arms': None,
             'd5_95': None,
             'd5_75': None}
-          
+
 
 class Component(object):
     """
@@ -304,14 +305,14 @@ class GroundMotionRecord(object):
         self.ims = ims
         self.directivity = None
         self.datafile = None
-        
-        
+
+
 
 class GroundMotionDatabase(object):
     """
     Class to represent a databse of strong motions
     """
-    def __init__(self, db_id, db_name, db_directory=None, records = []):
+    def __init__(self, db_id, db_name, db_directory=None, records=[]):
         """
         """
         self.id = db_id
@@ -328,7 +329,7 @@ class GroundMotionDatabase(object):
     def get_contexts(self, nodal_plane_index=1):
         """
         Returns a list of dictionaries, each containing the site, distance
-        and rupture contexts for individual 
+        and rupture contexts for individual
         """
         wfid_list = np.array([rec.event.id for rec in self.records])
         eqid_list = self._get_event_id_list()
@@ -342,7 +343,7 @@ class GroundMotionDatabase(object):
                 'Distances': self._get_distances_context_event(idx),
                 'Rupture': self._get_event_context(idx, nodal_plane_index)})
         return context_dicts
-    
+
     def _get_event_id_list(self):
         """
         Returns the list of unique event keys from the database
@@ -352,7 +353,7 @@ class GroundMotionDatabase(object):
             if not record.event.id in event_list:
                 event_list.append(record.event.id)
         return np.array(event_list)
-            
+
     def _get_sites_context_event(self, idx):
         """
         Returns the site context for a particular event
@@ -434,12 +435,18 @@ class GroundMotionDatabase(object):
         rctx = RuptureContext()
         rup = self.records[idx]
         setattr(rctx, 'mag', rup.event.magnitude.value)
-        if nodal_plane_index == 2:
+
+        # TODO: Behaviour need to be checked
+        if rup.event.mechanism.fault_plane is None:
+            setattr(rctx, 'strike', None)
+            setattr(rctx, 'dip', None)
+            setattr(rctx, 'rake', None)
+        elif rup.event.mechanism.fault_plane == 2:
             setattr(rctx, 'strike',
                 rup.event.mechanism.nodal_planes.nodal_plane_2['strike'])
             setattr(rctx, 'dip',
                 rup.event.mechanism.nodal_planes.nodal_plane_2['dip'])
-            setattr(rctx, 'rake', 
+            setattr(rctx, 'rake',
                 rup.event.mechanism.nodal_planes.nodal_plane_2['rake'])
         else:
             setattr(rctx, 'strike',
