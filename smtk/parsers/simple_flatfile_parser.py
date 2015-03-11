@@ -182,18 +182,32 @@ class SimpleFlatfileParser(SMDatabaseReader):
             pref_mag,
             focal_mechanism,
             metadata["Country"])
+
+        # hypocenter location
+        f1 = metadata[
+            "Along-width Hypocenter location " +
+            "on the fault (fraction between 0 and 1)"],
+        f2 = metadata[
+            "Along-strike Hypocenter location " +
+            "on the fault (fraction between 0 and 1)"]
+        if f1 is None or f2 is None:
+            hypo_loc = None
+        else:
+            hypo_loc = (f1, f2)
+
         # Rupture
         eqk.rupture = Rupture(eq_id,
             get_float(metadata["Fault Rupture Length (km)"]),
             get_float(metadata["Fault Rupture Width (km)"]),
-            get_float(metadata["Depth to Top Of Fault Rupture Model"]))
+            get_float(metadata["Depth to Top Of Fault Rupture Model"]),
+            hypo_loc=hypo_loc)
         eqk.rupture.get_area()
         return eqk
 
     def _get_focal_mechanism(self, eq_id, eq_name, metadata):
         """
         Returns the focal mechanism information as an instance of the
-        :class: smtk.sigma_database.FocalMechanism 
+        :class: smtk.sigma_database.FocalMechanism
         """
         nodal_planes = GCMTNodalPlanes()
         nodal_planes.nodal_plane_1 = {
@@ -211,7 +225,7 @@ class SimpleFlatfileParser(SMDatabaseReader):
         elif metadata['Nodal Plane 2 Strike (deg)'] == '2':
             fault_plane = 2
         else:
-            fault_plane = None            
+            fault_plane = None
 
         principal_axes = GCMTPrincipalAxes()
 
@@ -342,7 +356,7 @@ class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
             ("X", {"Original": {}, "SDOF": {}}),
             ("Y", {"Original": {}, "SDOF": {}}),
             ("V", {"Original": {}, "SDOF": {}})])
-             
+
         target_names = time_series.keys()
         for iloc, ifile in enumerate(self.input_files):
             if not os.path.exists(ifile):

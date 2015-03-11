@@ -30,7 +30,8 @@ class Rupture(object):
     """
     Class to hold rupture attributes
     """
-    def __init__(self, eq_id, length, width, depth, area=None, surface=None):
+    def __init__(self, eq_id, length, width, depth, 
+        area=None, surface=None, hypo_loc=None):
         """
 
         """
@@ -39,7 +40,8 @@ class Rupture(object):
         self.width = width
         self.area = area
         self.depth = depth
-        self.surface = None
+        self.surface = surface
+        self.hypo_loc = hypo_loc
 
     def get_area(self):
         """
@@ -51,7 +53,7 @@ class Rupture(object):
             self.area = self.length * self.width
         else:
             self.area = None
-  
+
 
 class GCMTNodalPlanes(object):
     """
@@ -460,6 +462,7 @@ class GroundMotionDatabase(object):
         if rup.event.rupture:
             setattr(rctx, 'ztor', rup.event.rupture.depth)
             setattr(rctx, 'width', rup.event.rupture.width)
+            setattr(rctx, 'hypo_loc', rup.event.rupture.hypo_loc)
         setattr(rctx, 'hypo_depth', rup.event.depth)
         setattr(rctx, 'hypo_lat', rup.event.latitude)
         setattr(rctx, 'hypo_lon', rup.event.longitude)
