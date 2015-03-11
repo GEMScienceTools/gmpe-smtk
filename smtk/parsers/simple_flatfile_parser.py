@@ -161,12 +161,12 @@ class SimpleFlatfileParser(SMDatabaseReader):
             metadata["Country"])
 
         # hypocenter location
-        f1 = metadata[
+        f1 = get_float(metadata[
             "Along-strike Hypocenter location " +
-            "on the fault (fraction between 0 and 1)"]
-        f2 = metadata[
+            "on the fault (fraction between 0 and 1)"])
+        f2 = get_float(metadata[
             "Along-width Hypocenter location " +
-            "on the fault (fraction between 0 and 1)"],
+            "on the fault (fraction between 0 and 1)"])
         if f1 is None or f2 is None:
             hypo_loc = None
         else:
