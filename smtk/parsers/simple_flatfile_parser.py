@@ -230,15 +230,18 @@ class SimpleFlatfileParser(SMDatabaseReader):
         Returns the site data as an instance of the :class:
         smtk.sm_database.RecordSite
         """
-        site = RecordSite(self._get_site_id(metadata["Station ID"]),
-                          metadata["Station ID"],
-                          metadata["Station Code"],
-                          get_float(metadata["Station Longitude (deg positive E)"]),
-                          get_float(metadata["Station Latitude (deg positive N)"]),
-                          get_float(metadata["Station Elevation (m)"]),
-                          get_float(metadata["Preferred Vs30 (m/s)"]),
-                          network_code=None) # not provided
-                          # network_code=metadata["Owner"])
+        site = RecordSite(
+            self._get_site_id(metadata["Station ID"]),
+            metadata["Station ID"],
+            metadata["Station Code"],
+            get_float(metadata["Station Longitude (deg positive E)"]),
+            get_float(metadata["Station Latitude (deg positive N)"]),
+            get_float(metadata["Station Elevation (m)"]),
+            get_float(metadata["Preferred Vs30 (m/s)"]),
+            site_class=metadata['Site Class (Hard Rock; Rock; Stiff Soil; Soft Soil)'],
+            network_code=None, # not provided
+            )
+            # network_code=metadata["Owner"])
         site.nehrp = metadata["Preferred NEHRP Based on Vs30"]
         site.vs30_measured_type = metadata["Measured(1)/Inferred(2) Class"]
         if site.vs30_measured_type in ["0", "5"]:

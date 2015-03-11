@@ -164,7 +164,7 @@ class RecordSite(object):
     """
     def __init__(self, site_id, site_code, site_name, longitude, latitude,
         altitude, vs30=None, vs30_measured=None, network_code=None,
-        country=None):
+        country=None, site_class=None):
         """
 
         """
@@ -174,6 +174,7 @@ class RecordSite(object):
         self.longitude = longitude
         self.latitude = latitude
         self.altitude = altitude
+        self.site_class = site_class
         self.vs30 = vs30
         self.vs30_measured = vs30_measured
         self.vs30_measured_type = None
@@ -192,17 +193,6 @@ class RecordSite(object):
         self.z1pt5 = None
         self.z2pt5 = None
         self.arc_location = None
-
-    def _get_site_id(self, str_id):
-        """
-        Returns the list of unique event keys from the database
-        """
-        site_list = []
-        for record in self.records:
-            if not record.event.id in site_list:
-                site_list.append(record.event.id)
-        return np.array(site_list)
-        return None
 
     def to_openquake_site(self, missing_vs30=None):
         """
