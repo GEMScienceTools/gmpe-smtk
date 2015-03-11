@@ -193,6 +193,17 @@ class RecordSite(object):
         self.z2pt5 = None
         self.arc_location = None
 
+    def _get_site_id(self, str_id):
+        """
+        Returns the list of unique event keys from the database
+        """
+        site_list = []
+        for record in self.records:
+            if not record.event.id in site_list:
+                site_list.append(record.event.id)
+        return np.array(site_list)
+        return None
+
     def to_openquake_site(self, missing_vs30=None):
         """
         Returns the site as an instance of the :class:
@@ -314,13 +325,15 @@ class GroundMotionDatabase(object):
     """
     Class to represent a databse of strong motions
     """
-    def __init__(self, db_id, db_name, db_directory=None, records=[]):
+    def __init__(self, db_id, db_name, db_directory=None,
+        records=[], site_ids=[]):
         """
         """
         self.id = db_id
         self.name = db_name
         self.directory = db_directory
         self.records = records
+        self.site_ids = site_ids
 
     def number_records(self):
         """
@@ -355,6 +368,17 @@ class GroundMotionDatabase(object):
             if not record.event.id in event_list:
                 event_list.append(record.event.id)
         return np.array(event_list)
+
+
+    def _get_site_id(self, str_id):
+        """
+        Returns the list of unique event keys from the database
+        """
+        if not str_id in self.site_ids:
+            self.site_ids.append(str_id)
+
+        _id = np.argwhere(str_id == np.array(self.site_ids))[0]
+        return _id[0]
 
     def _get_sites_context_event(self, idx):
         """

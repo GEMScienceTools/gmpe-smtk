@@ -18,30 +18,6 @@ from smtk.parsers.base_database_parser import (get_float, get_int,
                                                SMTimeSeriesReader,
                                                SMSpectraReader)
 
-
-HEADER_LIST = Set(['Record Sequence Number', 'EQID', 'Station Sequence Number',
-    'Earthquake Name', 'Country', 'Tectonic environement', 'YEAR', 'MODY',
-    'HRMN', 'Hypocenter Latitude (deg)', 'Hypocenter Longitude (deg)',
-    'Hypocenter Depth (km)', 'Earthquake Magnitude', 'Magnitude Type',
-    'Uncertainty', 'Mo (dyne.cm)', 'Strike (deg)', 'Dip (deg)',
-    'Rake Angle (deg)', 'Mechanism Based on Rake Angle', 'Style-of-Faulting',
-    'Depth to Top Of Fault Rupture Model', 'Fault Rupture Length (km)',
-    'Fault Rupture Width (km)',
-    'Earthquake in Extensional Regime: 1=Yes; 0=No', 'Station ID  No.',
-    'Preferred NEHRP Based on Vs30', 'Preferred Vs30 (m/s)',
-    'Measured/Inferred Class', 'Sigma of Vs30 (in natural log Units)',
-    'Geological Unit', 'Geology', 'Owner', 'Station Latitude',
-    'Station Longitude', 'Depth to Basement Rock', 'Z1 (m)', 'Z1.5 (m)',
-    'Z2.5 (m)', 'EpiD (km)', 'HypD (km)', 'Joyner-Boore Dist. (km)',
-    'Campbell R Dist. (km)', 'FW/HW Indicator', 'Source to Site Azimuth (deg)',
-    'Forearc/Backarc for subduction events', 'File Name (Horizontal 1)',
-    'File Name (Horizontal 2)', 'File Name (Vertical)', 'Type of Recording',
-    'Acceleration/Velocity', 'Unit', 'File format', 'Processing flag',
-    'Type of Filter', 'npass', 'nroll', 'HP-H1 (Hz)', 'HP-H2 (Hz)',
-    'LP-H1 (Hz)', 'LP-H2 (Hz)', 'Factor', 'Lowest Usable Freq - H1 (Hz)', 
-    'Lowest Usable Freq - H2 (Hz)', 'Lowest Usable Freq - Ave. Component (Hz)',
-    'Maximum Usable Freq - Ave. Component (Hz)', 'Comments'])
-
 HEADER_LIST = Set([
     'Record Sequence Number', 'EQID', 'Earthquake Name', 'Country', 'Year', 'Month', 'Day',
     'Hour', 'Minute', 'Second', 'Epicenter Latitude (deg; positive N)',
@@ -88,6 +64,7 @@ class SimpleFlatfileParser(SMDatabaseReader):
         reader = csv.DictReader(open(self.filename, "r"))
         metadata = []
         self.database = GroundMotionDatabase(self.id, self.name)
+        self._get_site_id = self.database._get_site_id
         for row in reader:
             self.database.records.append(self._parse_record(row))
         return self.database
@@ -114,7 +91,7 @@ class SimpleFlatfileParser(SMDatabaseReader):
     def _parse_record(self, metadata):
         """
         Parses the record information and returns an instance of the
-        :class: smtk.sm_database.GroundMotionRecord 
+        :class: smtk.sm_database.GroundMotionRecord
         """
         # Waveform ID
         wfid = metadata["Record Sequence Number"]
@@ -185,11 +162,11 @@ class SimpleFlatfileParser(SMDatabaseReader):
 
         # hypocenter location
         f1 = metadata[
-            "Along-width Hypocenter location " +
-            "on the fault (fraction between 0 and 1)"],
-        f2 = metadata[
             "Along-strike Hypocenter location " +
             "on the fault (fraction between 0 and 1)"]
+        f2 = metadata[
+            "Along-width Hypocenter location " +
+            "on the fault (fraction between 0 and 1)"],
         if f1 is None or f2 is None:
             hypo_loc = None
         else:
@@ -253,8 +230,8 @@ class SimpleFlatfileParser(SMDatabaseReader):
         Returns the site data as an instance of the :class:
         smtk.sm_database.RecordSite
         """
-        site = RecordSite(metadata["Station ID"],
-                          metadata["Station Code"],
+        site = RecordSite(self._get_site_id(metadata["Station ID"]),
+                          metadata["Station ID"],
                           metadata["Station Code"],
                           get_float(metadata["Station Longitude (deg positive E)"]),
                           get_float(metadata["Station Latitude (deg positive N)"]),
