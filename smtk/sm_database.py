@@ -145,7 +145,7 @@ class RecordDistance(object):
     """
     Class to hold distance information
     """
-    def __init__(self, repi, rhypo, rjb=None, rrup=None, r_x=None, flag=None):
+    def __init__(self, repi, rhypo, rjb=None, rrup=None, r_x=None, ry0=None, flag=None):
         """
         """
         self.repi = repi
@@ -153,6 +153,7 @@ class RecordDistance(object):
         self.rjb = rjb
         self.rrup = rrup
         self.r_x = r_x
+        self.ry0 = None
         self.azimuth = None
         self.flag = flag
         self.hanging_wall = None
@@ -394,10 +395,10 @@ class GroundMotionDatabase(object):
             if rup.site.z2pt5:
                 z1pt0.append(rup.site.z2pt5)
         setattr(sctx, 'vs30', np.array(vs30))
-        #if len(longs) > 0:
-        #    setattr(sctx, 'lons', np.array(longs))
-        #if len(lats) > 0:
-        #    setattr(sctx, 'lats', np.array(lats))
+        if len(longs) > 0:
+            setattr(sctx, 'lons', np.array(longs))
+        if len(lats) > 0:
+            setattr(sctx, 'lats', np.array(lats))
         if len(vs30_measured) > 0:
             setattr(sctx, 'vs30measured', np.array(vs30))
         if len(z1pt0) > 0:
@@ -416,6 +417,7 @@ class GroundMotionDatabase(object):
         repi = []
         rhypo = []
         r_x = []
+        ry0 = []
         for idx_j in idx:
             # Distance parameters
             rup = self.records[idx_j]
@@ -441,6 +443,8 @@ class GroundMotionDatabase(object):
             setattr(dctx, 'rrup', np.array(rrup))
         if len(r_x) > 0:
             setattr(dctx, 'rx', np.array(r_x))
+        if len(ry0) > 0:
+            setattr(dctx, 'ry0', np.array(ry0))
         return dctx
 
     def _get_event_context(self, idx, nodal_plane_index=1):
