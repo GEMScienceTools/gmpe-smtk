@@ -217,7 +217,10 @@ class RecordSite(object):
         else:
             z2pt5 = z1pt0_to_z2pt5(z1pt0)
 
-        return Site(Point(self.longitude, self.latitude),
+        return Site(Point(self.longitude,
+                          self.latitude,
+                          # elev meters -> depth kilometers
+                          self.altitude*(-1.e-3)), 
                     vs30,
                     vs30_measured,
                     z1pt0,
@@ -378,6 +381,7 @@ class GroundMotionDatabase(object):
         sctx = SitesContext()
         longs = []
         lats = []
+        depths = []
         vs30 = []
         vs30_measured = []
         z1pt0 = []
@@ -387,6 +391,8 @@ class GroundMotionDatabase(object):
             rup = self.records[idx_j]
             longs.append(rup.site.longitude)
             lats.append(rup.site.latitude)
+            # site elevation (m) -> depth[km]
+            depths.append(rup.site.altitude * (-1.e-3))
             vs30.append(rup.site.vs30)
             if rup.site.vs30_measured:
                 vs30_measured.append(rup.site.vs30_measured)
@@ -399,6 +405,8 @@ class GroundMotionDatabase(object):
             setattr(sctx, 'lons', np.array(longs))
         if len(lats) > 0:
             setattr(sctx, 'lats', np.array(lats))
+        if len(depths) > 0:
+            setattr(sctx, 'depths', np.array(depths))
         if len(vs30_measured) > 0:
             setattr(sctx, 'vs30measured', np.array(vs30))
         if len(z1pt0) > 0:
