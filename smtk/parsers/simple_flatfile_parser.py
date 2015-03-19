@@ -189,13 +189,13 @@ class SimpleFlatfileParser(SMDatabaseReader):
         nodal_planes = GCMTNodalPlanes()
         nodal_planes.nodal_plane_1 = {
             "strike": get_float(metadata['Nodal Plane 1 Strike (deg)']),
-            "dip": get_float(metadata['Nodal Plane 1 Strike (deg)']),
-            "rake": get_float(metadata['Nodal Plane 1 Strike (deg)'])}
+            "dip": get_float(metadata['Nodal Plane 1 Dip (deg)']),
+            "rake": get_float(metadata['Nodal Plane 1 Rake Angle (deg)'])}
 
         nodal_planes.nodal_plane_2 = {
             "strike": get_float(metadata['Nodal Plane 2 Strike (deg)']),
-            "dip": get_float(metadata['Nodal Plane 2 Strike (deg)']),
-            "rake": get_float(metadata['Nodal Plane 2 Strike (deg)'])}
+            "dip": get_float(metadata['Nodal Plane 2 Dip (deg)']),
+            "rake": get_float(metadata['Nodal Plane 2 Rake Angle (deg)'])}
 
         if metadata['Nodal Plane 2 Strike (deg)'] == '1':
             fault_plane = 1
