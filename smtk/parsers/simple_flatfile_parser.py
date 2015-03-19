@@ -145,6 +145,7 @@ class SimpleFlatfileParser(SMDatabaseReader):
         eq_name = metadata["Earthquake Name"]
         # Focal Mechanism
         focal_mechanism = self._get_focal_mechanism(eq_id, eq_name, metadata)
+        
         focal_mechanism.scalar_moment = get_float(metadata["Mo (dyne.cm)"]) *\
             1E-7
         # Read magnitude
@@ -197,9 +198,9 @@ class SimpleFlatfileParser(SMDatabaseReader):
             "dip": get_float(metadata['Nodal Plane 2 Dip (deg)']),
             "rake": get_float(metadata['Nodal Plane 2 Rake Angle (deg)'])}
 
-        if metadata['Nodal Plane 2 Strike (deg)'] == '1':
+        if metadata['Fault Plane (1; 2; X)'] == '1':
             fault_plane = 1
-        elif metadata['Nodal Plane 2 Strike (deg)'] == '2':
+        elif metadata['Fault Plane (1; 2; X)'] == '2':
             fault_plane = 2
         else:
             fault_plane = None
