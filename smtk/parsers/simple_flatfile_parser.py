@@ -211,6 +211,13 @@ class SimpleFlatfileParser(SMDatabaseReader):
                 "strike": get_float(metadata['Nodal Plane 1 Strike (deg)']),
                 "dip": get_float(metadata['Nodal Plane 1 Dip (deg)']),
                 "rake": get_float(metadata['Nodal Plane 1 Rake Angle (deg)'])}
+        elif metadata['Fault Plane (1; 2; X)'] == 'X':
+            nodal_planes.nodal_plane_1 = {"strike": None,
+                                 "dip": None,
+                                 "rake": None}
+            nodal_planes.nodal_plane_2 = {"strike": None,
+                                 "dip": None,
+                                 "rake": None}
 
         #if metadata['Fault Plane (1; 2; X)'] == '1':
         #    fault_plane = 1
