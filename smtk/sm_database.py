@@ -95,7 +95,7 @@ class FocalMechanism(object):
     Class to hold the full focal mechanism attribute set
     """
     def __init__(self, eq_id, name, nodal_planes, eigenvalues,
-        moment_tensor=None, mechanism_type=None, fault_plane=None):
+        moment_tensor=None, mechanism_type=None):
         """
 
         """
@@ -103,7 +103,7 @@ class FocalMechanism(object):
         self.name = name
         self.nodal_planes = nodal_planes
         self.eigenvalues = eigenvalues
-        self.fault_plane = fault_plane
+        
         self.scalar_moment = None
         self.tensor = moment_tensor
         self.mechanism_type = mechanism_type
@@ -465,11 +465,12 @@ class GroundMotionDatabase(object):
         setattr(rctx, 'mag', rup.event.magnitude.value)
 
         # TODO: Behaviour need to be checked
-        if rup.event.mechanism.fault_plane is None:
-            setattr(rctx, 'strike', None)
-            setattr(rctx, 'dip', None)
-            setattr(rctx, 'rake', None)
-        elif rup.event.mechanism.fault_plane == 2:
+        #if rup.event.mechanism.fault_plane is None:
+        #    setattr(rctx, 'strike', None)
+        #    setattr(rctx, 'dip', None)
+        #    setattr(rctx, 'rake', None)
+        #elif rup.event.mechanism.fault_plane == 2:
+        if nodal_plane_index == 2:
             setattr(rctx, 'strike',
                 rup.event.mechanism.nodal_planes.nodal_plane_2['strike'])
             setattr(rctx, 'dip',

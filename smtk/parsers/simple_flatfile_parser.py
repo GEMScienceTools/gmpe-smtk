@@ -188,22 +188,36 @@ class SimpleFlatfileParser(SMDatabaseReader):
         :class: smtk.sigma_database.FocalMechanism
         """
         nodal_planes = GCMTNodalPlanes()
-        nodal_planes.nodal_plane_1 = {
-            "strike": get_float(metadata['Nodal Plane 1 Strike (deg)']),
-            "dip": get_float(metadata['Nodal Plane 1 Dip (deg)']),
-            "rake": get_float(metadata['Nodal Plane 1 Rake Angle (deg)'])}
-
-        nodal_planes.nodal_plane_2 = {
-            "strike": get_float(metadata['Nodal Plane 2 Strike (deg)']),
-            "dip": get_float(metadata['Nodal Plane 2 Dip (deg)']),
-            "rake": get_float(metadata['Nodal Plane 2 Rake Angle (deg)'])}
-
+        # By default nodal plane 1 is assumed to be the fault plane in smtk. Depending on 
+        # parameter fault_plane import correct angles in nodal planes 1 and 2 (1 being the
+        # fault plane)
         if metadata['Fault Plane (1; 2; X)'] == '1':
-            fault_plane = 1
+            nodal_planes.nodal_plane_1 = {
+                "strike": get_float(metadata['Nodal Plane 1 Strike (deg)']),
+                "dip": get_float(metadata['Nodal Plane 1 Dip (deg)']),
+                "rake": get_float(metadata['Nodal Plane 1 Rake Angle (deg)'])}
+
+            nodal_planes.nodal_plane_2 = {
+                "strike": get_float(metadata['Nodal Plane 2 Strike (deg)']),
+                "dip": get_float(metadata['Nodal Plane 2 Dip (deg)']),
+                "rake": get_float(metadata['Nodal Plane 2 Rake Angle (deg)'])}
         elif metadata['Fault Plane (1; 2; X)'] == '2':
-            fault_plane = 2
-        else:
-            fault_plane = None
+            nodal_planes.nodal_plane_1 = {
+                "strike": get_float(metadata['Nodal Plane 2 Strike (deg)']),
+                "dip": get_float(metadata['Nodal Plane 2 Dip (deg)']),
+                "rake": get_float(metadata['Nodal Plane 2 Rake Angle (deg)'])}
+
+            nodal_planes.nodal_plane_2 = {
+                "strike": get_float(metadata['Nodal Plane 1 Strike (deg)']),
+                "dip": get_float(metadata['Nodal Plane 1 Dip (deg)']),
+                "rake": get_float(metadata['Nodal Plane 1 Rake Angle (deg)'])}
+
+        #if metadata['Fault Plane (1; 2; X)'] == '1':
+        #    fault_plane = 1
+        #elif metadata['Fault Plane (1; 2; X)'] == '2':
+        #    fault_plane = 2
+        #else:
+        #    fault_plane = None
 
         principal_axes = GCMTPrincipalAxes()
 
