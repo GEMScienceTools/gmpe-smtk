@@ -220,8 +220,8 @@ class PointAtDistance(object):
     a given distance from the rupture
     """
     def point_at_distance(self, model, distance, vs30, line_azimuth=90.,
-                          origin_point=(0.5, 0.), vs30measured=True, 
-                          z1pt0=None, z2pt5=None):
+            origin_point=(0.5, 0.), vs30measured=True, z1pt0=None, z2pt5=None,
+            backarc=False):
         """
         """
  
@@ -232,8 +232,8 @@ class PointAtRuptureDistance(PointAtDistance):
     """
 
     def point_at_distance(self, model, distance, vs30, line_azimuth=90., 
-                          origin_point=(0.5, 0.5), vs30measured=True, 
-                          z1pt0=None, z2pt5=None):
+            origin_point=(0.5, 0.5), vs30measured=True, z1pt0=None, z2pt5=None,
+            backarc=False):
         """
         Generates a site given a specified rupture distance from the 
         rupture surface
@@ -250,7 +250,8 @@ class PointAtRuptureDistance(PointAtDistance):
                                             vs30,
                                             vs30measured,
                                             z1pt0,
-                                            z2pt5)])
+                                            z2pt5,
+                                            backarc=backarc)])
         return target_sites
 
 
@@ -259,9 +260,9 @@ class PointAtJoynerBooreDistance(PointAtDistance):
     Locate a point at a given Joyner-Boore distance
     """
     
-    def point_at_distance(self, model, distance, vs30, 
-                          line_azimuth=90., origin_point=(0.5, 0.), 
-                          vs30measured=True, z1pt0=None, z2pt5=None):
+    def point_at_distance(self, model, distance, vs30, line_azimuth=90.,
+             origin_point=(0.5, 0.),  vs30measured=True, z1pt0=None,
+             z2pt5=None, backarc=False):
         """
         Generates a site given a specified rupture distance from the 
         rupture surface
@@ -278,7 +279,8 @@ class PointAtJoynerBooreDistance(PointAtDistance):
                                             vs30,
                                             vs30measured,
                                             z1pt0,
-                                            z2pt5)])
+                                            z2pt5,
+                                            backarc=backarc)])
         return target_sites
 
 
@@ -288,8 +290,8 @@ class PointAtEpicentralDistance(PointAtDistance):
     """
 
     def point_at_distance(self, model, distance, vs30, line_azimuth=90., 
-                     origin_point=(0.5, 0.), vs30measured=True, z1pt0=None, 
-                     z2pt5=None):
+            origin_point=(0.5, 0.), vs30measured=True, z1pt0=None, z2pt5=None,
+            backarc=False):
         """
         Generates a point at a given epicentral distance
         """
@@ -301,7 +303,8 @@ class PointAtEpicentralDistance(PointAtDistance):
             vs30,
             vs30measured,
             z1pt0,
-            z2pt5)])
+            z2pt5,
+            backarc=backarc)])
 
 
 class PointAtHypocentralDistance(PointAtDistance):
@@ -311,8 +314,8 @@ class PointAtHypocentralDistance(PointAtDistance):
 
 
     def point_at_distance(self, model, distance, vs30, line_azimuth=90., 
-                     origin_point=(0.5, 0.), vs30measured=True, z1pt0=None, 
-                     z2pt5=None):
+            origin_point=(0.5, 0.), vs30measured=True, z1pt0=None, z2pt5=None,
+            backarc=False):
         """
         Generates a point at a given hypocentral distance
         """
@@ -326,7 +329,8 @@ class PointAtHypocentralDistance(PointAtDistance):
             vs30,
             vs30measured,
             z1pt0,
-            z2pt5)])
+            z2pt5,
+            backarc=backarc)])
 
 
 POINT_AT_MAPPING = {'rrup': PointAtRuptureDistance(),
@@ -412,9 +416,12 @@ class GSIMRupture(object):
                 self.rupture.hypocenter.distance_to_mesh(
                     self.target_sites.mesh, 
                     with_depths=False))
+        # Ry0
+        setattr(dctx, 'ry0',
+                self.rupture.surface.get_ry0_distance(self.target_sites.mesh))
         # Sites
         sctx = SitesContext()
-        key_list = ['_vs30', '_vs30measured', '_z1pt0', '_z2pt5']
+        key_list = ['_vs30', '_vs30measured', '_z1pt0', '_z2pt5', '_backarc']
         for key in key_list:
             setattr(sctx, key[1:], getattr(self.target_sites, key))
         
@@ -432,7 +439,8 @@ class GSIMRupture(object):
         return sctx, rctx, dctx
 
     def get_target_sites_mesh(self, maximum_distance, spacing, vs30,
-                              vs30measured=True, z1pt0=None, z2pt5=None):
+                              vs30measured=True, z1pt0=None, z2pt5=None,
+                              backarc=False):
         """
         Renders a two dimensional mesh of points over the rupture surface
         """
@@ -466,14 +474,15 @@ class GSIMRupture(object):
                                   vs30,
                                   vs30measured,
                                   z1pt0,
-                                  z2pt5))
+                                  z2pt5,
+                                  backarc=backarc))
         self.target_sites = SiteCollection(site_list)
         return self.target_sites
 
 
     def get_target_sites_line(self, maximum_distance, spacing, vs30,
             line_azimuth=90., origin_point=(0.5, 0.5), vs30measured=True,
-            z1pt0=None, z2pt5=None):
+            z1pt0=None, z2pt5=None, backarc=False):
         """
         Defines the target sites along a line with respect to the rupture
         """
@@ -490,7 +499,8 @@ class GSIMRupture(object):
                                   vs30,
                                   vs30measured,
                                   z1pt0,
-                                  z2pt5)]
+                                  z2pt5,
+                                  backarc=backarc)]
         distance = 0.
         cum_dist = distance + spacing
         while distance < maximum_distance:
@@ -504,14 +514,15 @@ class GSIMRupture(object):
                                           vs30, 
                                           vs30measured, 
                                           z1pt0,
-                                          z2pt5))
+                                          z2pt5,
+                                          backarc=backarc))
             cum_dist += spacing
         self.target_sites = SiteCollection(self.target_sites)
         return self.target_sites
 
     def get_target_sites_point(self, distance, distance_type, vs30, 
             line_azimuth=90, origin_point=(0.5, 0.5), vs30measured=True, 
-            z1pt0=None, z2pt5=None):
+            z1pt0=None, z2pt5=None, backarc=False):
         """
         Returns a single target site at a fixed distance from the source,
         with distance defined according to a specific typology
@@ -545,7 +556,8 @@ class GSIMRupture(object):
             origin_point, 
             vs30measured, 
             z1pt0, 
-            z2pt5)
+            z2pt5,
+            backarc=backarc)
 
     def _get_limits_maximum_rjb(self, maximum_distance):
         """

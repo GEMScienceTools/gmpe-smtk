@@ -384,7 +384,9 @@ def gmrotipp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
                                           rot_hist_y, time_step_y,
                                           periods, damping, units, method)
 
-    return geometric_mean_spectrum(sax, say)
+    gmroti = geometric_mean_spectrum(sax, say)
+    gmroti["GMRotD{:.2f}".format(percentile)] = gmrot["GMRotDpp"]
+    return gmroti
 
 def rotdpp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
         percentile, damping=0.05, units="cm/s/s", method="Nigam-Jennings"):
@@ -443,8 +445,10 @@ def rotipp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
     target_theta = np.radians(angles[locn])
     arotpp = acceleration_x * np.cos(target_theta) +\
         acceleration_y * np.sin(target_theta)
-    return get_response_spectrum(arotpp, time_step_x, periods, damping, units,
+    spec = get_response_spectrum(arotpp, time_step_x, periods, damping, units,
         method)
+    spec["GMRot{:2.0f}".format(percentile)] = target
+    return spec
 
 
 ARIAS_FACTOR = pi / (2.0 * (constants.g * 100.))

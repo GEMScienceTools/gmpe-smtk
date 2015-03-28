@@ -145,6 +145,7 @@ class RecordDistance(object):
         self.rjb = rjb
         self.rrup = rrup
         self.r_x = r_x
+        self.ry0 = None
         self.azimuth = None
         self.flag = flag
         self.hanging_wall = None
@@ -183,7 +184,7 @@ class RecordSite(object):
         self.z1pt0 = None
         self.z1pt5 = None
         self.z2pt5 = None
-        self.arc_location = None
+        self.backarc = False
 
     def to_openquake_site(self, missing_vs30=None):
         """
@@ -206,13 +207,14 @@ class RecordSite(object):
             z2pt5 = self.z2pt5
         else:
             z2pt5 = z1pt0_to_z2pt5(z1pt0)
-
+        
         return Site(Point(self.longitude, self.latitude),
                     vs30,
                     vs30_measured,
                     z1pt0,
                     z2pt5,
-                    self.id)
+                    backarc=self.backarc,
+                    id=self.id)
 
 
     def get_ec8_class(self):
@@ -359,6 +361,7 @@ class GroundMotionDatabase(object):
         vs30_measured = []
         z1pt0 = []
         z2pt5 = []
+        backarc = []
         for idx_j in idx:
             # Site parameters
             rup = self.records[idx_j]
@@ -371,6 +374,8 @@ class GroundMotionDatabase(object):
                 z1pt0.append(rup.site.z1pt0)
             if rup.site.z2pt5:
                 z1pt0.append(rup.site.z2pt5)
+            if ("backarc" in dir(rup.site)) and rup.site.backarc:
+                backarc.append(rup.site.backarc)
         setattr(sctx, 'vs30', np.array(vs30))
         #if len(longs) > 0:
         #    setattr(sctx, 'lons', np.array(longs))
@@ -382,6 +387,8 @@ class GroundMotionDatabase(object):
             setattr(sctx, 'z1pt0', np.array(z1pt0))
         if len(z2pt5) > 0:
             setattr(sctx, 'z2pt5', np.array(z1pt0))
+        if len(backarc) > 0:
+            setattr(sctx, 'backarc', np.array(backarc))
         return sctx
 
     def _get_distances_context_event(self, idx):
@@ -394,6 +401,7 @@ class GroundMotionDatabase(object):
         repi = []
         rhypo = []
         r_x = []
+        ry0 = []
         for idx_j in idx:
             # Distance parameters
             rup = self.records[idx_j]
@@ -411,6 +419,8 @@ class GroundMotionDatabase(object):
                 rrup.append(rup.distance.rhypo)
             if rup.distance.r_x:
                 r_x.append(rup.distance.r_x)
+            if ("ry0" in dir(rup.distance)) and rup.distance.ry0:
+                ry0.append(rup.distance.ry0)
         setattr(dctx, 'repi', np.array(repi))
         setattr(dctx, 'rhypo', np.array(rhypo))
         if len(rjb) > 0:
@@ -419,6 +429,8 @@ class GroundMotionDatabase(object):
             setattr(dctx, 'rrup', np.array(rrup))
         if len(r_x) > 0:
             setattr(dctx, 'rx', np.array(r_x))
+        if len(ry0) > 0:
+            setattr(dctx, 'ry0', np.array(ry0))
         return dctx
 
     def _get_event_context(self, idx, nodal_plane_index=1):
