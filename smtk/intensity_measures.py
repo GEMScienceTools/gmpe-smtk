@@ -12,6 +12,7 @@ from scipy.stats import scoreatpercentile
 from scipy import constants
 import matplotlib.pyplot as plt
 import smtk.response_spectrum as rsp
+from smtk.smoothing import konno_ohmachi
 from smtk.sm_utils import (get_velocity_displacement,
                            get_time_vector,
                            convert_accel_units,
@@ -21,6 +22,7 @@ from smtk.sm_utils import (get_velocity_displacement,
 RESP_METHOD = {'Newmark-Beta': rsp.NewmarkBeta,
                'Nigam-Jennings': rsp.NigamJennings}
 
+SMOOTHING = {"KonnoOhmachi": konno_ohmachi.KonnoOhmachi}
 
 def get_peak_measures(time_step, acceleration, get_vel=False, 
     get_disp=False):
@@ -94,6 +96,52 @@ def plot_fourier_spectrum(time_series, time_step, figure_size=(7, 5),
     plt.ylabel("Fourier Amplitude", fontsize=14)
     _save_image(filename, filetype, dpi)
     plt.show()
+
+def get_hvsr(x_component, x_time_step, y_component, y_time_step, vertical,
+        vertical_time_step, smoothing_params):
+    """
+    :param x_component:
+        Time series of the x-component of the data
+    :param float x_time_step:
+        Time-step (in seconds) of the x-component
+    :param y_component:
+        Time series of the y-component of the data
+    :param float y_time_step:
+        Time-step (in seconds) of the y-component
+    :param vertical:
+        Time series of the vertical of the data
+    :param float vertical_time_step:
+        Time-step (in seconds) of the vertical component
+    :param dict smoothing_params:
+        Parameters controlling the smoothing of the individual spectra
+        Should contain:
+        * 'Function' - Name of smoothing method (e.g. KonnoOhmachi)
+        * Controlling parameters
+    :returns:
+        * horizontal-to-vertical spectral ratio
+        * frequency
+        * maximum H/V
+        * Period of Maximum H/V
+    """
+    smoother = SMOOTHING[smoothing_params["Function"]](smoothing_params)
+    # Get x-component Fourier spectrum
+    xfreq, xspectrum = get_fourier_spectrum(x_component, x_time_step)
+    # Smooth spectrum
+    xsmooth = smoother.apply_smoothing(xspectrum, xfreq)
+    # Get y-component Fourier spectrum
+    yfreq, yspectrum = get_fourier_spectrum(y_component, y_time_step)
+    # Smooth spectrum
+    ysmooth = smoother.apply_smoothing(yspectrum, yfreq)
+    # Take geometric mean of x- and y-components for horizontal spectrum
+    hor_spec = np.sqrt(xsmooth * ysmooth)
+    # Get vertical Fourier spectrum
+    vfreq, vspectrum = get_fourier_spectrum(vertical, vertical_time_step)
+    # Smooth spectrum
+    vsmooth = smoother.apply_smoothing(vspectrum, vfreq)
+    # Get HVSR
+    hvsr = hor_spec / vsmooth
+    max_loc = np.argmax(hvsr)
+    return hvsr, xfreq, hvsr[max_loc], 1.0 / xfreq[max_loc]
 
 def get_response_spectrum(acceleration, time_step, periods, damping=0.05, 
         units="cm/s/s", method="Nigam-Jennings"):
