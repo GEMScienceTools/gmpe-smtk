@@ -638,7 +638,10 @@ class GroundMotionDatabase(object):
             rup = self.records[idx_j]
             longs.append(rup.site.longitude)
             lats.append(rup.site.latitude)
-            depths.append(rup.site.altitude * -1.0E-3)
+            if rup.site.altitude:
+                depths.append(rup.site.altitude * -1.0E-3)
+            else:
+                depths.append(0.0)
             vs30.append(rup.site.vs30)
             if rup.site.vs30_measured:
                 vs30_measured.append(rup.site.vs30_measured)
