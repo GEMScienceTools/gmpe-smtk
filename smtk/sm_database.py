@@ -638,7 +638,10 @@ class GroundMotionDatabase(object):
             rup = self.records[idx_j]
             longs.append(rup.site.longitude)
             lats.append(rup.site.latitude)
-            depths.append(rup.site.altitude * -1.0E-3)
+            if rup.site.altitude:
+                depths.append(rup.site.altitude * -1.0E-3)
+            else:
+                depths.append(0.0)
             vs30.append(rup.site.vs30)
             if rup.site.vs30_measured:
                 vs30_measured.append(rup.site.vs30_measured)
@@ -654,7 +657,7 @@ class GroundMotionDatabase(object):
         if len(lats) > 0:
             setattr(sctx, 'lats', np.array(lats))
         if len(depths) > 0:
-            setattr(sctx, 'depths', np.array(lats))
+            setattr(sctx, 'depths', np.array(depths))
         if len(vs30_measured) > 0:
             setattr(sctx, 'vs30measured', np.array(vs30))
         if len(z1pt0) > 0:

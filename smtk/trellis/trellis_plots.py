@@ -20,7 +20,6 @@ import numpy as np
 from collections import Iterable, OrderedDict
 from math import floor, ceil
 from sets import Set
-import matplotlib
 import matplotlib.pyplot as plt
 from openquake.hazardlib import gsim, imt
 from openquake.hazardlib.scalerel.wc1994 import WC1994
@@ -38,12 +37,13 @@ PARAM_DICT = {'magnitudes': [],
               'dip': None,
               'rake': None,
               'ztor': None,
-              'hypocentre_location': (0.5, 0.5),
+              'hypo_loc': (0.5, 0.5),
               'msr': WC1994()}
 
 PLOT_UNITS = {'PGA': 'g',
-              'PGV': 'cm/s',
+              'PGV': 'cm/s/s',
               'SA': 'g',
+              'PGA': 'g',
               'IA': 'm/s',
               'CSV': 'g-sec',
               'RSD': 's',
@@ -56,10 +56,6 @@ DISTANCE_LABEL_MAP = {'repi': 'Epicentral Dist.',
                       'rx': 'Rx Dist.'}
 
 FIG_SIZE = (7, 5)
-
-# RESET Axes tick labels
-matplotlib.rc("xtick", labelsize=14)
-matplotlib.rc("ytick", labelsize=14)
 
 
 def _check_gsim_list(gsim_list):
@@ -278,7 +274,7 @@ class BaseTrellis(object):
         assert isinstance(rupture, GSIMRupture)
         magnitudes = [rupture.magnitude]
         sctx, rctx, dctx = rupture.get_gsim_contexts()
-        # Greate distances dictionary
+        # Create distances dictionary
         distances = {}
         for key in dctx.__slots__:
             distances[key] = getattr(dctx, key)
@@ -371,8 +367,8 @@ class MagnitudeIMTTrellis(BaseTrellis):
                         linewidth=2.0,
                         label=gmpe.__class__.__name__)
             self.lines.append(line)
-            ax.grid(True)
-            #ax.set_title(i_m, fontsize=12)
+            ax.grid()
+            ax.set_title(i_m, fontsize=12)
             ax.set_xlim(floor(self.magnitudes[0]), ceil(self.magnitudes[-1]))
             self._set_labels(i_m, ax)
      
@@ -380,12 +376,12 @@ class MagnitudeIMTTrellis(BaseTrellis):
             """
             Sets the labels on the specified axes
             """
-            ax.set_xlabel("Magnitude", fontsize=16)
+            ax.set_xlabel("Magnitude", fontsize=12)
             if 'SA(' in i_m:
                 units = PLOT_UNITS['SA']
             else:
                 units = PLOT_UNITS[i_m]
-            ax.set_ylabel("Median %s (%s)" % (i_m, units), fontsize=16)
+            ax.set_ylabel("Median %s (%s)" % (i_m, units), fontsize=12)
         
 
     def get_ground_motion_values(self):
@@ -439,8 +435,8 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
                             linewidth=2.0,
                             label=gmpe.__class__.__name__)
             self.lines.append(line)
-            ax.grid(True)
-            #ax.set_title(i_m, fontsize=12)
+            ax.grid()
+            ax.set_title(i_m, fontsize=12)
             ax.set_xlim(floor(self.magnitudes[0]), ceil(self.magnitudes[-1]))
             self._set_labels(i_m, ax)
     
@@ -473,8 +469,8 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
         """
         Sets the axes labels
         """
-        ax.set_xlabel("Magnitude", fontsize=16)
-        ax.set_ylabel(self.stddevs + " Std. Dev.", fontsize=16)
+        ax.set_xlabel("Magnitude", fontsize=12)
+        ax.set_ylabel(self.stddevs + " Std. Dev.", fontsize=12)
         
     
 class DistanceIMTTrellis(MagnitudeIMTTrellis):
@@ -530,8 +526,8 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
                 max_x = distance_vals[-1]
 
             self.lines.append(line)
-            ax.grid(True)
-            #ax.set_title(i_m, fontsize=12)
+            ax.grid()
+            ax.set_title(i_m, fontsize=12)
             
             ax.set_xlim(min_x, max_x)
             self._set_labels(i_m, ax)
@@ -542,12 +538,12 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
             Sets the labels on the specified axes
             """
             ax.set_xlabel("%s (km)" % DISTANCE_LABEL_MAP[self.distance_type],
-                          fontsize=16)
+                          fontsize=12)
             if 'SA(' in i_m:
                 units = PLOT_UNITS['SA']
             else:
                 units = PLOT_UNITS[i_m]
-            ax.set_ylabel("Median %s (%s)" % (i_m, units), fontsize=16)
+            ax.set_ylabel("Median %s (%s)" % (i_m, units), fontsize=12)
 
 
 class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
@@ -616,8 +612,8 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
 
 
             self.lines.append(line)
-            ax.grid(True)
-            #ax.set_title(i_m, fontsize=12)
+            ax.grid()
+            ax.set_title(i_m, fontsize=12)
             
             ax.set_xlim(min_x, max_x)
             self._set_labels(i_m, ax)
@@ -628,8 +624,8 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
         Sets the labels on the specified axes
         """
         ax.set_xlabel("%s (km)" % DISTANCE_LABEL_MAP[self.distance_type],
-                      fontsize=16)
-        ax.set_ylabel(self.stddevs + " Std. Dev.", fontsize=16)
+                      fontsize=12)
+        ax.set_ylabel(self.stddevs + " Std. Dev.", fontsize=12)
 
 
 class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
@@ -726,7 +722,7 @@ class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
             #                10.0 ** ceil(np.log10(periods[-1])))
             #else:
             ax.set_xlim(periods[0], periods[-1])
-            ax.grid(True)
+            ax.grid()
             self._set_labels(i_m, ax)
 
 
@@ -794,7 +790,7 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
             #                10.0 ** ceil(np.log10(periods[-1])))
             #else:
             ax.set_xlim(periods[0], periods[-1])
-            ax.grid(True)
+            ax.grid()
             self._set_labels(i_m, ax)
 
     def get_ground_motion_values(self):
@@ -827,5 +823,5 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
         """
         Sets the labels on the specified axes
         """
-        ax.set_xlabel("Period (s)", fontsize=16)
-        ax.set_ylabel("%s Std. Dev." % self.stddevs, fontsize=16)
+        ax.set_xlabel("Period (s)", fontsize=12)
+        ax.set_ylabel("%s Std. Dev." % self.stddevs, fontsize=12)
