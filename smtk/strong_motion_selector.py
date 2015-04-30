@@ -6,6 +6,7 @@ Strong motion record selection tools
 import numpy as np
 from copy import deepcopy
 from collections import OrderedDict
+from openquake.hazardlib.geo.mesh import Mesh
 from openquake.hazardlib.geo.point import Point
 from openquake.hazardlib.geo.polygon import Polygon
 from smtk.sm_database import GroundMotionRecord, GroundMotionDatabase
@@ -233,7 +234,7 @@ class SMRecordSelector(object):
                      np.array([record.site.latitude]),
                      None),
                 distance)
-            if isclose[0]:
+            if is_close[0]:
                 idx.append(iloc)
         return self.select_records(idx, as_db)
 
@@ -244,14 +245,14 @@ class SMRecordSelector(object):
              Region as instance of :class:
              openquake.hazardlib.geo.polygon.Polygon
         """
-        assert isinstance(region, Point)
+        assert isinstance(region, Polygon)
         idx = []
         
         for iloc, record in enumerate(self.database.records):
             site_loc = Mesh(np.array([record.site.longitude]),
                             np.array([record.site.latitude]),
                             None)
-            if polygon.intersects(site_loc)[0]:
+            if region.intersects(site_loc)[0]:
                 idx.append(iloc)
         return self.select_records(idx, as_db)
 
@@ -301,7 +302,7 @@ class SMRecordSelector(object):
             Mechanism type
         """
         idx = []
-        for iloc, record in self.database.records:
+        for iloc, record in enumerate(self.database.records):
             if record.event.mechanism.mechanism_type == mechanism_type:
                 idx.append(iloc)
         return self.select_records(idx, as_db)
@@ -312,7 +313,7 @@ class SMRecordSelector(object):
         :param str country
         """
         idx = []
-        for iloc, record in self.database.records:
+        for iloc, record in enumerate(self.database.records):
             if record.event.mechanism.country == country:
                 idx.append(iloc)
         return self.select_records(idx, as_db)

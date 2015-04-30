@@ -112,4 +112,3 @@ def _save_image_tight(fig, lgd, filename, filetype='png', resolution=300):
         pass
     return
 
-
