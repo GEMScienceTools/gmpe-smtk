@@ -686,6 +686,7 @@ class GroundMotionDatabase(object):
             rhypo.append(rup.distance.rhypo)
             # TODO Setting Rjb == Repi and Rrup == Rhypo when missing value
             # is a hack! Need feedback on how to fix
+            # Set also rx=Repi if undefined
             if rup.distance.rjb:
                 rjb.append(rup.distance.rjb)
             else:
@@ -696,6 +697,8 @@ class GroundMotionDatabase(object):
                 rrup.append(rup.distance.rhypo)
             if rup.distance.r_x:
                 r_x.append(rup.distance.r_x)
+            else:
+                r_x.append(rup.distance.repi)
             if ("ry0" in dir(rup.distance)) and rup.distance.ry0:
                 ry0.append(rup.distance.ry0)
         setattr(dctx, 'repi', np.array(repi))
@@ -732,6 +735,12 @@ class GroundMotionDatabase(object):
                 rup.event.mechanism.nodal_planes.nodal_plane_1['dip'])
             setattr(rctx, 'rake',
                 rup.event.mechanism.nodal_planes.nodal_plane_1['rake'])
+        if not rctx.strike:
+            # Hake: Set strike to North
+            setattr(rctx, 'strike', 0.0)
+        if not rctx.dip:
+            # Hake: Set dip to 90.0
+            setattr(rctx, 'dip', 90.0)
         if not rctx.rake:
             rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
         if rup.event.rupture:
