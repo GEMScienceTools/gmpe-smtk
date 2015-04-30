@@ -663,7 +663,7 @@ class GroundMotionDatabase(object):
         if len(z1pt0) > 0:
             setattr(sctx, 'z1pt0', np.array(z1pt0))
         if len(z2pt5) > 0:
-            setattr(sctx, 'z2pt5', np.array(z1pt0))
+            setattr(sctx, 'z2pt5', np.array(z2pt5))
         if len(backarc) > 0:
             setattr(sctx, 'backarc', np.array(backarc))
         return sctx
