@@ -359,6 +359,7 @@ class GSIMRupture(object):
         self.location = initial_point
         self.ztor = ztor
         self.trt = tectonic_region
+        self.hypo_loc = hypocentre_location
         # If the top of rupture depth in the initial
         if fabs(self.location.depth - self.ztor) > 1E-9:
             self.location.depth = ztor
@@ -369,7 +370,7 @@ class GSIMRupture(object):
                                              self.area,
                                              self.aspect)
         self.hypocentre = get_hypocentre_on_planar_surface(self.surface,
-                                                           hypocentre_location)
+                                                           self.hypo_loc)
         self.rupture = self.get_rupture()
         self.target_sites = None
 
@@ -435,6 +436,7 @@ class GSIMRupture(object):
         setattr(rctx, 'hypo_depth', self.rupture.hypocenter.depth)
         setattr(rctx, 'hypo_lat', self.rupture.hypocenter.latitude)
         setattr(rctx, 'hypo_lon', self.rupture.hypocenter.longitude)
+        setattr(rctx, 'hypo_loc', self.hypo_loc)
         setattr(rctx, 'width', self.rupture.surface.get_width())
         return sctx, rctx, dctx
 
