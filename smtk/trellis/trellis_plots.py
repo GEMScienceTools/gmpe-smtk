@@ -37,7 +37,7 @@ PARAM_DICT = {'magnitudes': [],
               'dip': None,
               'rake': None,
               'ztor': None,
-              'hypocentre_location': (0.5, 0.5),
+              'hypo_loc': (0.5, 0.5),
               'msr': WC1994()}
 
 PLOT_UNITS = {'PGA': 'g',
@@ -274,7 +274,7 @@ class BaseTrellis(object):
         assert isinstance(rupture, GSIMRupture)
         magnitudes = [rupture.magnitude]
         sctx, rctx, dctx = rupture.get_gsim_contexts()
-        # Greate distances dictionary
+        # Create distances dictionary
         distances = {}
         for key in dctx.__slots__:
             distances[key] = getattr(dctx, key)

@@ -432,6 +432,7 @@ class GSIMRupture(object):
         setattr(rctx, 'dip', self.dip)
         setattr(rctx, 'rake', self.rake)
         setattr(rctx, 'ztor', self.ztor)
+        setattr(rctx, 'hypo_loc', None)
         setattr(rctx, 'hypo_depth', self.rupture.hypocenter.depth)
         setattr(rctx, 'hypo_lat', self.rupture.hypocenter.latitude)
         setattr(rctx, 'hypo_lon', self.rupture.hypocenter.longitude)
