@@ -202,7 +202,7 @@ class SimpleFlatfileParser(SMDatabaseReader):
                           metadata["Station ID  No."],
                           get_float(metadata["Station Longitude"]),
                           get_float(metadata["Station Latitude"]),
-                          None, # Elevation data not given
+                          0.0, # Elevation data not given
                           get_float(metadata["Preferred Vs30 (m/s)"]),
                           network_code=metadata["Owner"])
         site.nehrp = metadata["Preferred NEHRP Based on Vs30"]
