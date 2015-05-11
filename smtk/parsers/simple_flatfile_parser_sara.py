@@ -17,6 +17,9 @@ from smtk.parsers.base_database_parser import (get_float, get_int,
                                                SMDatabaseReader,
                                                SMTimeSeriesReader,
                                                SMSpectraReader)
+# In order to define default fault dimension import scaling relationships
+from openquake.hazardlib.scalerel.strasser2010 import StrasserInterface, StrasserIntraslab
+from openquake.hazardlib.scalerel.wc1994 import WC1994
 
 HEADER_LIST = Set([
     'Record Sequence Number', 'EQID', 'Earthquake Name', 'Country', 'Year', 
@@ -187,11 +190,38 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         else:
             hypo_loc = (f1, f2)
 
+        evt_tectonic_region = metadata["Tectonic environment (Crustal; Inslab; Interface; Stable; Geothermal; Volcanic; Oceanic_crust)"]
+        if evt_tectonic_region == "Stable" or evt_tectonic_region == "Crustal":
+            msr=WC1994()
+        elif evt_tectonic_region == "Inslab":
+            msr=StrasserIntraslab()
+        elif evt_tectonic_region == "Interface":
+            msr=StrasserInterface()
+
+        # Warning rake set to 0.0 in scaling relationship
+        area = msr.get_median_area(pref_mag.value,0.0)
+        aspect_ratio = 1.5
+        width_model = np.sqrt(area / aspect_ratio)
+        length_model = aspect_ratio * width_model
+        ztor_model = eqk.depth - width_model/2
+        if ztor_model < 0:
+            ztor_model = 0.0
+
+        length = get_float(metadata["Fault Rupture Length (km)"])
+        if length is None:
+            length = length_model
+        width = get_float(metadata["Fault Rupture Width (km)"])
+        if width is None:
+            width = width_model
+        ztor = get_float(metadata["Depth to Top Of Fault Rupture Model"])
+        if ztor is None:
+            ztor=ztor_model
+        
         # Rupture
         eqk.rupture = Rupture(eq_id,
-            get_float(metadata["Fault Rupture Length (km)"]),
-            get_float(metadata["Fault Rupture Width (km)"]),
-            get_float(metadata["Depth to Top Of Fault Rupture Model"]),
+            length,
+            width,
+            ztor,
             hypo_loc=hypo_loc)
         eqk.rupture.get_area()
         return eqk
