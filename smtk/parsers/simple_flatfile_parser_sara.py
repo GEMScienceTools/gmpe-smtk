@@ -183,7 +183,7 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             "Along-width Hypocenter location " +
             "on the fault (fraction between 0 and 1)"])
         if f1 is None or f2 is None:
-            hypo_loc = None
+            hypo_loc = (0.5, 0.7)
         else:
             hypo_loc = (f1, f2)
 
@@ -225,9 +225,9 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
                 "strike": get_float(metadata['Nodal Plane 1 Strike (deg)']),
                 "dip": get_float(metadata['Nodal Plane 1 Dip (deg)']),
                 "rake": get_float(metadata['Nodal Plane 1 Rake Angle (deg)'])}
-        elif metadata['Fault Plane (1; 2; X)'] == 'X':
-            nodal_planes.nodal_plane_1 = {"strike": None,
-                                 "dip": None,
+        elif metadata['Fault Plane (1; 2; X)'] == 'X': # Set default vertical fault with strike to North
+            nodal_planes.nodal_plane_1 = {"strike": 0.0,
+                                 "dip": 90.0,
                                  "rake": None}
             nodal_planes.nodal_plane_2 = {"strike": None,
                                  "dip": None,
