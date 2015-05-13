@@ -648,9 +648,10 @@ class GroundMotionDatabase(object):
             if rup.site.z1pt0:
                 z1pt0.append(rup.site.z1pt0)
             if rup.site.z2pt5:
-                z1pt0.append(rup.site.z2pt5)
+                z2pt5.append(rup.site.z2pt5)
             if ("backarc" in dir(rup.site)) and rup.site.backarc:
                 backarc.append(rup.site.backarc)
+        print len(vs30), len(z1pt0)
         setattr(sctx, 'vs30', np.array(vs30))
         if len(longs) > 0:
             setattr(sctx, 'lons', np.array(longs))
