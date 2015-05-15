@@ -688,20 +688,21 @@ class GroundMotionDatabase(object):
             # TODO Setting Rjb == Repi and Rrup == Rhypo when missing value
             # is a hack! Need feedback on how to fix
             # Set also rx=Repi if undefined
-            if rup.distance.rjb:
+            if rup.distance.rjb is not None:
                 rjb.append(rup.distance.rjb)
             else:
                 rjb.append(rup.distance.repi)
-            if rup.distance.rrup:
+            if rup.distance.rrup is not None:
                 rrup.append(rup.distance.rrup)
             else:
                 rrup.append(rup.distance.rhypo)
-            if rup.distance.r_x:
+            if rup.distance.r_x is not None:
                 r_x.append(rup.distance.r_x)
             else:
                 r_x.append(rup.distance.repi)
-            if ("ry0" in dir(rup.distance)) and rup.distance.ry0:
+            if ("ry0" in dir(rup.distance)) and rup.distance.ry0 is not None:
                 ry0.append(rup.distance.ry0)
+        
         setattr(dctx, 'repi', np.array(repi))
         setattr(dctx, 'rhypo', np.array(rhypo))
         if len(rjb) > 0:
