@@ -643,15 +643,15 @@ class GroundMotionDatabase(object):
             else:
                 depths.append(0.0)
             vs30.append(rup.site.vs30)
-            if rup.site.vs30_measured:
+            if rup.site.vs30_measured is not None:
                 vs30_measured.append(rup.site.vs30_measured)
             if rup.site.z1pt0:
                 z1pt0.append(rup.site.z1pt0)
             if rup.site.z2pt5:
                 z2pt5.append(rup.site.z2pt5)
-            if ("backarc" in dir(rup.site)) and rup.site.backarc:
+            if ("backarc" in dir(rup.site)) and rup.site.backarc is not None:
                 backarc.append(rup.site.backarc)
-        print len(vs30), len(z1pt0)
+        
         setattr(sctx, 'vs30', np.array(vs30))
         if len(longs) > 0:
             setattr(sctx, 'lons', np.array(longs))
