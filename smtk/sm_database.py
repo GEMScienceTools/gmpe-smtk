@@ -638,29 +638,33 @@ class GroundMotionDatabase(object):
             rup = self.records[idx_j]
             longs.append(rup.site.longitude)
             lats.append(rup.site.latitude)
-            depths.append(rup.site.altitude * -1.0E-3)
+            if rup.site.altitude:
+                depths.append(rup.site.altitude * -1.0E-3)
+            else:
+                depths.append(0.0)
             vs30.append(rup.site.vs30)
-            if rup.site.vs30_measured:
+            if rup.site.vs30_measured is not None:
                 vs30_measured.append(rup.site.vs30_measured)
             if rup.site.z1pt0:
                 z1pt0.append(rup.site.z1pt0)
             if rup.site.z2pt5:
-                z1pt0.append(rup.site.z2pt5)
-            if ("backarc" in dir(rup.site)) and rup.site.backarc:
+                z2pt5.append(rup.site.z2pt5)
+            if ("backarc" in dir(rup.site)) and rup.site.backarc is not None:
                 backarc.append(rup.site.backarc)
+        
         setattr(sctx, 'vs30', np.array(vs30))
         if len(longs) > 0:
             setattr(sctx, 'lons', np.array(longs))
         if len(lats) > 0:
             setattr(sctx, 'lats', np.array(lats))
         if len(depths) > 0:
-            setattr(sctx, 'depths', np.array(lats))
+            setattr(sctx, 'depths', np.array(depths))
         if len(vs30_measured) > 0:
-            setattr(sctx, 'vs30measured', np.array(vs30))
+            setattr(sctx, 'vs30measured', np.array(vs30_measured))
         if len(z1pt0) > 0:
             setattr(sctx, 'z1pt0', np.array(z1pt0))
         if len(z2pt5) > 0:
-            setattr(sctx, 'z2pt5', np.array(z1pt0))
+            setattr(sctx, 'z2pt5', np.array(z2pt5))
         if len(backarc) > 0:
             setattr(sctx, 'backarc', np.array(backarc))
         return sctx
@@ -683,18 +687,22 @@ class GroundMotionDatabase(object):
             rhypo.append(rup.distance.rhypo)
             # TODO Setting Rjb == Repi and Rrup == Rhypo when missing value
             # is a hack! Need feedback on how to fix
-            if rup.distance.rjb:
+            # Set also rx=Repi if undefined
+            if rup.distance.rjb is not None:
                 rjb.append(rup.distance.rjb)
             else:
                 rjb.append(rup.distance.repi)
-            if rup.distance.rrup:
+            if rup.distance.rrup is not None:
                 rrup.append(rup.distance.rrup)
             else:
                 rrup.append(rup.distance.rhypo)
-            if rup.distance.r_x:
+            if rup.distance.r_x is not None:
                 r_x.append(rup.distance.r_x)
-            if ("ry0" in dir(rup.distance)) and rup.distance.ry0:
+            else:
+                r_x.append(rup.distance.repi)
+            if ("ry0" in dir(rup.distance)) and rup.distance.ry0 is not None:
                 ry0.append(rup.distance.ry0)
+        
         setattr(dctx, 'repi', np.array(repi))
         setattr(dctx, 'rhypo', np.array(rhypo))
         if len(rjb) > 0:
@@ -729,6 +737,12 @@ class GroundMotionDatabase(object):
                 rup.event.mechanism.nodal_planes.nodal_plane_1['dip'])
             setattr(rctx, 'rake',
                 rup.event.mechanism.nodal_planes.nodal_plane_1['rake'])
+        if not rctx.strike:
+            # Hake: Set strike to North
+            setattr(rctx, 'strike', 0.0)
+        if not rctx.dip:
+            # Hake: Set dip to 90.0
+            setattr(rctx, 'dip', 90.0)
         if not rctx.rake:
             rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
         if rup.event.rupture:

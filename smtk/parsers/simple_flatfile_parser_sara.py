@@ -17,6 +17,12 @@ from smtk.parsers.base_database_parser import (get_float, get_int,
                                                SMDatabaseReader,
                                                SMTimeSeriesReader,
                                                SMSpectraReader)
+# In order to define default fault dimension import scaling relationships
+from openquake.hazardlib.scalerel.strasser2010 import StrasserInterface, StrasserIntraslab
+from openquake.hazardlib.scalerel.wc1994 import WC1994
+from openquake.hazardlib.geo.mesh import Mesh
+import smtk.trellis.configure as rcfg
+from openquake.hazardlib.geo.point import Point
 
 HEADER_LIST = Set([
     'Record Sequence Number', 'EQID', 'Earthquake Name', 'Country', 'Year', 
@@ -111,10 +117,10 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         wfid = metadata["Record Sequence Number"]
         # Event information
         event = self._parse_event_data(metadata)
-        # Distance Information
-        distances = self._parse_distance_data(metadata)
         # Site information
         site = self._parse_site_data(metadata)
+        # Distance Information
+        distances = self._parse_distance_data(event, site, metadata)
         # Components
         x_comp, y_comp, vertical = self._parse_processing_data(wfid, metadata)
         # Return record metadata
@@ -183,15 +189,42 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             "Along-width Hypocenter location " +
             "on the fault (fraction between 0 and 1)"])
         if f1 is None or f2 is None:
-            hypo_loc = None
+            hypo_loc = (0.5, 0.7)
         else:
             hypo_loc = (f1, f2)
 
+        evt_tectonic_region = metadata["Tectonic environment (Crustal; Inslab; Interface; Stable; Geothermal; Volcanic; Oceanic_crust)"]
+        if evt_tectonic_region == "Stable" or evt_tectonic_region == "Crustal":
+            msr=WC1994()
+        elif evt_tectonic_region == "Inslab":
+            msr=StrasserIntraslab()
+        elif evt_tectonic_region == "Interface":
+            msr=StrasserInterface()
+
+        # Warning rake set to 0.0 in scaling relationship
+        area = msr.get_median_area(pref_mag.value,0.0)
+        aspect_ratio = 1.5
+        width_model = np.sqrt(area / aspect_ratio)
+        length_model = aspect_ratio * width_model
+        ztor_model = eqk.depth - width_model/2
+        if ztor_model < 0:
+            ztor_model = 0.0
+
+        length = get_float(metadata["Fault Rupture Length (km)"])
+        if length is None:
+            length = length_model
+        width = get_float(metadata["Fault Rupture Width (km)"])
+        if width is None:
+            width = width_model
+        ztor = get_float(metadata["Depth to Top Of Fault Rupture Model"])
+        if ztor is None:
+            ztor=ztor_model
+        
         # Rupture
         eqk.rupture = Rupture(eq_id,
-            get_float(metadata["Fault Rupture Length (km)"]),
-            get_float(metadata["Fault Rupture Width (km)"]),
-            get_float(metadata["Depth to Top Of Fault Rupture Model"]),
+            length,
+            width,
+            ztor,
             hypo_loc=hypo_loc)
         eqk.rupture.get_area()
         return eqk
@@ -226,8 +259,21 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
                 "dip": get_float(metadata['Nodal Plane 1 Dip (deg)']),
                 "rake": get_float(metadata['Nodal Plane 1 Rake Angle (deg)'])}
         elif metadata['Fault Plane (1; 2; X)'] == 'X':
-            nodal_planes.nodal_plane_1 = {"strike": None,
-                                 "dip": None,
+            # Check if values for strike or dip are given otherwise set strike=0 and dip=90
+            # and fill strike and dip for fault plane 1
+            # What can we do for rake?
+            strike = get_float(metadata['Nodal Plane 1 Strike (deg)'])
+            if strike is None:
+                strike = get_float(metadata['Nodal Plane 2 Strike (deg)'])
+            if strike is None:
+                strike = 0.0
+            dip = get_float(metadata['Nodal Plane 1 Dip (deg)'])
+            if dip is None:
+                dip = get_float(metadata['Nodal Plane 2 Dip (deg)'])
+            if dip is None:
+                dip = 90.0
+            nodal_planes.nodal_plane_1 = {"strike": strike,
+                                 "dip": dip,
                                  "rake": None}
             nodal_planes.nodal_plane_2 = {"strike": None,
                                  "dip": None,
@@ -240,16 +286,52 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             mechanism_type=mech_type)
 
 
-    def _parse_distance_data(self, metadata):
+    def _parse_distance_data(self, event, site, metadata):
         """
         Read in the distance related metadata and return an instance of the
         :class: smtk.sm_database.RecordDistance
         """
+        # Compute various distance metrics
+        # Add calculation of Repi, Rhypo from event and station localizations (latitudes, longitudes, depth, elevation)?
+        target_site = Mesh(np.array(site.longitude), np.array(site.latitude), np.array(-site.altitude/1000.0))
+        # Warning ratio fixed to 1.5
+        ratio=1.5
+        surface_modeled = rcfg.create_planar_surface(Point(event.longitude, event.latitude, event.depth),
+                                             event.mechanism.nodal_planes.nodal_plane_1['strike'],
+                                             event.mechanism.nodal_planes.nodal_plane_1['dip'],
+                                             event.rupture.area,
+                                             ratio)
+        hypocenter = rcfg.get_hypocentre_on_planar_surface(surface_modeled, event.rupture.hypo_loc)
+        
+        # Rhypo
+        Rhypo = get_float(metadata["Hypocentral Distance (km)"])
+        if Rhypo is None:
+            Rhypo = hypocenter.distance_to_mesh(target_site)
+        # Repi
+        Repi = get_float(metadata["Epicentral Distance (km)"])
+        if Repi is None:
+            Repi= hypocenter.distance_to_mesh(target_site, with_depths=False)
+        # Rrup
+        Rrup = get_float(metadata["Rupture Distance (km)"])
+        if Rrup is None:
+            Rrup = surface_modeled.get_min_distance(target_site)
+        # Rjb
+        Rjb = get_float(metadata["Joyner-Boore Distance (km)"])
+        if Rjb is None:
+            Rjb = surface_modeled.get_joyner_boore_distance(target_site)
+        # Need to check if Rx and Ry0 are consistant with the other metrics when those are coming from the flatfile?
+        # Rx
+        Rx = surface_modeled.get_rx_distance(target_site)
+        # Ry0
+        Ry0 = surface_modeled.get_ry0_distance(target_site)
+        
         distance = RecordDistance(
-            get_float(metadata["Epicentral Distance (km)"]),
-            get_float(metadata["Hypocentral Distance (km)"]),
-            get_float(metadata["Joyner-Boore Distance (km)"]),
-            get_float(metadata["Rupture Distance (km)"]))
+            repi = Repi,
+            rhypo = Rhypo,
+            rjb = Rjb,
+            rrup = Rrup,
+            r_x = Rx,
+            ry0 = Ry0)
         distance.azimuth = get_float(metadata["Source to Site Azimuth (deg)"])
         distance.hanging_wall = get_float(metadata["FW/HW Indicator"])
         return distance
@@ -283,6 +365,13 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         site.z1pt5 = None
         # site.z1pt5 = get_float(metadata["Z1.5 (m)"])
         site.z2pt5 = get_float(metadata["Z2.5 (m)"])
+        
+        # Implement default values for z1pt0 and z2pt5
+        if site.z1pt0 is None:
+            site.z1pt0 = rcfg.vs30_to_z1pt0_as08(site.vs30)
+        if site.z2pt5 is None:
+            site.z2pt5 = rcfg.z1pt0_to_z2pt5(site.z1pt0)
+
         site.arc_location = metadata["Forearc/Backarc for subduction events"]
         site.instrument_type = metadata["Digital (D)/Analog (A) Recording"]
         return site
