@@ -660,7 +660,7 @@ class GroundMotionDatabase(object):
         if len(depths) > 0:
             setattr(sctx, 'depths', np.array(depths))
         if len(vs30_measured) > 0:
-            setattr(sctx, 'vs30measured', np.array(vs30))
+            setattr(sctx, 'vs30measured', np.array(vs30_measured))
         if len(z1pt0) > 0:
             setattr(sctx, 'z1pt0', np.array(z1pt0))
         if len(z2pt5) > 0:
