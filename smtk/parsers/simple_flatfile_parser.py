@@ -259,12 +259,12 @@ class SimpleFlatfileParser(SMDatabaseReader):
         Ry0 = surface_modeled.get_ry0_distance(target_site)
         
         distance = RecordDistance(
-            repi = Repi,
-            rhypo = Rhypo,
-            rjb = Rjb,
-            rrup = Rrup,
-            r_x = Rx,
-            ry0 = Ry0)
+            repi = float(Repi),
+            rhypo = float(Rhypo),
+            rjb = float(Rjb),
+            rrup = float(Rrup),
+            r_x = float(Rx),
+            ry0 = float(Ry0))
         distance.azimuth = get_float(metadata["Source to Site Azimuth (deg)"])
         distance.hanging_wall = get_float(metadata["FW/HW Indicator"])
 #        distance = RecordDistance(
