@@ -5,12 +5,19 @@ Parser from a "Simple Flatfile + ascii format" to SMTK
 """
 import os
 import csv
+import h5py
 import numpy as np
 from sets import Set
 from linecache import getline
 from collections import OrderedDict
 from datetime import datetime
-import h5py
+# In order to define default fault dimension import scaling relationships
+from openquake.hazardlib.scalerel.strasser2010 import (StrasserInterface,
+                                                       StrasserIntraslab)
+from openquake.hazardlib.scalerel.wc1994 import WC1994
+from openquake.hazardlib.geo.mesh import Mesh
+from openquake.hazardlib.geo.point import Point
+import smtk.trellis.configure as rcfg
 from smtk.sm_database import *
 from smtk.sm_utils import convert_accel_units
 from smtk.parsers.base_database_parser import (get_float, get_int,
@@ -93,10 +100,10 @@ class SimpleFlatfileParser(SMDatabaseReader):
         wfid = metadata["Record Sequence Number"]
         # Event information
         event = self._parse_event_data(metadata)
-        # Distance Information
-        distances = self._parse_distance_data(metadata)
         # Site information
         site = self._parse_site_data(metadata)
+        # Distance Information
+        distances = self._parse_distance_data(event, site, metadata)
         # Components
         x_comp, y_comp, vertical = self._parse_processing_data(wfid, metadata)
         # Return record metadata
@@ -152,11 +159,34 @@ class SimpleFlatfileParser(SMDatabaseReader):
             pref_mag,
             focal_mechanism,
             metadata["Country"])
+        hypo_loc = (0.5, 0.7)   # Hypocentre Location
+        msr=WC1994()
+        # Warning rake set to 0.0 in scaling relationship
+        area = msr.get_median_area(pref_mag.value,0.0)
+        aspect_ratio = 1.5 # Assumed Fixed
+        width_model = np.sqrt(area / aspect_ratio)
+        length_model = aspect_ratio * width_model
+        ztor_model = eqk.depth - width_model / 2.
+        if ztor_model < 0:
+            ztor_model = 0.0
+
+        length = get_float(metadata["Fault Rupture Length (km)"])
+        if length is None:
+            length = length_model
+        width = get_float(metadata["Fault Rupture Width (km)"])
+        if width is None:
+            width = width_model
+        ztor = get_float(metadata["Depth to Top Of Fault Rupture Model"])
+        if ztor is None:
+            ztor=ztor_model  
         # Rupture
         eqk.rupture = Rupture(eq_id,
-            get_float(metadata["Fault Rupture Length (km)"]),
-            get_float(metadata["Fault Rupture Width (km)"]),
-            get_float(metadata["Depth to Top Of Fault Rupture Model"]))
+                              length,
+                              width,
+                              ztor)
+        #    get_float(metadata["Fault Rupture Length (km)"]),
+        #    get_float(metadata["Fault Rupture Width (km)"]),
+        #    get_float(metadata["Depth to Top Of Fault Rupture Model"]))
         eqk.rupture.get_area()
         return eqk
             
@@ -166,9 +196,15 @@ class SimpleFlatfileParser(SMDatabaseReader):
         :class: smtk.sigma_database.FocalMechanism 
         """
         nodal_planes = GCMTNodalPlanes()
+        strike = get_float(metadata["Strike (deg)"])
+        if strike is None:
+            strike = 0.0
+        dip = get_float(metadata["Dip (deg)"])
+        if dip is None:
+            dip = 90.0
         nodal_planes.nodal_plane_1 = {
-            "strike": get_float(metadata["Strike (deg)"]),
-            "dip": get_float(metadata["Dip (deg)"]),
+            "strike": strike,
+            "dip": dip,
             "rake": get_float(metadata["Rake Angle (deg)"])}
 
         nodal_planes.nodal_plane2 = {"strike": None,
@@ -178,18 +214,66 @@ class SimpleFlatfileParser(SMDatabaseReader):
         return FocalMechanism(eq_id, eq_name, nodal_planes, principal_axes,
             mechanism_type=metadata["Mechanism Based on Rake Angle"])
 
-    def _parse_distance_data(self, metadata):
+    def _parse_distance_data(self, event, site, metadata):
         """
         Read in the distance related metadata and return an instance of the
         :class: smtk.sm_database.RecordDistance
         """
+        # Compute various distance metrics
+        # Add calculation of Repi, Rhypo from event and station localizations (latitudes, longitudes, depth, elevation)?
+        target_site = Mesh(np.array([site.longitude]),
+                           np.array([site.latitude]),
+                           np.array([0.0]))
+        # Warning ratio fixed to 1.5
+        ratio=1.5
+        surface_modeled = rcfg.create_planar_surface(
+            Point(event.longitude, event.latitude, event.depth),
+            event.mechanism.nodal_planes.nodal_plane_1['strike'],
+            event.mechanism.nodal_planes.nodal_plane_1['dip'],
+            event.rupture.area,
+            ratio)
+        hypocenter = rcfg.get_hypocentre_on_planar_surface(
+            surface_modeled,
+            event.rupture.hypo_loc)
+        # Rhypo
+        Rhypo = get_float(metadata["HypD (km)"])
+        if Rhypo is None:
+            Rhypo = hypocenter.distance_to_mesh(target_site)
+        # Repi
+        Repi = get_float(metadata["EpiD (km)"])
+        if Repi is None:
+            Repi= hypocenter.distance_to_mesh(target_site, with_depths=False)
+        # Rrup
+        Rrup = get_float(metadata["Campbell R Dist. (km)"])
+        if Rrup is None:
+            Rrup = surface_modeled.get_min_distance(target_site)
+        # Rjb
+        Rjb = get_float(metadata["Joyner-Boore Dist. (km)"])
+        if Rjb is None:
+            Rjb = surface_modeled.get_joyner_boore_distance(target_site)
+        # Need to check if Rx and Ry0 are consistant with the other metrics
+        # when those are coming from the flatfile?
+        # Rx
+        Rx = surface_modeled.get_rx_distance(target_site)
+        # Ry0
+        Ry0 = surface_modeled.get_ry0_distance(target_site)
+        
         distance = RecordDistance(
-            get_float(metadata["EpiD (km)"]),
-            get_float(metadata["HypD (km)"]),
-            get_float(metadata["Joyner-Boore Dist. (km)"]),
-            get_float(metadata["Campbell R Dist. (km)"]))
+            repi = Repi,
+            rhypo = Rhypo,
+            rjb = Rjb,
+            rrup = Rrup,
+            r_x = Rx,
+            ry0 = Ry0)
         distance.azimuth = get_float(metadata["Source to Site Azimuth (deg)"])
         distance.hanging_wall = get_float(metadata["FW/HW Indicator"])
+#        distance = RecordDistance(
+#            get_float(metadata["EpiD (km)"]),
+#            get_float(metadata["HypD (km)"]),
+#            get_float(metadata["Joyner-Boore Dist. (km)"]),
+#            get_float(metadata["Campbell R Dist. (km)"]))
+#        distance.azimuth = get_float(metadata["Source to Site Azimuth (deg)"])
+#        distance.hanging_wall = get_float(metadata["FW/HW Indicator"])
         return distance
 
     def _parse_site_data(self, metadata):
@@ -202,7 +286,7 @@ class SimpleFlatfileParser(SMDatabaseReader):
                           metadata["Station ID  No."],
                           get_float(metadata["Station Longitude"]),
                           get_float(metadata["Station Latitude"]),
-                          None, # Elevation data not given
+                          0.0, # Elevation data not given
                           get_float(metadata["Preferred Vs30 (m/s)"]),
                           network_code=metadata["Owner"])
         site.nehrp = metadata["Preferred NEHRP Based on Vs30"]
@@ -216,6 +300,11 @@ class SimpleFlatfileParser(SMDatabaseReader):
         site.z1pt0 = get_float(metadata["Z1 (m)"])
         site.z1pt5 = get_float(metadata["Z1.5 (m)"])
         site.z2pt5 = get_float(metadata["Z2.5 (m)"])
+        # Implement default values for z1pt0 and z2pt5
+        if site.z1pt0 is None:
+            site.z1pt0 = rcfg.vs30_to_z1pt0_as08(site.vs30)
+        if site.z2pt5 is None:
+            site.z2pt5 = rcfg.z1pt0_to_z2pt5(site.z1pt0)
         site.arc_location = metadata["Forearc/Backarc for subduction events"]
         site.instrument_type = metadata["Type of Recording"]
         return site
