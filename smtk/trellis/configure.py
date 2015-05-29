@@ -420,6 +420,8 @@ class GSIMRupture(object):
         # Ry0
         setattr(dctx, 'ry0',
                 self.rupture.surface.get_ry0_distance(self.target_sites.mesh))
+        # Rcdpp - ignored at present
+        setattr(dctx, 'rcdpp', None)
         # Sites
         sctx = SitesContext()
         key_list = ['_vs30', '_vs30measured', '_z1pt0', '_z2pt5', '_backarc']
