@@ -344,7 +344,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
         lgd = plt.legend(self.lines,
                          self.labels,
                          loc=2,
-                         bbox_to_anchor=(1.05, 1.))
+                         bbox_to_anchor=(1.1, 1.))
         #fig.savefig(self.filename, bbox_extra_artists=(lgd,),
         #            bbox_inches="tight",
         #            dpi=self.dpi, format=self.filetype)
@@ -669,7 +669,7 @@ class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
         lgd = plt.legend(self.lines,
                          self.labels,
                          loc=2,
-                         bbox_to_anchor=(1.05, 1.))
+                         bbox_to_anchor=(1.1, 1.))
         _save_image_tight(fig, lgd, self.filename, self.filetype, self.dpi)
         plt.show()
 
