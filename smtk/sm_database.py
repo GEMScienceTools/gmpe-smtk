@@ -697,7 +697,7 @@ class GroundMotionDatabase(object):
             if rup.distance.r_x is not None:
                 r_x.append(rup.distance.r_x)
             else:
-                r_x.append(rup.distance.epi)
+                r_x.append(rup.distance.repi)
             if ("ry0" in dir(rup.distance)) and rup.distance.ry0 is not None:
                 ry0.append(rup.distance.ry0)
         setattr(dctx, 'repi', np.array(repi))
@@ -743,7 +743,7 @@ class GroundMotionDatabase(object):
         if rup.event.rupture:
             setattr(rctx, 'ztor', rup.event.rupture.depth)
             setattr(rctx, 'width', rup.event.rupture.width)
-            setattr(rctx, 'hypo_loc', rup.event.rupture.hypo_loc)
+            #setattr(rctx, 'hypo_loc', rup.event.rupture.hypo_loc)
         setattr(rctx, 'hypo_depth', rup.event.depth)
         setattr(rctx, 'hypo_lat', rup.event.latitude)
         setattr(rctx, 'hypo_lon', rup.event.longitude)
