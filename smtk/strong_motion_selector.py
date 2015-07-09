@@ -358,6 +358,6 @@ class SMRecordSelector(object):
         """
         idx = []
         for iloc, record in enumerate(self.database.records):
-            if record.average_lup and (record.average.lup >= lup):
+            if record.average_lup and (record.average_lup >= lup):
                 idx.append(iloc)
         return self.select_records(idx, as_db)
