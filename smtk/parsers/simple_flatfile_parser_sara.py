@@ -346,7 +346,11 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             r_x = float(Rx),
             ry0 = float(Ry0))
         distance.azimuth = get_float(metadata["Source to Site Azimuth (deg)"])
-        distance.hanging_wall = get_float(metadata["FW/HW Indicator"])
+        if metadata["FW/HW Indicator"] == "HW":
+            distance.hanging_wall = True
+        if metadata["FW/HW Indicator"] == "FW":
+            distance.hanging_wall = False
+        #distance.hanging_wall = get_float(metadata["FW/HW Indicator"])
         return distance
 
     def _parse_site_data(self, metadata):
