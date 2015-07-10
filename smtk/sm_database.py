@@ -679,6 +679,8 @@ class GroundMotionDatabase(object):
         rhypo = []
         r_x = []
         ry0 = []
+        azimuth = []
+        hanging_wall =[]
         for idx_j in idx:
             # Distance parameters
             rup = self.records[idx_j]
@@ -700,6 +702,10 @@ class GroundMotionDatabase(object):
                 r_x.append(rup.distance.repi)
             if ("ry0" in dir(rup.distance)) and rup.distance.ry0 is not None:
                 ry0.append(rup.distance.ry0)
+            if rup.distance.azimuth is not None:
+                azimuth.append(rup.distance.azimuth)
+            if rup.distance.hanging_wall is not None:
+                hanging_wall.append(rup.distance.hanging_wall)
         setattr(dctx, 'repi', np.array(repi))
         setattr(dctx, 'rhypo', np.array(rhypo))
         if len(rjb) > 0:
@@ -710,6 +716,10 @@ class GroundMotionDatabase(object):
             setattr(dctx, 'rx', np.array(r_x))
         if len(ry0) > 0:
             setattr(dctx, 'ry0', np.array(ry0))
+        if len(azimuth) > 0:
+            setattr(dctx, 'azimuth', np.array(azimuth))
+        if len(hanging_wall) > 0:
+            setattr(dctx, 'hanging_wall', np.array(hanging_wall))
         return dctx
 
     def _get_event_context(self, idx, nodal_plane_index=1):
