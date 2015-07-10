@@ -371,8 +371,9 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             )
             # network_code=metadata["Owner"])
         site.nehrp = metadata["Preferred NEHRP Based on Vs30"]
-        site.vs30_measured_type = metadata["Measured(1)/Inferred(2) Class"]
-        if site.vs30_measured_type in ["0", "5"]:
+        #site.vs30_measured_type = metadata["Measured(1)/Inferred(2) Class"]
+        #if site.vs30_measured_type in ["0", "5"]:
+        if metadata["Measured(1)/Inferred(2) Class"] == "1":
             site.vs30_measured = True
         else:
             site.vs30_measured = False
