@@ -18,11 +18,8 @@ from openquake.hazardlib.correlation import JB2009CorrelationModel
 from openquake.hazardlib.site import Site, SiteCollection
 from openquake.hazardlib.imt import from_string
 from openquake.hazardlib.gsim import get_available_gsims
-from openquake.commonlib.node import read_nodes
-from openquake.commonlib.sourceconverter import RuptureConverter
-from openquake.commonlib.nrml import nodefactory
+from openquake.nrmllib.hazard.parsers import RuptureModelParser
 from smtk.residuals.gmpe_residuals import Residuals
-
 
 DEFAULT_CORRELATION = JB2009CorrelationModel(False)
 GSIM_LIST = get_available_gsims()
@@ -61,17 +58,23 @@ def build_planar_surface(geometry):
                          bottom_left)
     
 
-def build_rupture_from_file(rupture_file, simple_mesh_spacing=1.0,
-        complex_mesh_spacing=1.0):
+def build_rupture_from_file(rupture_file, trt="Active Shallow Crust"):
     """
-    Parses a rupture from the OpenQuake nrml 4.0 format and parses it to
-    an instance of :class: openquake.hazardlib.source.rupture.Rupture
+    Reads an OpenQuake Rupture Model file and parses it to an instance of
+    :calass: openquake.hazardlib.source.rupture.Rupture
     """
-    rup_node, = read_nodes(rupture_file, lambda el: 'Rupture' in el.tag,
-                           nodefactory['sourceModel'])
-    conv = RuptureConverter(simple_mesh_spacing,
-                            complex_mesh_spacing)
-    return conv.convert_node(rup_node)
+    parser = RuptureModelParser(rupture_file)
+    rupture = parser.parse()
+    surface = build_planar_surface(rupture.geometry)
+    hypocentre = Point(rupture.hypocenter[0],
+                       rupture.hypocenter[1],
+                       rupture.hypocenter[2])
+    return Rupture(rupture.magnitude,
+                   rupture.rake,
+                   trt,
+                   hypocentre,
+                   surface,
+                   SimpleFaultSource)
 
 def get_regular_site_collection(limits, vs30, z1pt0=100.0, z2pt5=1.0):
     """
