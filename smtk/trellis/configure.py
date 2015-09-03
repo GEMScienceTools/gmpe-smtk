@@ -163,11 +163,14 @@ def vs30_to_z1pt0_cy08(vs30):
 
 def z1pt0_to_z2pt5(z1pt0):
     """
-    Calculates the depth to 2.5 km/s layer (km /s)
+    Calculates the depth to 2.5 km/s layer (km /s) using the model presented
+    in Campbell & Bozorgnia (2007)
     :param float z1pt0:
-        Depth to the 1.0 km/s layer
+        Depth (m) to the 1.0 km/s layer
+    :returns:
+        Depth (km) to 2.5 km/s layer
     """
-    return 5.19 + 3.595 * z1pt0
+    return 0.519 + 3.595 * (z1pt0 / 1000.)
 
 
 

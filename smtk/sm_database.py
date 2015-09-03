@@ -633,6 +633,8 @@ class GroundMotionDatabase(object):
         z1pt0 = []
         z2pt5 = []
         backarc = []
+        azimuth = []
+        hanging_wall = []
         for idx_j in idx:
             # Site parameters
             rup = self.records[idx_j]
@@ -679,6 +681,8 @@ class GroundMotionDatabase(object):
         rhypo = []
         r_x = []
         ry0 = []
+        azimuth = []
+        hanging_wall = []
         for idx_j in idx:
             # Distance parameters
             rup = self.records[idx_j]
@@ -700,6 +704,7 @@ class GroundMotionDatabase(object):
                 r_x.append(rup.distance.repi)
             if ("ry0" in dir(rup.distance)) and rup.distance.ry0 is not None:
                 ry0.append(rup.distance.ry0)
+
         setattr(dctx, 'repi', np.array(repi))
         setattr(dctx, 'rhypo', np.array(rhypo))
         if len(rjb) > 0:
@@ -710,6 +715,10 @@ class GroundMotionDatabase(object):
             setattr(dctx, 'rx', np.array(r_x))
         if len(ry0) > 0:
             setattr(dctx, 'ry0', np.array(ry0))
+        if len(azimuth) > 0:
+            setattr(dctx, 'azimuth', np.array(azimuth))
+        if len(hanging_wall) > 0:
+            setattr(dctx, 'hanging_wall', np.array(hanging_wall))
         return dctx
 
     def _get_event_context(self, idx, nodal_plane_index=1):
@@ -743,7 +752,7 @@ class GroundMotionDatabase(object):
         if rup.event.rupture:
             setattr(rctx, 'ztor', rup.event.rupture.depth)
             setattr(rctx, 'width', rup.event.rupture.width)
-            #setattr(rctx, 'hypo_loc', rup.event.rupture.hypo_loc)
+            setattr(rctx, 'hypo_loc', rup.event.rupture.hypo_loc)
         setattr(rctx, 'hypo_depth', rup.event.depth)
         setattr(rctx, 'hypo_lat', rup.event.latitude)
         setattr(rctx, 'hypo_lon', rup.event.longitude)
