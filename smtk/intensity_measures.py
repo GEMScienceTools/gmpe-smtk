@@ -494,7 +494,7 @@ def rotipp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
     arotpp = acceleration_x * np.cos(target_theta) +\
         acceleration_y * np.sin(target_theta)
     spec = get_response_spectrum(arotpp, time_step_x, periods, damping, units,
-        method)
+        method)[0]
     spec["GMRot{:2.0f}".format(percentile)] = target
     return spec
 
