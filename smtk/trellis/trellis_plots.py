@@ -59,8 +59,8 @@ DISTANCE_LABEL_MAP = {'repi': 'Epicentral Dist.',
 FIG_SIZE = (7, 5)
 
 # RESET Axes tick labels
-matplotlib.rc("xtick", labelsize=14)
-matplotlib.rc("ytick", labelsize=14)
+matplotlib.rc("xtick", labelsize=12)
+matplotlib.rc("ytick", labelsize=12)
 
 
 def _check_gsim_list(gsim_list):
@@ -300,8 +300,6 @@ class BaseTrellis(object):
         raise NotImplementedError("Cannot create plot of base class!")
 
 
-                
-
 class MagnitudeIMTTrellis(BaseTrellis):
     """
     Class to generate a plots showing the scaling of a set of IMTs with
@@ -345,9 +343,6 @@ class MagnitudeIMTTrellis(BaseTrellis):
                          self.labels,
                          loc=2,
                          bbox_to_anchor=(1.1, 1.))
-        #fig.savefig(self.filename, bbox_extra_artists=(lgd,),
-        #            bbox_inches="tight",
-        #            dpi=self.dpi, format=self.filetype)
         _save_image_tight(fig, lgd, self.filename, self.filetype, self.dpi)
         plt.show()
 
@@ -399,19 +394,24 @@ class MagnitudeIMTTrellis(BaseTrellis):
         """
         gmvs = OrderedDict()
         for gmpe in self.gsims:
-            
             gmvs.update([(gmpe.__class__.__name__, {})])
             for i_m in self.imts:
                 gmvs[gmpe.__class__.__name__][i_m] = np.zeros(
                     [len(self.rctx), self.nsites], dtype=float)
                 for iloc, rct in enumerate(self.rctx):
-                    means, _ = gmpe.get_mean_and_stddevs(self.sctx,
-                                                         rct,
-                                                         self.dctx,
-                                                         imt.from_string(i_m),
-                                                         [self.stddevs])
-                    gmvs[gmpe.__class__.__name__][i_m][iloc, :] = np.exp(means)
-                   
+                    try:
+                        means, _ = gmpe.get_mean_and_stddevs(
+                            self.sctx,
+                            rct,
+                            self.dctx,
+                            imt.from_string(i_m),
+                            [self.stddevs])
+
+                        gmvs[gmpe.__class__.__name__][i_m][iloc, :] = \
+                            np.exp(means)
+                    except KeyError:
+                        gmvs[gmpe.__class__.__name__][i_m] = []
+                        break
         return gmvs
 
 
@@ -461,13 +461,18 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
                                                                self.nsites],
                                                                dtype=float)
                 for iloc, rct in enumerate(self.rctx):
-                    _, sigmas = gmpe.get_mean_and_stddevs(
-                         self.sctx,
-                         rct,
-                         self.dctx,
-                         imt.from_string(i_m),
-                         [self.stddevs])
-                    gmvs[gmpe.__class__.__name__][i_m][iloc, :] = sigmas[0]
+                    try:
+                        _, sigmas = gmpe.get_mean_and_stddevs(
+                             self.sctx,
+                             rct,
+                             self.dctx,
+                             imt.from_string(i_m),
+                             [self.stddevs])
+                        gmvs[gmpe.__class__.__name__][i_m][iloc, :] = sigmas[0]
+                    except KeyError:
+                        gmvs[gmpe.__class__.__name__][i_m] = []
+                        break
+
         return gmvs
 
     def _set_labels(self, i_m, ax):
@@ -571,13 +576,19 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
                                                                self.nsites],
                                                                dtype=float)
                 for iloc, rct in enumerate(self.rctx):
-                    _, sigmas = gmpe.get_mean_and_stddevs(
-                         self.sctx,
-                         rct,
-                         self.dctx,
-                         imt.from_string(i_m),
-                         [self.stddevs])
-                    gmvs[gmpe.__class__.__name__][i_m][iloc, :] = sigmas[0]
+                    try:
+                        _, sigmas = gmpe.get_mean_and_stddevs(
+                             self.sctx,
+                             rct,
+                             self.dctx,
+                             imt.from_string(i_m),
+                             [self.stddevs])
+                        gmvs[gmpe.__class__.__name__][i_m][iloc, :] = sigmas[0]
+                    except KeyError:
+                        gmvs[gmpe.__class__.__name__][i_m] = []
+                        break
+                        
+                        
         return gmvs
 
     def _build_plot(self, ax, i_m, gmvs):
@@ -662,9 +673,6 @@ class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
                     gmvs,
                     rowloc,
                     colloc)
-        #fig.text(0.5, 0.0, "Period", fontsize=18, ha='center', va='center')
-        #fig.text(0.0, 0.5, "Sa (g)", fontsize=18, ha='center', va='center',
-        #         rotation='vertical')
         # Add legend
         lgd = plt.legend(self.lines,
                          self.labels,
@@ -687,14 +695,27 @@ class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
         """
         self.labels = []
         self.lines = []
-        periods = np.array([imt.from_string(i_m).period
-                            for i_m in self.imts])
-
+        #periods = np.array([imt.from_string(i_m).period
+        #                    for i_m in self.imts])
+        max_period = 0.0
+        min_period = np.inf
         for gmpe in self.gsims:
+            periods = []
+            spec = []
+            for i_m in self.imts:
+                if len(gmvs[str(gmpe)][i_m]):
+                    periods.append(imt.from_string(i_m).period)
+                    spec.append(gmvs[str(gmpe)][i_m][rloc, cloc])
+            periods = np.array(periods)
+            spec = np.array(spec)
+            max_period = np.max(periods) if np.max(periods) > max_period else \
+                max_period
+            min_period = np.min(periods) if np.min(periods) < min_period else \
+                min_period
+
+                    
             self.labels.append(gmpe.__class__.__name__)
             # Get spectrum from gmvs
-            spec = np.array([gmvs[gmpe.__class__.__name__][i_m][rloc, cloc]
-                             for i_m in self.imts])
             if self.plot_type == "loglog":
                 line, = ax.loglog(periods,
                                   spec,
@@ -722,11 +743,7 @@ class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
                             rotation="vertical")
 
             self.lines.append(line)
-            #if self.plot_type == "loglog":
-            #    ax.set_xlim(10.0 ** floor(np.log10(periods[0])), 
-            #                10.0 ** ceil(np.log10(periods[-1])))
-            #else:
-            ax.set_xlim(periods[0], periods[-1])
+            ax.set_xlim(min_period, max_period)
             ax.grid(True)
             self._set_labels(i_m, ax)
 
@@ -755,14 +772,28 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
         """
         self.labels = []
         self.lines = []
-        periods = np.array([imt.from_string(i_m).period
-                            for i_m in self.imts])
+        max_period = 0.0
+        min_period = np.inf
 
         for gmpe in self.gsims:
-            self.labels.append(gmpe.__class__.__name__)
+            periods = []
+            spec = []
             # Get spectrum from gmvs
-            spec = np.array([gmvs[gmpe.__class__.__name__][i_m][rloc, cloc]
-                             for i_m in self.imts])
+            for i_m in self.imts:
+                if len(gmvs[str(gmpe)][i_m]):
+                    periods.append(imt.from_string(i_m).period)
+                    spec.append(gmvs[str(gmpe)][i_m][rloc, cloc])
+            periods = np.array(periods)
+            spec = np.array(spec)
+            self.labels.append(gmpe.__class__.__name__)
+
+            max_period = np.max(periods) if np.max(periods) > max_period else \
+                max_period
+            min_period = np.min(periods) if np.min(periods) < min_period else \
+                min_period
+
+            #spec = np.array([gmvs[gmpe.__class__.__name__][i_m][rloc, cloc]
+            #                 for i_m in self.imts])
             if self.plot_type == "loglog":
                 line, = ax.semilogx(periods,
                                   spec,
@@ -790,11 +821,7 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
                             rotation="vertical")
 
             self.lines.append(line)
-            #if self.plot_type == "loglog":
-            #    ax.set_xlim(10.0 ** floor(np.log10(periods[0])), 
-            #                10.0 ** ceil(np.log10(periods[-1])))
-            #else:
-            ax.set_xlim(periods[0], periods[-1])
+            ax.set_xlim(min_period, max_period)
             ax.grid(True)
             self._set_labels(i_m, ax)
 
@@ -814,13 +841,17 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
                                                                self.nsites],
                                                                dtype=float)
                 for iloc, rct in enumerate(self.rctx):
-                    _, sigmas = gmpe.get_mean_and_stddevs(
-                         self.sctx,
-                         rct,
-                         self.dctx,
-                         imt.from_string(i_m),
-                         [self.stddevs])
-                    gmvs[gmpe.__class__.__name__][i_m][iloc, :] = sigmas[0]
+                    try:
+                        _, sigmas = gmpe.get_mean_and_stddevs(
+                             self.sctx,
+                             rct,
+                             self.dctx,
+                             imt.from_string(i_m),
+                             [self.stddevs])
+                        gmvs[gmpe.__class__.__name__][i_m][iloc, :] = sigmas[0]
+                    except KeyError:
+                        gmvs[gmpe.__class__.__name__][i_m] = []
+                        break
         return gmvs
     
     
