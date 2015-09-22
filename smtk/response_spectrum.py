@@ -15,36 +15,6 @@ from sm_utils import (_save_image,
                       get_velocity_displacement)
                      
 
-#def get_velocity_displacement(time_step, acceleration):
-#    '''
-#    Returns the velocity and displacment time series using simple integration
-#    :param float time_step:
-#        Time-series time-step (s)
-#    :param numpy.ndarray acceleration:
-#        Acceleration time-history
-#    :returns:
-#        velocity - Velocity Time series (cm/s)
-#        displacement - Displacement Time series (cm)
-#    '''
-#    velocity = time_step * cumtrapz(acceleration, initial=0.)
-#    displacement = time_step * cumtrapz(velocity, initial=0.)
-#    return velocity, displacement
-#
-#def convert_accel_units(acceleration, units):
-#    """
-#    Converts acceleration to different units
-#    """
-#    if units=="g":
-#        return 981. * acceleration
-#    elif units=="m/s":
-#        return 100. * acceleration
-#    elif units=="cm/s/s":
-#        return acceleration
-#    else:
-#        raise ValueError("Unrecognised time history units. "
-#                         "Should take either ''g'', ''m/s'' or ''cm/s/s''")
-
-
 class ResponseSpectrum(object):
     '''
     Base Class to implement a response spectrum calculation
@@ -344,10 +314,10 @@ def plot_time_series(acceleration, time_step, velocity=[], displacement=[],
     """
     acceleration = convert_accel_units(acceleration, units)
     accel_time = get_time_vector(time_step, len(acceleration))
-    if len(velocity) > 0:
+    if not len(velocity):
         velocity, dspl = get_velocity_displacement(time_step, acceleration)
     vel_time = get_time_vector(time_step, len(velocity))
-    if len(displacement) > 0:
+    if not len(displacement):
         displacement = dspl
     disp_time = get_time_vector(time_step, len(displacement))
     fig = plt.figure(figsize=figure_size)
