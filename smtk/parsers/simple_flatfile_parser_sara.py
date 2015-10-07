@@ -374,8 +374,9 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             )
             # network_code=metadata["Owner"])
         site.nehrp = metadata["Preferred NEHRP Based on Vs30"]
-        site.vs30_measured_type = metadata["Measured(1)/Inferred(2) Class"]
-        if site.vs30_measured_type in ["0", "5"]:
+        #site.vs30_measured_type = metadata["Measured(1)/Inferred(2) Class"]
+        #if site.vs30_measured_type in ["0", "5"]:
+        if metadata["Measured(1)/Inferred(2) Class"] == "1":
             site.vs30_measured = True
         else:
             site.vs30_measured = False
@@ -390,7 +391,9 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             site.z1pt0 = rcfg.vs30_to_z1pt0_as08(site.vs30)
         if site.z2pt5 is None:
             site.z2pt5 = rcfg.z1pt0_to_z2pt5(site.z1pt0)        
-        site.arc_location = metadata["Forearc/Backarc for subduction events"]
+        #site.arc_location = metadata["Forearc/Backarc for subduction events"]
+        if metadata["Forearc/Backarc for subduction events"] == "Backarc":
+            site.backarc = True
         site.instrument_type = metadata["Digital (D)/Analog (A) Recording"]
         return site
                            

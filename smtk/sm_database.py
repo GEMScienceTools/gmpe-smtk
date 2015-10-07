@@ -704,7 +704,10 @@ class GroundMotionDatabase(object):
                 r_x.append(rup.distance.repi)
             if ("ry0" in dir(rup.distance)) and rup.distance.ry0 is not None:
                 ry0.append(rup.distance.ry0)
-
+            if rup.distance.azimuth is not None:
+                azimuth.append(rup.distance.azimuth)
+            if rup.distance.hanging_wall is not None:
+                hanging_wall.append(rup.distance.hanging_wall)
         setattr(dctx, 'repi', np.array(repi))
         setattr(dctx, 'rhypo', np.array(rhypo))
         if len(rjb) > 0:
