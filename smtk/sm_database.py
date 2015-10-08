@@ -186,7 +186,8 @@ class Earthquake(object):
         Earthquake rupture as instance of the :class: Rupture
     """
     def __init__(self, eq_id, name, date_time, longitude, latitude, depth,
-        magnitude, focal_mechanism=None, eq_country=None):
+            magnitude, focal_mechanism=None, eq_country=None,
+            tectonic_region=None):
         """
         Instantiate
         """
@@ -202,6 +203,7 @@ class Earthquake(object):
         self.magnitude_list = None
         self.mechanism = focal_mechanism
         self.rupture = None
+        self.tectonic_region = tectonic_region
 
 class RecordDistance(object):
     """
@@ -491,7 +493,7 @@ class Component(object):
         self.filter = waveform_filter
         self.baseline = baseline
         self.ims = ims
-        self.units = None
+        self.units = units
 
 
 class GroundMotionRecord(object):

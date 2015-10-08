@@ -79,7 +79,7 @@ class SMTimeSeriesReader(object):
         self.metadata = None
 
     @abc.abstractmethod
-    def parse_records(self):
+    def parse_records(self, record=None):
         """
         """
 
