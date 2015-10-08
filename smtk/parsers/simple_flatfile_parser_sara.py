@@ -15,8 +15,10 @@ from datetime import datetime
 from openquake.hazardlib.scalerel.strasser2010 import (StrasserInterface,
                                                        StrasserIntraslab)
 from openquake.hazardlib.scalerel.wc1994 import WC1994
-from openquake.hazardlib.geo.mesh import Mesh
+from openquake.hazardlib.geo.mesh import Mesh, RectangularMesh
 from openquake.hazardlib.geo.point import Point
+from openquake.hazardlib.geo.line import Line
+from openquake.hazardlib.geo.surface.simple_fault import SimpleFaultSurface
 import smtk.trellis.configure as rcfg
 from smtk.sm_database import *
 from smtk.sm_utils import convert_accel_units
@@ -194,12 +196,14 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         else:
             hypo_loc = (f1, f2)
 
-        evt_tectonic_region = metadata["Tectonic environment (Crustal; Inslab; Interface; Stable; Geothermal; Volcanic; Oceanic_crust)"]
-        if evt_tectonic_region == "Stable" or evt_tectonic_region == "Crustal":
+        eqk.tectonic_region = metadata["Tectonic environment (Crustal; Inslab; Interface; Stable; Geothermal; Volcanic; Oceanic_crust)"]
+        if (eqk.tectonic_region == "Stable" or
+            eqk.tectonic_region == "Crustal" or
+            eqk.tectonic_region == "Oceanic_crust"):
             msr=WC1994()
-        elif evt_tectonic_region == "Inslab":
+        elif eqk.tectonic_region == "Inslab":
             msr=StrasserIntraslab()
-        elif evt_tectonic_region == "Interface":
+        elif eqk.tectonic_region == "Interface":
             msr=StrasserInterface()
 
         # Warning rake set to 0.0 in scaling relationship - applies only
@@ -314,6 +318,27 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         hypocenter = rcfg.get_hypocentre_on_planar_surface(
             surface_modeled,
             event.rupture.hypo_loc)
+        try:
+            surface_modeled._create_mesh()
+        except:
+            dip = surface_modeled.get_dip()
+            dip_dir = (surface_modeled.get_strike() - 90.) % 360.
+            ztor = surface_modeled.top_left.depth
+            d_x = ztor * np.tan(np.radians(90.0 - dip))
+            top_left_surface = surface_modeled.top_left.point_at(d_x,
+                                                                 -ztor,
+                                                                 dip_dir)
+            top_left_surface.depth = 0.
+            top_right_surface = surface_modeled.top_right.point_at(d_x,
+                                                                   -ztor,
+                                                                   dip_dir)
+            top_right_surface.depth = 0.
+            surface_modeled = SimpleFaultSurface.from_fault_data(
+                Line([top_left_surface, top_right_surface]),
+                surface_modeled.top_left.depth,
+                surface_modeled.bottom_left.depth,
+                surface_modeled.get_dip(),
+                1.0)
         
         # Rhypo
         Rhypo = get_float(metadata["Hypocentral Distance (km)"])
@@ -465,7 +490,7 @@ class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
     contains the number of values and the time-step. Whilst the rest of the
     file contains the acceleration record
     """
-    def parse_records(self):
+    def parse_records(self, record):
         """
         Parses the record set
         """
@@ -487,13 +512,13 @@ class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
                     continue
             else:
                 time_series[target_names[iloc]]["Original"] = \
-                    self._parse_time_history(ifile)
+                    self._parse_time_history(ifile, record.xrecord.units)
         if iloc < 2:
             del time_series["V"]
 
         return time_series
 
-    def _parse_time_history(self, ifile):
+    def _parse_time_history(self, ifile, units="cm/s/s"):
         """
         Parses the time history from the file and returns a dictionary of
         time-series properties
@@ -504,6 +529,6 @@ class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
         nvals, time_step = (getline(ifile, 1).rstrip("\n")).split()
         output["Time-step"] = float(time_step)
         output["Number Steps"] = int(nvals)
-        output["Units"] = "cm/s/s"
+        output["Units"] = units
         output["PGA"] = np.max(np.fabs(output["Acceleration"]))
         return output
