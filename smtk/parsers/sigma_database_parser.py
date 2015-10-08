@@ -308,7 +308,7 @@ class SigmaRecordParser(SMTimeSeriesReader):
     """
 
     """
-    def parse_records(self):
+    def parse_records(self, record=None):
         """
 
         """

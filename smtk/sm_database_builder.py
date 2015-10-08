@@ -114,7 +114,7 @@ class SMDatabaseBuilder(object):
             if len(sm_parser.input_files) < 2:
                 print "Record contains < 2 components - skipping!"
                 continue
-            sm_data = sm_parser.parse_records()
+            sm_data = sm_parser.parse_records(record)
             if not sm_data.get("X", {}).get("Original", {}):
                 print 'No processed records - skipping'
                 continue
