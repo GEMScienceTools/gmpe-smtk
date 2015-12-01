@@ -38,7 +38,9 @@ GEM_GIT_REPO="git://github.com/gem"
 GEM_GIT_REPO2="git://github.com/GEMScienceTools"
 GEM_GIT_PACKAGE="gmpe-smtk"
 GEM_GIT_DEPS="oq-hazardlib notebooks"
-GEM_LOCAL_DEPS="python-nose python-coverage gmt python-pyshp gmt-gshhs-low python-matplotlib python-mpltoolkits.basemap pylint python-lxml python-yaml"
+GEM_PIP_DEPS="jupyter ipython==4.0.0 selenium==2.48.0"
+
+GEM_LOCAL_DEPS="virtualenvwrapper python-virtualenv python-nose python-coverage gmt python-pyshp gmt-gshhs-low python-matplotlib python-mpltoolkits.basemap pylint python-lxml python-yaml firefox"
 
 if [ -z "$GEM_DEB_REPO" ]; then
     GEM_DEB_REPO="$HOME/gem_ubuntu_repo"
@@ -58,7 +60,7 @@ if [ "$GEM_EPHEM_CMD" = "" ]; then
     GEM_EPHEM_CMD="lxc-start-ephemeral"
 fi
 if [ "$GEM_EPHEM_NAME" = "" ]; then
-    GEM_EPHEM_NAME="ubuntu-lxc-eph"
+    GEM_EPHEM_NAME="ubuntu14-x11-lxc-eph"
 fi
 
 if command -v lxc-shutdown &> /dev/null; then
@@ -249,7 +251,9 @@ fi
     for dep in $GEM_GIT_DEPS; do
         # extract dependencies for source dependencies
         pkgs_list="$(deps_list "deprec" _jenkins_deps/$dep/debian)"
-        ssh $lxc_ip "sudo apt-get install -y ${pkgs_list}"
+        if [ "$pkgs_list" ]; then
+            ssh $lxc_ip "sudo apt-get install -y ${pkgs_list}"
+        fi
 
         # install source dependencies
         cd _jenkins_deps/$dep
@@ -260,7 +264,9 @@ fi
 
     # extract dependencies for this package
     pkgs_list="$(deps_list "all" debian)"
-    ssh $lxc_ip "sudo apt-get install -y ${pkgs_list}"
+    if [ "$pkgs_list" ]; then
+        ssh $lxc_ip "sudo apt-get install -y ${pkgs_list}"
+    fi
 
     # build oq-hazardlib speedups and put in the right place
     ssh $lxc_ip "export GEM_SET_DEBUG=$GEM_SET_DEBUG
@@ -275,6 +281,30 @@ fi
                      o=\"\$(echo \"\$i\" | sed 's@^[^/]\+/[^/]\+/@@g')\"
                      cp \$i \$o
                  done"
+
+    # create virtualenv and install pip deps
+    ssh $lxc_ip "export GEM_SET_DEBUG=$GEM_SET_DEBUG
+                 set -e
+                 if [ -n \"\$GEM_SET_DEBUG\" -a \"\$GEM_SET_DEBUG\" != \"false\" ]; then
+                     export PS4='+\${BASH_SOURCE}:\${LINENO}:\${FUNCNAME[0]}: '
+                     set -x
+                 fi
+                 virtualenv --system-site-packages ci-env
+                 source ci-env/bin/activate
+                 IFS=' '
+                 for ppkg in $GEM_PIP_DEPS; do
+                     pip install \$ppkg
+                 done"
+
+    ssh $lxc_ip "export GEM_SET_DEBUG=$GEM_SET_DEBUG
+                 set -e
+                 if [ -n \"\$GEM_SET_DEBUG\" -a \"\$GEM_SET_DEBUG\" != \"false\" ]; then
+                     export PS4='+\${BASH_SOURCE}:\${LINENO}:\${FUNCNAME[0]}: '
+                     set -x
+                 fi
+                 source ci-env/bin/activate
+                 env
+                 sleep 100000 || true"
 
     # install sources of this package
     git archive --prefix ${GEM_GIT_PACKAGE}/ HEAD | ssh $lxc_ip "tar xv"
@@ -295,10 +325,16 @@ fi
 deps_list() {
     local old_ifs out_list skip i d listtype="$1" control_file="$2"/control rules_file="$2"/rules
 
+    out_list=""
+
+    if [ ! -f "${control_file}" ]; then
+        echo "$out_list"
+        return 0
+    fi
+
     rules_dep=$(grep "^${BUILD_UBUVER^^}_DEP *= *" $rules_file | sed 's/^.*= *//g')
     rules_rec=$(grep "^${BUILD_UBUVER^^}_REC *= *" $rules_file | sed 's/^.*= *//g')
 
-    out_list=""
     if [ "$listtype" = "all" ]; then
         in_list="$((cat "$control_file" | egrep '^Depends:|^Recommends:|Build-Depends:' | sed 's/^\(Build-\)\?Depends://g;s/^Recommends://g' ; echo ", $rules_dep, $rules_rec") | tr '\n' ','| sed 's/,\+/,/g')"
     elif [  "$listtype" = "deprec" ]; then
@@ -491,7 +527,7 @@ devtest_run () {
         fi
     done
     IFS="$old_ifs"
-exit 123
+
     sudo echo
     sudo ${GEM_EPHEM_CMD} -o $GEM_EPHEM_NAME -d 2>&1 | tee /tmp/packager.eph.$$.log &
     _lxc_name_and_ip_get /tmp/packager.eph.$$.log
