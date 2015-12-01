@@ -433,28 +433,35 @@ devtest_run () {
     # and the same branch OR the gem repository and the "master" branch
     #
     repo_id="$(repo_id_get)"
-    if [ "$repo_id" != "$GEM_GIT_REPO" ]; then
+    if [ "$repo_id" != "$GEM_GIT_REPO" -a "$repo_id" != "$GEM_GIT_REPO2"]; then
         repos="git://${repo_id} ${GEM_GIT_REPO} ${GEM_GIT_REPO2}"
     else
         repos="${GEM_GIT_REPO} ${GEM_GIT_REPO2}"
     fi
+    if [ "$branch" != "master" ]; then
+        branches="$branch master"
+    else
+        branches="master"
+    fi
+
     old_ifs="$IFS"
     IFS=" "
     for dep in $GEM_GIT_DEPS; do
         found=0
-        branch_cur="$branch"
-        for repo in $repos; do
-            # search of same branch in same repo or in GEM_GIT_REPO repo
-            if git ls-remote --heads $repo/${dep}.git | grep -q "refs/heads/$branch_cur" ; then
-                deps_check_or_clone "$dep" "$repo/${dep}.git" "$branch_cur"
-                found=1
-                break
-            fi
+        for branch_cur in $branches; do
+            for repo in $repos; do
+                # search of same branch in same repo or in GEM_GIT_REPO repo
+                if git ls-remote --heads $repo/${dep}.git | grep -q "refs/heads/$branch_cur" ; then
+                    deps_check_or_clone "$dep" "$repo/${dep}.git" "$branch_cur"
+                    found=1
+                    break
+                fi
+            done
         done
-        # if not found it fallback in master branch of GEM_GIT_REPO repo
-        if [ $found -eq 0 ]; then
-            branch_cur="master"
-            deps_check_or_clone "$dep" "$repo/${dep}.git" "$branch_cur"
+
+        if [ $found -ne 1 ]; then
+            echo "Dependency $dep not found."
+            exit 1
         fi
         cd _jenkins_deps/$dep
         commit="$(git log -1 | grep '^commit' | sed 's/^commit //g')"
