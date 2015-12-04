@@ -300,6 +300,9 @@ EOF
 
     ssh $lxc_ip "source gem_init.sh
                  source ci-env/bin/activate
+                 ipython profile create
+                 echo \"c = get_config()\"                      >> ~/.ipython/profile_default/ipython_config.py
+                 echo \"c.InteractiveShell.colors = 'NoColor'\" >> ~/.ipython/profile_default/ipython_config.py
                  export PYTHONPATH=\$PWD/oq-hazardlib:\$PWD/gmpe-smtk:\$PWD/oq-ipynb-runner
                  cd notebooks/gmpe-smtk
                  mkdir images
