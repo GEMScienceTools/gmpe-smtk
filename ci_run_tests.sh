@@ -308,7 +308,7 @@ EOF
                  cd notebooks/gmpe-smtk
                  mkdir images
                  export DISPLAY=\"$guest_display\"
-                 nosetests --with-xunit --xunit-file=../../nosetests_gmpe-smtk_notebooks.xml -v --with-coverage || true"
+                 nosetests --with-xunit --xunit-file=../../gmpe-smtk/nosetests_gmpe-smtk_notebooks.xml -v --with-coverage || true"
 
     trap ERR
 
