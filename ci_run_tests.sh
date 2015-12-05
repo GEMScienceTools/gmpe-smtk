@@ -37,7 +37,7 @@ set -e
 GEM_GIT_REPO="git://github.com/gem"
 GEM_GIT_REPO2="git://github.com/GEMScienceTools"
 GEM_GIT_PACKAGE="gmpe-smtk"
-GEM_GIT_DEPS="oq-hazardlib oq-ipynb-runner notebooks"
+GEM_GIT_DEPS="oq-hazardlib oq-risklib oq-ipynb-runner notebooks"
 GEM_PIP_DEPS="jupyter nose"
 
 GEM_LOCAL_DEPS="python-virtualenv python-nose python-coverage gmt python-pyshp gmt-gshhs-low python-matplotlib python-mpltoolkits.basemap pylint python-lxml python-yaml"
@@ -303,7 +303,7 @@ EOF
                  ipython profile create
                  echo \"c = get_config()\"                      >> ~/.ipython/profile_default/ipython_config.py
                  echo \"c.InteractiveShell.colors = 'NoColor'\" >> ~/.ipython/profile_default/ipython_config.py
-                 export PYTHONPATH=\$PWD/oq-hazardlib:\$PWD/gmpe-smtk:\$PWD/oq-ipynb-runner
+                 export PYTHONPATH=\$PWD/oq-hazardlib:\$PWD/oq-risklib:\$PWD/gmpe-smtk:\$PWD/oq-ipynb-runner
                  cd notebooks/gmpe-smtk
                  mkdir images
                  export DISPLAY=\"$guest_display\"
