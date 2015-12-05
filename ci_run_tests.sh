@@ -89,7 +89,8 @@ sig_hand () {
     if [ "$lxc_name" != "" ]; then
         set +e
         scp "${lxc_ip}:ssh.log" "out_${BUILD_UBUVER}/ssh.history"
-        scp "${lxc_ip}:${GEM_GIT_PACKAGE}/nosetests.xml" "out_${BUILD_UBUVER}/"
+        # currently no tests are developed for gmpe-smtk, temporarily we use notebooks
+        scp "${lxc_ip}:${GEM_GIT_PACKAGE}/nosetests*.xml" "out_${BUILD_UBUVER}/"
         echo "Destroying [$lxc_name] lxc"
         upper="$(mount | grep "${lxc_name}.*upperdir" | sed 's@.*upperdir=@@g;s@,.*@@g')"
         if [ -f "${upper}.dsk" ]; then
@@ -307,7 +308,7 @@ EOF
                  cd notebooks/gmpe-smtk
                  mkdir images
                  export DISPLAY=\"$guest_display\"
-                 nosetests --with-xunit -v --with-coverage || true"
+                 nosetests --with-xunit --xunit-file=../../nosetests_gmpe-smtk_notebooks.xml -v --with-coverage || true"
 
     trap ERR
 
@@ -537,7 +538,8 @@ devtest_run () {
     _devtest_innervm_run "$lxc_ip" "$branch"
     inner_ret=$?
 
-    scp "${lxc_ip}:${GEM_GIT_PACKAGE}/nosetests.xml" "out_${BUILD_UBUVER}/" || true
+    # currently no tests are developed for gmpe-smtk, temporarily we use notebooks
+    scp "${lxc_ip}:${GEM_GIT_PACKAGE}/nosetests*.xml" "out_${BUILD_UBUVER}/" || true
     scp "${lxc_ip}:ssh.log" "out_${BUILD_UBUVER}/devtest.history" || true
 
     sudo $LXC_TERM -n $lxc_name
