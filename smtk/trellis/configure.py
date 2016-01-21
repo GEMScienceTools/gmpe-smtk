@@ -433,6 +433,9 @@ class GSIMRupture(object):
         key_list = ['_vs30', '_vs30measured', '_z1pt0', '_z2pt5', '_backarc']
         for key in key_list:
             setattr(sctx, key[1:], getattr(self.target_sites, key))
+        for key in ['lons', 'lats']:
+            setattr(sctx, key, getattr(self.target_sites, key))
+
         
         # Rupture
         rctx = RuptureContext()

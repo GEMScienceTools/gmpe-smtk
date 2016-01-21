@@ -458,7 +458,7 @@ def rotdpp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
             units, method)[0]
         max_a_theta[iloc, 0] = saxy["PGA"]
         max_a_theta[iloc, 1:] = saxy["Pseudo-Acceleration"]
-        max_v_theta[iloc, 1] = saxy["PGV"]
+        max_v_theta[iloc, 0] = saxy["PGV"]
         max_v_theta[iloc, 1:] = saxy["Pseudo-Velocity"]
         max_d_theta[iloc, 0] = saxy["PGD"]
         max_d_theta[iloc, 1:] = saxy["Displacement"]
