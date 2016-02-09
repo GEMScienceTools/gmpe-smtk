@@ -227,9 +227,12 @@ class RecordDistance(object):
         ?
     :param bool hanging_wall:
         True if site on hanging wall, False otherwise
+    :param float rcdpp:
+        Direct point parameter for directivity effect centered on the site- and earthquake-specific
+        average DPP used
     """
     def __init__(self, repi, rhypo, rjb=None, rrup=None, r_x=None, ry0=None,
-            flag=None):
+            flag=None, rcdpp=None):
         """
         Instantiates class
         """
@@ -242,6 +245,7 @@ class RecordDistance(object):
         self.azimuth = None
         self.flag = flag
         self.hanging_wall = None
+        self.rcdpp = rcdpp
 
 # Eurocode 8 Site Class Vs30 boundaries
 EC8_VS30_BOUNDARIES = {
