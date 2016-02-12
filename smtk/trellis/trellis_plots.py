@@ -281,14 +281,15 @@ class BaseTrellis(object):
         sctx, rctx, dctx = rupture.get_gsim_contexts()
         # Create distances dictionary
         distances = {}
-        for key in dctx.__slots__:
+        for key in dctx._slots_:
             distances[key] = getattr(dctx, key)
         # Add all other parameters to the dictionary
         params = {}
-        for key in rctx.__slots__:
+        for key in rctx._slots_:
             params[key] = getattr(rctx, key)
         #for key in sctx.__slots__:
-        for key in ['vs30', 'vs30measured', 'z1pt0', 'z2pt5']:
+        for key in sctx._slots_:
+        #for key in ['vs30', 'vs30measured', 'z1pt0', 'z2pt5']:
             params[key] = getattr(sctx, key)
         return cls(magnitudes, distances, gsims, imts, params, stddevs, 
                 **kwargs)

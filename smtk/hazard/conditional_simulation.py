@@ -18,6 +18,7 @@ from openquake.hazardlib.correlation import JB2009CorrelationModel
 from openquake.hazardlib.site import Site, SiteCollection
 from openquake.hazardlib.imt import from_string
 from openquake.hazardlib.gsim import get_available_gsims
+from openquake.hazardlib.gsim.base import ContextMaker
 from openquake.commonlib.node import read_nodes
 from openquake.commonlib.sourceconverter import RuptureConverter
 from openquake.commonlib.nrml import nodefactory
@@ -180,9 +181,13 @@ def get_conditional_gmfs(database, rupture, sites, gsims, imts,
         (imtx,  np.zeros([len(sites.lons), number_simulations]))
         for imtx in imts])
     gmfs = OrderedDict([(gmpe, imt_dict) for gmpe in gsims])
-    for gmpe in gsims:
-        gsim = GSIM_LIST[gmpe]()
-        sctx, rctx, dctx = gsim.make_contexts(sites, rupture)
+    gmpe_list = [GSIM_LIST[gmpe]() for gmpe in gsims]
+    cmaker = ContextMaker(gmpe_list)
+    sctx, rctx, dctx = cmaker.make_contexts(sites, rupture)
+    for gsim in gmpe_list:
+        gmpe = str(gsim)
+        #gsim = GSIM_LIST[gmpe]()
+        #sctx, rctx, dctx = gsim.make_contexts(sites, rupture)
         for imtx in imts:
             if truncation_level == 0:
                 gmfs[gmpe][imtx], _ = gsim.get_mean_and_stddevs(sctx, rctx,
