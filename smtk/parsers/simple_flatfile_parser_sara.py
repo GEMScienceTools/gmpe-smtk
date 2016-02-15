@@ -99,7 +99,6 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         """
         # Check which of the pre-defined headers are missing
         headers = Set((getline(self.filename, 1).rstrip("\n")).split(","))
-        print(HEADER_LIST)
         missing_headers = HEADER_LIST.difference(headers)
         if len(missing_headers) > 0:
             output_string = ", ".join([value for value in missing_headers])
