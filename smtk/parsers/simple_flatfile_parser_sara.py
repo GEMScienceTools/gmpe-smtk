@@ -6,6 +6,7 @@ Parser from a "Simple Flatfile + ascii format" to SMTK
 import os
 import csv
 import numpy as np
+import copy
 import h5py
 from sets import Set
 from linecache import getline
@@ -82,7 +83,8 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         """
         Parses the database
         """
-        self._header_check()
+        HEADER_LIST1 = copy.deepcopy(HEADER_LIST)
+        self._header_check(HEADER_LIST1)
         # Read in csv
         reader = csv.DictReader(open(self.filename, "r"))
         metadata = []
@@ -92,20 +94,20 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             self.database.records.append(self._parse_record(row))
         return self.database
 
-    def _header_check(self):
+    def _header_check(self, headerslist):
         """
         Checks to see if any of the headers are missing, raises error if so.
         Also informs the user of redundent headers in the input file.
         """
         # Check which of the pre-defined headers are missing
         headers = Set((getline(self.filename, 1).rstrip("\n")).split(","))
-        missing_headers = HEADER_LIST.difference(headers)
+        missing_headers = headerslist.difference(headers)
         if len(missing_headers) > 0:
             output_string = ", ".join([value for value in missing_headers])
             raise IOError("The following headers are missing from the input "
                           "file: %s" % output_string)
 
-        additional_headers = headers.difference(HEADER_LIST)
+        additional_headers = headers.difference(headerslist)
         if len(additional_headers) > 0:
             for header in additional_headers:
                 print "Header %s not recognised - ignoring this data!" % header
@@ -485,8 +487,22 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
 
 
 class NearFaultFlatFileParser(SimpleFlatfileParserV9):
-    HEADER_LIST = HEADER_LIST
-    HEADER_LIST.add("Rcdpp")
+
+    def parse(self):
+        """
+        Parses the database
+        """
+        HEADER_LIST1 = copy.deepcopy(HEADER_LIST)
+        HEADER_LIST1.add("Rcdpp")
+        self._header_check(HEADER_LIST1)
+        # Read in csv
+        reader = csv.DictReader(open(self.filename, "r"))
+        metadata = []
+        self.database = GroundMotionDatabase(self.id, self.name)
+        self._get_site_id = self.database._get_site_id
+        for row in reader:
+            self.database.records.append(self._parse_record(row))
+        return self.database
 
     def _parse_distance_data(self, event, site, metadata):
         """
