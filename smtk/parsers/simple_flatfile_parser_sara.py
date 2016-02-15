@@ -550,7 +550,7 @@ class NearFaultFlatFileParser(SimpleFlatfileParserV9):
         if Rjb is None:
             Rjb = surface_modeled.get_joyner_boore_distance(target_site)
         # Rcdpp
-        Rcdpp = get_float(metadata["RCDPP"])
+        Rcdpp = get_float(metadata["Rcdpp"])
         if Rcdpp is None:
             Rcdpp = surface_modeled.get_cdppvalue(target_site)
         # Need to check if Rx and Ry0 are consistant with the other metrics

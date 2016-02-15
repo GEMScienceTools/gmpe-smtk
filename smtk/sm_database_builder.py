@@ -540,9 +540,10 @@ class AddGMRotDppSpectrum(AddResponseSpectrum):
 
         x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
         y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
+
         gmrotdpp = ims.gmrotdpp(x_acc.value, x_acc.attrs["Time-step"],
                                 y_acc.value, y_acc.attrs["Time-step"],
-                                self.periods, percentile, self.damping)[0]
+                                self.periods, percentile, self.damping)
         dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
         nvals = len(gmrotdpp)
         # Acceleration
@@ -555,7 +556,41 @@ class AddGMRotDppSpectrum(AddResponseSpectrum):
                                            str(int(percentile)).zfill(2))
         acc_dset = acc_cmp_grp.create_dataset(dstring, (nvals,), dtype=float)
         acc_dset.attrs["Units"] = "cm/s/s"
-        acc_dset[:] = gmrotdpp
+        acc_dset[:] = gmrotdpp["GMRotDpp"]
+        self._add_periods()
+
+
+class AddRotDppSpectrum(AddResponseSpectrum):
+    """
+    Adds the RotDpp spectrum to the database
+    """
+    def add_data(self, percentile=50.0):
+        """
+        :param float percentile:
+            Percentile (pp)
+        """
+        if len(self.periods) == 0:
+            self.periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
+
+        x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
+        y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
+        rotdpp = ims.rotdpp(x_acc.value, x_acc.attrs["Time-step"],
+                                y_acc.value, y_acc.attrs["Time-step"],
+                                self.periods, percentile, self.damping)[0]
+        dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
+        nvals = len(rotdpp["Pseudo-Acceleration"])
+        # Acceleration
+        if not "Acceleration" in self.fle["IMS/H/Spectra/Response"]:
+            acc_grp = self.fle["IMS/H/Spectra/Response"].create_group(
+                "Acceleration")
+        else:
+            acc_grp = self.fle["IMS/H/Spectra/Response/Acceleration"]
+        acc_cmp_grp = acc_grp.create_group("RotD" + 
+                                           str(int(percentile)).zfill(2))
+        acc_dset = acc_cmp_grp.create_dataset(dstring, (nvals,), dtype=float)
+        acc_dset.attrs["Units"] = "cm/s/s"
+        acc_dset[:] = rotdpp["Pseudo-Acceleration"]
+
         self._add_periods()
 
 
@@ -637,6 +672,12 @@ def add_horizontal_im(database, intensity_measures, component="Geometric",
                 # GMRotDpp
                 percentile = float(intensity_measure.split("GMRotD")[1])
                 i_m = AddGMRotDppSpectrum(fle, intensity_measure, periods, 
+                                          float(damping) / 100.)
+                i_m.add_data(percentile)
+            elif len(intensity_measure.split("RotD")) > 1:
+                # RotDpp
+                percentile = float(intensity_measure.split("RotD")[1])
+                i_m = AddRotDppSpectrum(fle, intensity_measure, periods, 
                                           float(damping) / 100.)
                 i_m.add_data(percentile)
             elif intensity_measure in SCALAR_IMS:

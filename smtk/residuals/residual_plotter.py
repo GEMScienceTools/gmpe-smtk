@@ -244,7 +244,10 @@ class ResidualWithDistance(ResidualPlot):
                     markeredgecolor='Gray',
                     markerfacecolor='LightSteelBlue')
             ax.plot(model_x, model_y, 'r-', linewidth=2.0)
-            ax.set_xlim(0, np.max(distances))
+            if self.distance_type == "rcdpp":
+                ax.set_xlim(np.min(distances), np.max(distances))
+            else:
+                ax.set_xlim(0, np.max(distances))
         max_lim = ceil(np.max(np.fabs(data[res_type])))
         ax.set_ylim(-max_lim, max_lim)
         ax.grid()

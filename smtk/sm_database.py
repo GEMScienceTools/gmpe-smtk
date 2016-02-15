@@ -687,6 +687,7 @@ class GroundMotionDatabase(object):
         rhypo = []
         r_x = []
         ry0 = []
+        rcdpp = []
         azimuth = []
         hanging_wall = []
         for idx_j in idx:
@@ -710,6 +711,8 @@ class GroundMotionDatabase(object):
                 r_x.append(rup.distance.repi)
             if ("ry0" in dir(rup.distance)) and rup.distance.ry0 is not None:
                 ry0.append(rup.distance.ry0)
+            if ("rcdpp" in dir(rup.distance)) and rup.distance.rcdpp is not None:
+                rcdpp.append(rup.distance.rcdpp)
             if rup.distance.azimuth is not None:
                 azimuth.append(rup.distance.azimuth)
             if rup.distance.hanging_wall is not None:
@@ -725,6 +728,8 @@ class GroundMotionDatabase(object):
             setattr(dctx, 'rx', np.array(r_x))
         if len(ry0) > 0:
             setattr(dctx, 'ry0', np.array(ry0))
+        if len(rcdpp) > 0:
+            setattr(dctx, 'rcdpp', np.array(rcdpp))
         if len(azimuth) > 0:
             setattr(dctx, 'azimuth', np.array(azimuth))
         if len(hanging_wall) > 0:

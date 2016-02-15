@@ -149,9 +149,44 @@ def get_gmroti50(fle):
             sa_gmroti50 = sa_gmroti50["PSA"]
     return sa_gmroti50
 
+
+def get_rotd50(fle):
+    """
+    Retrieve RotD50 from file (or calculate if not present)
+    :param fle:
+        Instance of :class: h5py.File
+    """
+    periods = fle["IMS/H/Spectra/Response/Periods"].value
+    periods = periods[periods > 0.]
+    if not "H" in fle["IMS"].keys():
+        # Horizontal spectra not in record
+        x_acc = ["Time Series/X/Original Record/Acceleration"]
+        y_acc = ["Time Series/Y/Original Record/Acceleration"]
+        sa_rotd50 = ims.rotdpp(x_acc.value, x_acc.attrs["Time-step"],
+                                   y_acc.value, y_acc.attrs["Time-step"],
+                                   periods, 50.0)[0]
+
+        
+    else:
+        if "RotD50" in fle["IMS/H/Spectra/Response/Acceleration"].keys():
+            sa_rotd50 =fle[
+                "IMS/H/Spectra/Response/Acceleration/RotD50/damping_05"
+                ].value
+        else:
+            # Horizontal spectra not in record - calculate from time series
+            x_acc = ["Time Series/X/Original Record/Acceleration"]
+            y_acc = ["Time Series/Y/Original Record/Acceleration"]
+            sa_rotd50 = ims.rotdpp(x_acc.value, x_acc.attrs["Time-step"],
+                                       y_acc.value, y_acc.attrs["Time-step"],
+                                       periods, 50.0)[0]
+    return sa_rotd50
+
+
+
 SPECTRA_FROM_FILE = {"Geometric": get_geometric_mean,
                      "GMRotI50": get_gmroti50,
-                     "GMRotD50": get_gmrotd50}
+                     "GMRotD50": get_gmrotd50,
+                     "RotD50": get_rotd50}
 
 
 SCALAR_XY = {"Geometric": lambda x, y : np.sqrt(x * y),
@@ -234,7 +269,7 @@ class Residuals(object):
         self.database = SMRecordSelector(database)
         self.contexts = []
         for context in contexts:
-            #print context
+            
             # Get the observed strong ground motions
             context = self.get_observations(context, component)
             # Get the expected ground motions
