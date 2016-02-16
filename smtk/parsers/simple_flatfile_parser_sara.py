@@ -6,6 +6,7 @@ Parser from a "Simple Flatfile + ascii format" to SMTK
 import os
 import csv
 import numpy as np
+import copy
 import h5py
 from sets import Set
 from linecache import getline
@@ -82,7 +83,8 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         """
         Parses the database
         """
-        self._header_check()
+        HEADER_LIST1 = copy.deepcopy(HEADER_LIST)
+        self._header_check(HEADER_LIST1)
         # Read in csv
         reader = csv.DictReader(open(self.filename, "r"))
         metadata = []
@@ -92,20 +94,20 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             self.database.records.append(self._parse_record(row))
         return self.database
 
-    def _header_check(self):
+    def _header_check(self, headerslist):
         """
         Checks to see if any of the headers are missing, raises error if so.
         Also informs the user of redundent headers in the input file.
         """
         # Check which of the pre-defined headers are missing
         headers = Set((getline(self.filename, 1).rstrip("\n")).split(","))
-        missing_headers = HEADER_LIST.difference(headers)
+        missing_headers = headerslist.difference(headers)
         if len(missing_headers) > 0:
             output_string = ", ".join([value for value in missing_headers])
             raise IOError("The following headers are missing from the input "
                           "file: %s" % output_string)
 
-        additional_headers = headers.difference(HEADER_LIST)
+        additional_headers = headers.difference(headerslist)
         if len(additional_headers) > 0:
             for header in additional_headers:
                 print "Header %s not recognised - ignoring this data!" % header
@@ -483,6 +485,114 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
 
             return xcomp, ycomp, zcomp
 
+
+class NearFaultFlatFileParser(SimpleFlatfileParserV9):
+
+    def parse(self):
+        """
+        Parses the database
+        """
+        HEADER_LIST1 = copy.deepcopy(HEADER_LIST)
+        HEADER_LIST1.add("Rcdpp")
+        self._header_check(HEADER_LIST1)
+        # Read in csv
+        reader = csv.DictReader(open(self.filename, "r"))
+        metadata = []
+        self.database = GroundMotionDatabase(self.id, self.name)
+        self._get_site_id = self.database._get_site_id
+        for row in reader:
+            self.database.records.append(self._parse_record(row))
+        return self.database
+
+    def _parse_distance_data(self, event, site, metadata):
+        """
+        Read in the distance related metadata and return an instance of the
+        :class: smtk.sm_database.RecordDistance
+        """
+        # Compute various distance metrics
+        # Add calculation of Repi, Rhypo from event and station localizations 
+        # (latitudes, longitudes, depth, elevation)?
+        target_site = Mesh(np.array([site.longitude]),
+                           np.array([site.latitude]),
+                           np.array([-site.altitude / 1000.0]))
+        # Warning ratio fixed to 1.5
+        ratio=1.5
+        surface_modeled = rcfg.create_planar_surface(
+            Point(event.longitude, event.latitude, event.depth),
+            event.mechanism.nodal_planes.nodal_plane_1['strike'],
+            event.mechanism.nodal_planes.nodal_plane_1['dip'],
+            event.rupture.area,
+            ratio)
+        hypocenter = rcfg.get_hypocentre_on_planar_surface(
+            surface_modeled,
+            event.rupture.hypo_loc)
+        try:
+            surface_modeled._create_mesh()
+        except:
+            dip = surface_modeled.get_dip()
+            dip_dir = (surface_modeled.get_strike() - 90.) % 360.
+            ztor = surface_modeled.top_left.depth
+            d_x = ztor * np.tan(np.radians(90.0 - dip))
+            top_left_surface = surface_modeled.top_left.point_at(d_x,
+                                                                 -ztor,
+                                                                 dip_dir)
+            top_left_surface.depth = 0.
+            top_right_surface = surface_modeled.top_right.point_at(d_x,
+                                                                   -ztor,
+                                                                   dip_dir)
+            top_right_surface.depth = 0.
+            surface_modeled = SimpleFaultSurface.from_fault_data(
+                Line([top_left_surface, top_right_surface]),
+                surface_modeled.top_left.depth,
+                surface_modeled.bottom_left.depth,
+                surface_modeled.get_dip(),
+                1.0)
+            
+        # Rhypo
+        Rhypo = get_float(metadata["Hypocentral Distance (km)"])
+        if Rhypo is None:
+            Rhypo = hypocenter.distance_to_mesh(target_site)
+        # Repi
+        Repi = get_float(metadata["Epicentral Distance (km)"])
+        if Repi is None:
+            Repi= hypocenter.distance_to_mesh(target_site, with_depths=False)
+        # Rrup
+        Rrup = get_float(metadata["Rupture Distance (km)"])
+        if Rrup is None:
+            Rrup = surface_modeled.get_min_distance(target_site)
+        # Rjb
+        Rjb = get_float(metadata["Joyner-Boore Distance (km)"])
+        if Rjb is None:
+            Rjb = surface_modeled.get_joyner_boore_distance(target_site)
+        # Rcdpp
+        Rcdpp = get_float(metadata["Rcdpp"])
+        if Rcdpp is None:
+            Rcdpp = surface_modeled.get_cdppvalue(target_site)
+        # Need to check if Rx and Ry0 are consistant with the other metrics
+        # when those are coming from the flatfile?
+        # Rx
+        Rx = surface_modeled.get_rx_distance(target_site)
+        # Ry0
+        Ry0 = surface_modeled.get_ry0_distance(target_site)
+        
+        distance = RecordDistance(
+            repi = float(Repi),
+            rhypo = float(Rhypo),
+            rjb = float(Rjb),
+            rrup = float(Rrup),
+            r_x = float(Rx),
+            ry0 = float(Ry0),
+            rcdpp = float(Rcdpp) )
+        distance.azimuth = get_float(metadata["Source to Site Azimuth (deg)"])
+        #distance.hanging_wall = get_float(metadata["FW/HW Indicator"])
+        if metadata["FW/HW Indicator"] == "HW":
+            distance.hanging_wall = True
+        elif metadata["FW/HW Indicator"] == "FW":
+            distance.hanging_wall = False
+        else:
+            pass
+        
+        return distance
 
 class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
     """
