@@ -417,7 +417,7 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             site.z1pt0 = rcfg.vs30_to_z1pt0_as08(site.vs30)
         if site.z2pt5 is None:
             site.z2pt5 = rcfg.z1pt0_to_z2pt5(site.z1pt0)        
-        else
+        else:
             # Need to convert z2pt5 from m to km
             site.z2pt5 = site.z2pt5/1000.0
         if "Backarc" in metadata["Forearc/Backarc for subduction events"]:
