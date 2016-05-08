@@ -411,7 +411,8 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         site.z1pt0 = get_float(metadata["Z1 (m)"])
         site.z1pt5 = None
         # site.z1pt5 = get_float(metadata["Z1.5 (m)"])
-        site.z2pt5 = get_float(metadata["Z2.5 (m)"])
+        # Need to convert z2pt5 from m to km
+        site.z2pt5 = get_float(metadata["Z2.5 (m)"])/1000.0
         # Implement default values for z1pt0 and z2pt5
         if site.z1pt0 is None:
             site.z1pt0 = rcfg.vs30_to_z1pt0_as08(site.vs30)
