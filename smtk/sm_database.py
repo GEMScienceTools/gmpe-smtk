@@ -24,13 +24,14 @@ class Magnitude(object):
     :param float sigma:
         The magnitude uncertainty (standard deviation)
     """
-    def __init__(self, value, mtype, sigma=None):
+    def __init__(self, value, mtype, sigma=None, source=""):
         """
         Instantiate the class
         """
         self.value = value
         self.mtype = mtype
-        self.sigma = None
+        self.sigma = sigma
+        self.source = source
 
 class Rupture(object):
     """
@@ -361,6 +362,7 @@ class RecordSite(object):
         self.z1pt5 = None
         self.z2pt5 = None
         self.backarc = backarc
+        self.morphology = None
 
     def to_openquake_site(self, missing_vs30=None):
         """
@@ -498,6 +500,7 @@ class Component(object):
         self.baseline = baseline
         self.ims = ims
         self.units = units
+        self.late_trigger = None
 
 
 class GroundMotionRecord(object):
@@ -557,6 +560,7 @@ class GroundMotionRecord(object):
         self.ims = ims
         self.directivity = None
         self.datafile = None
+        self.misc = None
 
 
 class GroundMotionDatabase(object):

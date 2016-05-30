@@ -26,15 +26,16 @@ def convert_accel_units(acceleration, units):
     """
     if units=="g":
         return 981. * acceleration
-    elif (units=="m/s/s") or (units=="m/s**2"):
+    elif (units=="m/s/s") or (units=="m/s**2") or (units=="m/s^2"):
         return 100. * acceleration
-    elif (units=="cm/s/s") or (units=="cm/s**2"):
+    elif (units=="cm/s/s") or (units=="cm/s**2") or (units=="cm/s^2"):
         return acceleration
     else:
         raise ValueError("Unrecognised time history units. "
                          "Should take either ''g'', ''m/s/s'' or ''cm/s/s''")
 
-def get_velocity_displacement(time_step, acceleration, units="cm/s/s"):
+def get_velocity_displacement(time_step, acceleration, units="cm/s/s",
+                              velocity=None, displacement=None):
     '''
     Returns the velocity and displacment time series using simple integration
     :param float time_step:
@@ -46,8 +47,10 @@ def get_velocity_displacement(time_step, acceleration, units="cm/s/s"):
         displacement - Displacement Time series (cm)
     '''
     acceleration = convert_accel_units(acceleration, units)
-    velocity = time_step * cumtrapz(acceleration, initial=0.)
-    displacement = time_step * cumtrapz(velocity, initial=0.)
+    if velocity is None:
+        velocity = time_step * cumtrapz(acceleration, initial=0.)
+    if displacement is None:
+        displacement = time_step * cumtrapz(velocity, initial=0.)
     return velocity, displacement
 
 
