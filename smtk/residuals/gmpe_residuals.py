@@ -27,6 +27,7 @@ GSIM_KEYS = set(GSIM_LIST.keys())
 
 #SCALAR_IMTS = ["PGA", "PGV", "PGD", "CAV", "Ia"]
 SCALAR_IMTS = ["PGA", "PGV"]
+STDDEV_KEYS = ["Mean", "Total", "Inter event", "Intra event"]
 
 
 def get_interpolated_period(target_period, periods, values):
@@ -329,6 +330,7 @@ class Residuals(object):
         for imtx in self.imts:
             observations[imtx] = np.array(observations[imtx])
         context["Observations"] = observations
+        context["Num. Sites"] = len(select_records)
         return context
 
     def get_expected_motions(self, context):
@@ -412,6 +414,91 @@ class Residuals(object):
                             self.residuals[gmpe][imtx][res_type])}
                     statistics[gmpe][imtx][res_type] = data
         return statistics
+
+    def pretty_print(self, filename=None, sep=","):
+        """
+        Print the information to screen or to file
+        """
+        if filename:
+            fid = open(filename, "w")
+        else:
+            fid = sys.stdout
+        fid.write("Ground Motion Residuals\n")
+        # Prin headers
+        event = self.contexts[0]
+        header_set = []
+        header_set.extend([key for key in event["Distances"].__dict__])
+        header_set.extend([key for key in event["Sites"].__dict__])
+        header_set.extend(["{:s}-Obs.".format(imt) for imt in self.imts])
+        for imt in self.imts:
+            for gmpe in self.gmpe_list:
+                for key in event["Expected"][gmpe][imt].keys():
+                    header_set.append(
+                        "{:s}-{:s}-{:s}-Exp.".format(imt, gmpe, key))
+        for imt in self.imts:
+            for gmpe in self.gmpe_list:
+                for key in event["Residual"][gmpe][imt].keys():
+                    header_set.append(
+                        "{:s}-{:s}-{:s}-Res.".format(imt, gmpe, key))
+        header_set = self._extend_header_set(header_set)
+        fid.write("%s\n" % sep.join(header_set))
+        for event in self.contexts:
+            self._pprint_event(fid, event, sep)
+        if filename:
+            fid.close()
+
+    def _pprint_event(self, fid, event, sep):
+        """
+        Pretty print the information for each event
+        """
+        # Print rupture info
+        rupture_str = sep.join([
+            "{:s}{:s}{:s}".format(key, sep, str(val))
+            for key, val in event["Rupture"].__dict__.items()])
+        fid.write("Rupture: %s %s %s\n" % (str(event["EventID"]), sep,
+                                           rupture_str))
+        # For each record
+        for i in range(event["Num. Sites"]):
+            data = []
+            # Distances
+            for key in event["Distances"].__dict__:
+                data.append("{:.4f}".format(
+                    getattr(event["Distances"], key)[i]))
+            # Sites
+            for key in event["Sites"].__dict__:
+                data.append("{:.4f}".format(getattr(event["Sites"], key)[i]))
+            # Observations
+            for imt in self.imts:
+                data.append("{:.8e}".format(event["Observations"][imt][i]))
+            # Expected
+            for imt in self.imts:
+                for gmpe in self.gmpe_list:
+                    for key in event["Expected"][gmpe][imt].keys():
+                        data.append("{:.8e}".format(
+                            event["Expected"][gmpe][imt][key][i]))
+            # Residuals
+            for imt in self.imts:
+                for gmpe in self.gmpe_list:
+                    for key in event["Residual"][gmpe][imt].keys():
+                        data.append("{:.8e}".format(
+                            event["Residual"][gmpe][imt][key][i]))
+            self._extend_data_print(data, event, i)
+            fid.write("%s\n" % sep.join(data))
+
+    def _extend_header_set(self, header_set):
+        """
+        Additional headers to add to the pretty print - does nothing here but
+        overwritten in subclasses
+        """
+        return header_set
+
+    def _extend_data_print(self, data, event, i):
+        """
+        Additional data to add to the pretty print - also does nothing here
+        but overwritten in subclasses
+        """
+        return data
+
 
 class Likelihood(Residuals):
     """
@@ -589,30 +676,41 @@ class SingleStationAnalysis(object):
             setattr(
                 resid,
                 "site_analysis",
-                OrderedDict([(gmpe, imt_dict) for gmpe in self.gmpe_list]))
+                self._set_empty_dict())
             setattr(
                 resid,
                 "site_expected",
-                OrderedDict([(gmpe, imt_dict) for gmpe in self.gmpe_list]))
+                self._set_empty_dict())
             self.site_residuals.append(resid)
+
+    def _set_empty_dict(self):
+        """
+        Sets an empty set of nested dictionaries for each GMPE and each IMT
+        """
+        return OrderedDict([
+            (gmpe, dict([(imtx, {}) for imtx in self.imts]))
+            for gmpe in self.gmpe_list])
+
 
     def residual_statistics(self, pretty_print=False, filename=None):
         """
         Get single-station residual statistics for each site
         """
         output_resid = []
+        
         for t_resid in self.site_residuals:
             resid = deepcopy(t_resid)
+
             for gmpe in self.gmpe_list:
                 for imtx in self.imts:
                     n_events = len(resid.residuals[gmpe][imtx]["Total"])
                     resid.site_analysis[gmpe][imtx]["events"] = n_events
-                    resid.site_analysis[gmpe][imtx]["Intra event"] =\
-                        resid.residuals[gmpe][imtx]["Intra event"]
-                    resid.site_analysis[gmpe][imtx]["Inter event"] =\
-                        resid.residuals[gmpe][imtx]["Inter event"]
-                    resid.site_analysis[gmpe][imtx]["Total"] =\
-                        resid.residuals[gmpe][imtx]["Total"]
+                    resid.site_analysis[gmpe][imtx]["Intra event"] = np.copy(
+                        t_resid.residuals[gmpe][imtx]["Intra event"])
+                    resid.site_analysis[gmpe][imtx]["Inter event"] = np.copy(
+                        t_resid.residuals[gmpe][imtx]["Inter event"])
+                    resid.site_analysis[gmpe][imtx]["Total"] = np.copy(
+                        t_resid.residuals[gmpe][imtx]["Total"])
                     delta_s2ss = self._get_delta_s2ss(
                         resid.residuals[gmpe][imtx]["Intra event"],
                         n_events)
@@ -628,12 +726,12 @@ class SingleStationAnalysis(object):
                             delta_s2ss,
                             n_events)
                     # Get expected values too
-                    resid.site_analysis[gmpe][imtx]["Expected Total"] =\
-                        resid.modelled[gmpe][imtx]["Total"]
+                    resid.site_analysis[gmpe][imtx]["Expected Total"] = \
+                        np.copy(t_resid.modelled[gmpe][imtx]["Total"])
                     resid.site_analysis[gmpe][imtx]["Expected Inter"] =\
-                        resid.modelled[gmpe][imtx]["Inter event"]
+                        np.copy(t_resid.modelled[gmpe][imtx]["Inter event"])
                     resid.site_analysis[gmpe][imtx]["Expected Intra"] =\
-                        resid.modelled[gmpe][imtx]["Intra event"]
+                        np.copy(t_resid.modelled[gmpe][imtx]["Intra event"])
             output_resid.append(resid)
         self.site_residuals = output_resid
         return self.get_total_phi_ss(pretty_print, filename) 
@@ -664,10 +762,8 @@ class SingleStationAnalysis(object):
                 fid = open(filename, "w")
             else:
                 fid = sys.stdout
-        imt_dict_1 = dict([(imtx, None) for imtx in self.imts])
-        imt_dict_2 = dict([(imtx, None) for imtx in self.imts])
-        phi_ss = OrderedDict([(gmpe, imt_dict_1) for gmpe in self.gmpe_list])
-        phi_s2ss = OrderedDict([(gmpe, imt_dict_2) for gmp in self.gmpe_list])
+        phi_ss = self._set_empty_dict()
+        phi_s2ss = self._set_empty_dict()
         n_sites = float(len(self.site_residuals))
         for gmpe in self.gmpe_list:
             if pretty_print:

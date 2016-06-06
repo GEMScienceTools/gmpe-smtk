@@ -494,8 +494,8 @@ class GSIMRupture(object):
 
 
     def get_target_sites_line(self, maximum_distance, spacing, vs30,
-            line_azimuth=90., origin_point=(0.5, 0.5), vs30measured=True,
-            z1pt0=None, z2pt5=None, backarc=False):
+            line_azimuth=90., origin_point=(0.5, 0.5), as_log=False, 
+            vs30measured=True, z1pt0=None, z2pt5=None, backarc=False):
         """
         Defines the target sites along a line with respect to the rupture
         """
@@ -514,10 +514,11 @@ class GSIMRupture(object):
                                   z1pt0,
                                   z2pt5,
                                   backarc=backarc)]
-        distance = 0.
-        cum_dist = distance + spacing
-        while distance < maximum_distance:
-            target_loc= origin_point.point_at(cum_dist, 0., azimuth)
+        spacings = self._define_line_spacing(maximum_distance,
+                                             spacing,
+                                             as_log)
+        for offset in spacings:
+            target_loc= origin_point.point_at(offset, 0., azimuth)
             # Get Rupture distance
             temp_mesh = Mesh(np.array(target_loc.longitude),
                              np.array(target_loc.latitude),
@@ -529,9 +530,26 @@ class GSIMRupture(object):
                                           z1pt0,
                                           z2pt5,
                                           backarc=backarc))
-            cum_dist += spacing
         self.target_sites = SiteCollection(self.target_sites)
         return self.target_sites
+
+    def _define_line_spacing(self, maximum_distance, spacing, as_log=False):
+        """
+        The user may wish to define the line spacing in either log or
+        linear space
+        """
+        nvals = int(maximum_distance / spacing) + 1
+        if as_log:
+            spacings = np.logspace(-3., np.log10(maximum_distance), nvals)
+            spacings[0] = 0.0
+        else:
+            spacings = np.linspace(0.0, maximum_distance, nvals)
+
+        if spacings[-1] < (maximum_distance - 1.0E-7):
+            spacings = np.hstack([spacings, maximum_distance])
+
+        return spacings
+
 
     def get_target_sites_point(self, distance, distance_type, vs30, 
             line_azimuth=90, origin_point=(0.5, 0.5), vs30measured=True, 

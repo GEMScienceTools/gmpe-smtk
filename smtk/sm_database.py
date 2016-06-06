@@ -389,13 +389,14 @@ class RecordSite(object):
         location = Point(self.longitude,
                          self.latitude,
                          -self.altitude / 1000.) # Elevation from m to km
-        return Site(location,
-                    vs30,
-                    vs30_measured,
-                    z1pt0,
-                    z2pt5,
-                    backarc=self.backarc,
-                    id=self.id)
+        oq_site = Site(location,
+                       vs30,
+                       vs30_measured,
+                       z1pt0,
+                       z2pt5,
+                       backarc=self.backarc)
+        setattr(oq_site, "id", self.id)
+        return oq_site
 
     def get_ec8_class(self):
         """
