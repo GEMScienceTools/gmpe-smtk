@@ -16,6 +16,7 @@
 Sets up a simple rupture-site configuration to allow for physical comparison
 of GMPEs 
 '''
+import sys
 import numpy as np
 from collections import Iterable, OrderedDict
 from math import floor, ceil
@@ -415,6 +416,48 @@ class MagnitudeIMTTrellis(BaseTrellis):
                         break
         return gmvs
 
+    def pretty_print(self, filename=None, sep=","):
+        """
+        Format the ground motion for printing to file or to screen
+        :param str filename:
+            Path to file
+        :param str sep:
+            Separator character
+        """
+        if filename:
+            fid = open(filename, "w")
+        else:
+            fid = sys.stdout
+        # Print Meta information
+        self._write_pprint_header_line(fid, sep)
+        # Print Distances
+        distance_str = sep.join(["{:s}{:s}{:s}".format(key, sep, str(val[0]))
+                                 for (key, val) in self.dctx.__dict__.items()])
+        fid.write("Distances%s%s\n" % (sep, distance_str))
+        # Loop over IMTs
+        gmvs = self.get_ground_motion_values()
+        for imt in self.imts:
+            fid.write("%s\n" % imt)
+            header_str = "Magnitude" + sep + sep.join([gsim.__class__.__name__
+                                                       for gsim in self.gsims])
+            fid.write("%s\n" % header_str)
+            for i, mag in enumerate(self.magnitudes):
+                data_string = sep.join(["{:.8f}".format(
+                     gmvs[gsim.__class__.__name__][imt][i, 0])
+                     for gsim in self.gsims])
+                fid.write("{:s}{:s}{:s}\n".format(str(mag), sep, data_string))
+            fid.write("====================================================\n")
+        if filename:
+            fid.close()
+
+    def _write_pprint_header_line(self, fid, sep=","):
+        """
+        Write the header lines of the pretty print function
+        """
+        fid.write("Magnitude IMT Trellis\n")
+        fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
+                                     for (key, val) in self.params.items()]))
+
 
 class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
     """
@@ -482,6 +525,15 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
         """
         ax.set_xlabel("Magnitude", fontsize=16)
         ax.set_ylabel(self.stddevs + " Std. Dev.", fontsize=16)
+    
+    def _write_pprint_header_line(self, fid, sep=","):
+        """
+        Write the header lines of the pretty print function
+        """
+        fid.write("Magnitude IMT %s Standard Deviations Trellis\n" %
+                  self.stddevs)
+        fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
+                                     for (key, val) in self.params.items()]))
         
     
 class DistanceIMTTrellis(MagnitudeIMTTrellis):
@@ -555,6 +607,54 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
             else:
                 units = PLOT_UNITS[i_m]
             ax.set_ylabel("Median %s (%s)" % (i_m, units), fontsize=16)
+
+    def pretty_print(self, filename=None, sep=","):
+        """
+        Format the ground motion for printing to file or to screen
+        :param str filename:
+            Path to file
+        :param str sep:
+            Separator character
+        """
+        if filename:
+            fid = open(filename, "w")
+        else:
+            fid = sys.stdout
+        # Print Meta information
+        self._write_pprint_header_line(fid, sep)
+        fid.write("Magnitude%s%.2f\n" % (sep, self.magnitudes[0])) 
+        # Loop over IMTs
+        gmvs = self.get_ground_motion_values()
+        for imt in self.imts:
+            fid.write("%s\n" % imt)
+            header_str = sep.join([key for key in self.distances])
+            header_str = "{:s}{:s}{:s}".format(
+                header_str,
+                sep,
+                sep.join([gsim.__class__.__name__ for gsim in self.gsims]))
+            fid.write("%s\n" % header_str)
+            for i in range(self.nsites):
+                dist_string = sep.join(["{:.4f}".format(self.distances[key][i])
+                                        for key in self.distances])
+                data_string = sep.join(["{:.8f}".format(
+                     gmvs[gsim.__class__.__name__][imt][0, i])
+                     for gsim in self.gsims])
+                fid.write("{:s}{:s}{:s}\n".format(dist_string,
+                                                  sep,
+                                                  data_string))
+            fid.write("====================================================\n")
+        if filename:
+            fid.close()
+
+    def _write_pprint_header_line(self, fid, sep=","):
+        """
+        Write the header lines of the pretty print function
+        """
+        fid.write("Distance (km) IMT Trellis\n")
+        fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
+                                     for (key, val) in self.params.items()]))
+        
+
 
 
 class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
@@ -644,6 +744,14 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
                       fontsize=16)
         ax.set_ylabel(self.stddevs + " Std. Dev.", fontsize=16)
 
+    def _write_pprint_header_line(self, fid, sep=","):
+        """
+        Write the header lines of the pretty print function
+        """
+        fid.write("Distance (km) %s Standard Deviations Trellis\n" %
+                  self.stddevs)
+        fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
+                                     for (key, val) in self.params.items()]))
 
 class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
     """
@@ -704,9 +812,9 @@ class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
             periods = []
             spec = []
             for i_m in self.imts:
-                if len(gmvs[str(gmpe)][i_m]):
+                if len(gmvs[gmpe.__class__.__name__][i_m]):
                     periods.append(imt.from_string(i_m).period)
-                    spec.append(gmvs[str(gmpe)][i_m][rloc, cloc])
+                    spec.append(gmvs[gmpe.__class__.__name__][i_m][rloc, cloc])
             periods = np.array(periods)
             spec = np.array(spec)
             max_period = np.max(periods) if np.max(periods) > max_period else \
@@ -750,11 +858,68 @@ class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
 
 
     def _set_labels(self, i_m, ax):
-            """
-            Sets the labels on the specified axes
-            """
-            ax.set_xlabel("Period (s)", fontsize=12)
-            ax.set_ylabel("Sa (g)", fontsize=12)
+        """
+        Sets the labels on the specified axes
+        """
+        ax.set_xlabel("Period (s)", fontsize=12)
+        ax.set_ylabel("Sa (g)", fontsize=12)
+
+    def pretty_print(self, filename=None, sep=","):
+        """
+        Format the ground motion for printing to file or to screen
+        :param str filename:
+            Path to file
+        :param str sep:
+            Separator character
+        """
+        if filename:
+            fid = open(filename, "w")
+        else:
+            fid = sys.stdout
+        # Print Meta information
+        self._write_pprint_header_line(fid, sep)
+         # Loop over IMTs
+        gmvs = self.get_ground_motion_values()
+        # Get the GMPE list header string
+        gsim_str = "IMT{:s}{:s}".format(
+            sep,
+            sep.join([gsim.__class__.__name__ for gsim in self.gsims]))
+        for i, mag in enumerate(self.magnitudes):
+            for j in range(self.nsites):
+                dist_string = sep.join([
+                    "{:s}{:s}{:s}".format(dist_type, sep, str(val[j]))
+                    for (dist_type, val) in self.distances.items()])
+                # Get M-R header string
+                mr_header = "Magnitude{:s}{:s}{:s}{:s}".format(sep, str(mag),
+                                                               sep,
+                                                               dist_string)
+                fid.write("%s\n" % mr_header)
+                fid.write("%s\n" % gsim_str)
+                for imt in self.imts:
+                    iml_str = []
+                    for gsim in self.gsims:
+                        # Need to deal with case that GSIMs don't define
+                        # values for the period
+                        if len(gmvs[gsim.__class__.__name__][imt]):
+                            iml_str.append("{:.8f}".format(
+                                gmvs[gsim.__class__.__name__][imt][i, j]))
+                        else:
+                            iml_str.append("-999.000")
+                    # Retreived IMT string
+                    imt_str = imt.split("(")[1].rstrip(")")
+                    iml_str = sep.join(iml_str)
+                    fid.write("{:s}{:s}{:s}\n".format(imt_str, sep, iml_str))
+                fid.write("====================================================\n")
+        if filename:
+            fid.close()
+
+    def _write_pprint_header_line(self, fid, sep=","):
+        """
+        Write the header lines of the pretty print function
+        """
+        fid.write("Magnitude - Distance Spectra (km) IMT Trellis\n")
+        fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
+                                     for (key, val) in self.params.items()]))
 
 
 class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
@@ -781,9 +946,9 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
             spec = []
             # Get spectrum from gmvs
             for i_m in self.imts:
-                if len(gmvs[str(gmpe)][i_m]):
+                if len(gmvs[gmpe.__class__.__name__][i_m]):
                     periods.append(imt.from_string(i_m).period)
-                    spec.append(gmvs[str(gmpe)][i_m][rloc, cloc])
+                    spec.append(gmvs[gmpe.__class__.__name__][i_m][rloc, cloc])
             periods = np.array(periods)
             spec = np.array(spec)
             self.labels.append(gmpe.__class__.__name__)
@@ -862,3 +1027,13 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
         """
         ax.set_xlabel("Period (s)", fontsize=16)
         ax.set_ylabel("%s Std. Dev." % self.stddevs, fontsize=16)
+
+    def _write_pprint_header_line(self, fid, sep=","):
+        """
+        Write the header lines of the pretty print function
+        """
+        fid.write("Magnitude - Distance (km) Spectra %s Standard Deviations Trellis\n" %
+                  self.stddevs)
+        fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
+                                     for (key, val) in self.params.items()]))
+

@@ -185,7 +185,7 @@ def get_conditional_gmfs(database, rupture, sites, gsims, imts,
     cmaker = ContextMaker(gmpe_list)
     sctx, rctx, dctx = cmaker.make_contexts(sites, rupture)
     for gsim in gmpe_list:
-        gmpe = str(gsim)
+        gmpe = gsim.__class__.__name__
         #gsim = GSIM_LIST[gmpe]()
         #sctx, rctx, dctx = gsim.make_contexts(sites, rupture)
         for imtx in imts:
