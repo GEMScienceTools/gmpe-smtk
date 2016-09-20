@@ -124,7 +124,7 @@ class SigmaDatabaseMetadataReader(SMDatabaseReader):
             metadata['event.country.name'])
         eqk.magnitude_list = mag_list
         # Get Rupture data
-        eqk.rupture = self._parse_rupture(eq_id, metadata)
+        eqk.rupture = self._parse_rupture(eq_id, eq_name, pref_mag, metadata)
         return eqk
 
     def _parse_focal_mechanism(self, eq_id, eq_name, metadata):
@@ -160,11 +160,13 @@ class SigmaDatabaseMetadataReader(SMDatabaseReader):
         return FocalMechanism(eq_id, eq_name, nodal_planes, principal_axes,
             mechanism_type=metadata['event.fault_mechanism.name'])
 
-    def _parse_rupture(self, eq_id, metadata):
+    def _parse_rupture(self, eq_id, eq_name, magnitude, metadata):
         """
 
         """
         return Rupture(eq_id,
+                       eq_name,
+                       magnitude,
                        get_float(metadata['event.fault_rupture_length']),
                        get_float(metadata['event.fault_rupture_width']),
                        get_float(metadata['event.fault_rupture_depth']))
