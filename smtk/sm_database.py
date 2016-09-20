@@ -37,7 +37,11 @@ class Rupture(object):
     """
     Class to hold rupture attributes
     :param str id:
-        Rupture ID
+        Rupture (earthquake) ID
+    :param str name:
+        Event Name
+    :param magnitude:
+        Earthquake magnitude as instance of Magnitude class
     :param float length:
         Total rupture length (km)
     :param float width:
@@ -53,18 +57,25 @@ class Rupture(object):
         Hypocentral location within rupture surface as a fraction of
         (along-strike length, down-dip width)
     """
-    def __init__(self, eq_id, length, width, depth, area=None, surface=None,
-            hypo_loc=None):
+    def __init__(self, eq_id, eq_name, magnitude, length, width, depth,
+                 hypocentre=None, area=None, surface=None, hypo_loc=None):
         """
         Instantiate
         """
         self.id = eq_id
+        self.name = eq_name
+        self.magnitude = magnitude
         self.length = length
         self.width = width
         self.area = area
+        self.area = self.get_area()
         self.depth = depth
         self.surface = surface
+        self.hypocentre = hypocentre
         self.hypo_loc = hypo_loc
+        self.aspect = None
+        self.aspect = self.get_aspect()
+
 
     def get_area(self):
         """
@@ -73,9 +84,30 @@ class Rupture(object):
         if self.area:
             return self.area
         if self.length and self.width:
-            self.area = self.length * self.width
+            return self.length * self.width
         else:
-            self.area = None
+            return None
+
+    def get_aspect(self):
+        """
+        Returns the aspect ratio
+        """
+        if self.aspect:
+            # Trivial case
+            return self.aspect
+        if self.length and self.width:
+            # If length and width both specified
+            return self.length / self.width
+        if self.length and self.area:
+            # If length and area specified
+            self.width = self.area / self.length
+            return self.length / self.width
+        if self.width and self.area:
+            # If width and area specified
+            self.length = self.area / self.width
+            return self.length / self.width
+        # out of options - returning None
+        return None
   
 
 class GCMTNodalPlanes(object):
@@ -138,7 +170,7 @@ class FocalMechanism(object):
         Qualitative description of mechanism
     """
     def __init__(self, eq_id, name, nodal_planes, eigenvalues,
-        moment_tensor=None, mechanism_type=None):
+                 moment_tensor=None, mechanism_type=None):
         """
         Instantiate
         """
@@ -187,8 +219,8 @@ class Earthquake(object):
         Earthquake rupture as instance of the :class: Rupture
     """
     def __init__(self, eq_id, name, date_time, longitude, latitude, depth,
-            magnitude, focal_mechanism=None, eq_country=None,
-            tectonic_region=None):
+                 magnitude, focal_mechanism=None, eq_country=None,
+                 tectonic_region=None):
         """
         Instantiate
         """
@@ -233,7 +265,7 @@ class RecordDistance(object):
         average DPP used
     """
     def __init__(self, repi, rhypo, rjb=None, rrup=None, r_x=None, ry0=None,
-            flag=None, rcdpp=None):
+                 flag=None, rcdpp=None):
         """
         Instantiates class
         """
@@ -332,8 +364,8 @@ class RecordSite(object):
 
     """
     def __init__(self, site_id, site_code, site_name, longitude, latitude,
-        altitude, vs30=None, vs30_measured=None, network_code=None,
-        country=None, site_class=None, backarc=False):
+                 altitude, vs30=None, vs30_measured=None, network_code=None,
+                 country=None, site_class=None, backarc=False):
         """
 
         """
@@ -490,7 +522,7 @@ class Component(object):
         
     """
     def __init__(self, waveform_id, orientation, ims=None, longest_period=None,
-        waveform_filter=None, baseline=None, units=None):
+                 waveform_filter=None, baseline=None, units=None):
         """
         Instantiate
         """
@@ -537,8 +569,8 @@ class GroundMotionRecord(object):
         Data file for strong motion record
     """
     def __init__(self, gm_id, time_series_file, event, distance, record_site,
-        x_comp, y_comp, vertical=None, ims={}, longest_period=None,
-        shortest_period=None, spectra_file=None):
+                 x_comp, y_comp, vertical=None, ims={}, longest_period=None,
+                 shortest_period=None, spectra_file=None):
         """
         """
         self.id = gm_id
@@ -579,7 +611,7 @@ class GroundMotionDatabase(object):
         List of site ids
     """
     def __init__(self, db_id, db_name, db_directory=None, records=[],
-            site_ids=[]):
+                 site_ids=[]):
         """
         """
         self.id = db_id

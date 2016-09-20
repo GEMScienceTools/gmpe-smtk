@@ -5,13 +5,35 @@ Constructs the HDF5 database
 """
 
 import os
+import re
+import csv
 import numpy as np
 import h5py
 import cPickle
 import smtk.intensity_measures as ims
 import smtk.sm_utils as utils
-
+from smtk.parsers.base_database_parser import get_float 
 SCALAR_LIST = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia", "D5-95"]
+
+def _get_fieldnames_from_csv(reader):
+    """
+
+    """
+    scalar_fieldnames = []
+    spectra_fieldnames = []
+    periods = []
+    for fname in reader.fieldnames:
+        if fname.startswith('SA('):
+            match = re.match(r'^SA\(([^)]+?)\)$', fname)
+            periods.append(float(match.group(1)))
+            spectra_fieldnames.append(fname)
+            continue
+        for imt in SCALAR_LIST:
+            if imt in fname:
+                scalar_fieldnames.append((fname, imt))
+    return scalar_fieldnames, spectra_fieldnames, np.array(periods)
+
+
 
 class SMDatabaseBuilder(object):
     """
@@ -57,7 +79,7 @@ class SMDatabaseBuilder(object):
         self.database = None
         self.time_series_parser = None
         self.spectra_parser = None
-        self.metafile = None  
+        self.metafile = None
         
     def build_database(self, db_id, db_name, metadata_location,
             record_location=None):
@@ -144,6 +166,95 @@ class SMDatabaseBuilder(object):
         cPickle.dump(self.database, f)
         f.close()
         print "Done!"
+
+    def build_spectra_from_flatfile(self, component, damping="05",
+                                    units="cm/s/s"):
+        """
+        In the case in which the spectra data is defined in the
+        flatfile we construct the hdf5 from this information
+        :param str component:
+            Component to which the horizontal (or vertical!) records refer
+        :param str damping"
+            Percent damping
+        """
+
+        # Flatfile name should be stored in database parser
+        # Get header
+
+        reader = csv.DictReader(open(self.dbreader.filename, "r"))
+        # Fieldnames
+        scalar_fieldnames, spectra_fieldnames, periods =\
+            _get_fieldnames_from_csv(reader)
+        # Setup records folder
+        record_dir = os.path.join(self.location, "records")
+        os.mkdir(record_dir)
+        print "Creating repository for strong motion hdf5 records ... %s" \
+            % record_dir
+        valid_idset = [rec.id for rec in self.database.records]
+        for i, row in enumerate(reader):
+            # Build database file
+            # Waveform ID
+            if not row["Record Sequence Number"] in valid_idset:
+                # The record being passed has already been flagged as bad
+                # skipping
+                continue
+            idx = valid_idset.index(row["Record Sequence Number"])
+            wfid = self.database.records[idx].id
+            output_file = os.path.join(record_dir, wfid + ".hdf5")
+            self._build_spectra_hdf5_from_row(output_file, row, periods,
+                                              scalar_fieldnames,
+                                              spectra_fieldnames,
+                                              component, damping, units)
+            print("Record %s written to output file %s" % (wfid, output_file))
+
+    def _build_spectra_hdf5_from_row(self, output_file, row, periods,
+                                     scalar_fields, spectra_fields, component,
+                                     damping, units):
+        """
+   
+        """
+        fle = h5py.File(output_file, "w-")
+        ts_grp = fle.create_group("Time Series")
+        ims_grp = fle.create_group("IMS")
+        h_grp = ims_grp.create_group("H")
+        scalar_grp = h_grp.create_group("Scalar")
+        # Create Scalar values
+        for f_attr, imt in scalar_fields:
+            dset = scalar_grp.create_dataset(imt, (1,), dtype="f")
+            dset.attrs["Component"] = component
+            input_units = re.search('\((.*?)\)', f_attr).group(1)
+            if imt == "PGA":
+                # Convert acceleration from reported units to cm/s/s
+                dset.attrs["Units"] = "cm/s/s"
+                dset[:] = utils.convert_accel_units(get_float(row[f_attr]),
+                                                    input_units)
+            else:
+                # For other values take direct from spreadsheet
+                # Units should be given in parenthesis from fieldname 
+                dset.attrs["Units"] = input_units
+                dset[:] = get_float(row[f_attr])
+                
+        spectra_grp = h_grp.create_group("Spectra")
+        rsp_grp = spectra_grp.create_group("Response")
+        # Setup periods dataset
+        per_dset = rsp_grp.create_dataset("Periods",
+                                          (len(periods),),
+                                          dtype="f")
+        per_dset.attrs["High Period"] = np.max(periods)
+        per_dset.attrs["Low Period"] = np.min(periods)
+        per_dset.attrs["Number Periods"] = len(periods)
+        per_dset[:] = periods
+        # Get response spectra
+        spectra = np.array([get_float(row[f_attr])
+                            for f_attr in spectra_fields])
+        acc_grp = rsp_grp.create_group("Acceleration")
+        comp_grp = acc_grp.create_group(component)
+        spectra_dset = comp_grp.create_dataset("damping_{:s}".format(damping),
+                                               (len(spectra),),
+                                               dtype="f")
+        spectra_dset.attrs["Units"] = "cm/s/s"
+        spectra_dset[:] = utils.convert_accel_units(spectra, units)
+        fle.close()
 
     def build_time_series_hdf5(self, record, sm_data, record_dir):
         """
