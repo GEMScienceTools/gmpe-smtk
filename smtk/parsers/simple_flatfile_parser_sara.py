@@ -24,6 +24,8 @@ import smtk.trellis.configure as rcfg
 from smtk.sm_database import *
 from smtk.sm_utils import convert_accel_units
 from smtk.parsers.base_database_parser import (get_float, get_int,
+                                               get_positive_float,
+                                               get_positive_int,
                                                SMDatabaseReader,
                                                SMTimeSeriesReader,
                                                SMSpectraReader)
@@ -66,12 +68,17 @@ HEADER_LIST = Set([
     'Lowest Usable Freq - V (Hz)','Comments'])
 
 FILTER_TYPE = {"BW": "Butterworth",
-               "OR": "Ormsby"}
+               "OR": "Ormsby",
+               "Ormsby": "Ormsby",
+               "Acausal Butterworth": "Acausal Butterworth",
+               "Causal Butterworth": "Causal Butterworth"}
 
 NEW_MECHANISM_TYPE = {"N": "Normal",
                       "S": "Strike-Slip",
                       "R": "Reverse",
-                      "U": "Unknown"}
+                      "U": "Unknown",
+                      "RO": "Reverse-Oblique",
+                      "NO": "Normal-Oblique"}
 
 class SimpleFlatfileParserV9(SMDatabaseReader):
     """
@@ -158,12 +165,14 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             metadata[f] = metadata[f].zfill(2)
 
         # Date and Time
-        year = get_int(metadata["Year"])
-        month = get_int(metadata["Month"])
-        day = get_int(metadata["Day"])
-        hour = get_int(metadata["Hour"])
-        minute = get_int(metadata["Minute"])
-        second = get_int(metadata["Second"])
+        year, month, day, hour, minute, second = self._validate_datetime(
+            metadata)
+        #year = get_int(metadata["Year"])
+        #month = get_int(metadata["Month"])
+        #day = get_int(metadata["Day"])
+        #hour = get_int(metadata["Hour"])
+        #minute = get_int(metadata["Minute"])
+        #second = get_int(metadata["Second"])
         eq_datetime = datetime(year, month, day, hour, minute, second)
         # Event ID and Name
         eq_id = metadata["EQID"]
@@ -218,10 +227,10 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         if ztor_model < 0:
             ztor_model = 0.0
 
-        length = get_float(metadata["Fault Rupture Length (km)"])
+        length = get_positive_float(metadata["Fault Rupture Length (km)"])
         if length is None:
             length = length_model
-        width = get_float(metadata["Fault Rupture Width (km)"])
+        width = get_positive_float(metadata["Fault Rupture Width (km)"])
         if width is None:
             width = width_model
         ztor = get_float(metadata["Depth to Top Of Fault Rupture Model"])
@@ -230,6 +239,8 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
 
         # Rupture
         eqk.rupture = Rupture(eq_id,
+                              eq_name,
+                              pref_mag,
                               length,
                               width,
                               ztor,
@@ -240,6 +251,16 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
 #            hypo_loc=hypo_loc)
         eqk.rupture.get_area()
         return eqk
+    
+    @staticmethod
+    def _validate_datetime(metadata):
+        """
+        SARA flatfile should be formatted correctly but other flatfiles
+        are prone to bad datetime values - these will be overwritten
+        """
+        return (get_int(metadata["Year"]), get_int(metadata["Month"]),
+                get_int(metadata["Day"]), get_int(metadata["Hour"]),
+                get_int(metadata["Minute"]), get_int(metadata["Second"]))
 
     def _get_focal_mechanism(self, eq_id, eq_name, metadata):
         """
@@ -291,12 +312,54 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
                                  "dip": None,
                                  "rake": None}
 
+        nodal_planes = self._check_mechanism(nodal_planes)
         principal_axes = GCMTPrincipalAxes()
         mech_type =\
             NEW_MECHANISM_TYPE[metadata["Style-of-Faulting (S; R; N; U)"]]
         return FocalMechanism(eq_id, eq_name, nodal_planes, principal_axes,
             mechanism_type=mech_type)
 
+    def _check_mechanism(self, nodal_planes):
+        """
+        Verify that the nodal planes are valid, and default nodal plane 1
+        to a "null" plane if not
+        """
+        if nodal_planes.nodal_plane_1["strike"]:
+            nodal_planes.nodal_plane_1["strike"] = \
+                nodal_planes.nodal_plane_1["strike"] % 360.0
+        if nodal_planes.nodal_plane_2["strike"]:
+            nodal_planes.nodal_plane_2["strike"] = \
+                nodal_planes.nodal_plane_2["strike"] % 360.0
+
+        valid_plane_1 = nodal_planes.nodal_plane_1["strike"] >= 0.0 and\
+                        nodal_planes.nodal_plane_1["strike"] < 360.0 and\
+                        nodal_planes.nodal_plane_1["dip"] > 0.0 and\
+                        nodal_planes.nodal_plane_1["dip"] <= 90.0 and\
+                        nodal_planes.nodal_plane_1["rake"] >= -180.0 and\
+                        nodal_planes.nodal_plane_1["rake"] <= 180.0
+        valid_plane_2 = nodal_planes.nodal_plane_2["strike"] >= 0.0 and\
+                        nodal_planes.nodal_plane_2["strike"] <= 360.0 and\
+                        nodal_planes.nodal_plane_2["dip"] > 0.0 and\
+                        nodal_planes.nodal_plane_2["dip"] <= 90.0 and\
+                        nodal_planes.nodal_plane_2["rake"] >= -180.0 and\
+                        nodal_planes.nodal_plane_2["rake"] <= 180.0
+        if valid_plane_1:
+            return nodal_planes
+        
+        # If nodal plane 2 is valid then swap over
+        if valid_plane_2:
+            np1 = deepcopy(nodal_planes.nodal_plane_1)
+            np2 = deepcopy(nodal_planes.nodal_plane_2)
+            nodal_planes.nodal_plane_1 = np2
+            nodal_planes.nodal_plane_2 = np1
+        else:
+            nodal_planes.nodal_plane_1 = {"strike": 0.0,
+                                          "dip": 90.0,
+                                          "rake": 0.0}
+        return nodal_planes
+
+
+                                
 
     def _parse_distance_data(self, event, site, metadata):
         """
@@ -429,21 +492,24 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         """
         Parses the information for each component
         """
-        filter_params1 = {
-            'Type': FILTER_TYPE[metadata["Type of Filter"]],
-            'Order': None,
-            'Passes': get_int(metadata['npass']),
-            'NRoll': get_int(metadata['nroll']),
-            'High-Cut': get_float(metadata["LP-H1 (Hz)"]),
-            'Low-Cut': get_float(metadata["HP-H1 (Hz)"])}
+        if metadata["Type of Filter"]:
+            filter_params1 = {
+                'Type': FILTER_TYPE[metadata["Type of Filter"]],
+                'Order': None,
+                'Passes': get_positive_int(metadata['npass']),
+                'NRoll': get_positive_int(metadata['nroll']),
+                'High-Cut': get_positive_float(metadata["LP-H1 (Hz)"]),
+                'Low-Cut': get_positive_float(metadata["HP-H1 (Hz)"])}
 
-        filter_params2 = {
-            'Type': FILTER_TYPE[metadata["Type of Filter"]],
-            'Order': None,
-            'Passes': get_int(metadata['npass']),
-            'NRoll': get_int(metadata['nroll']),
-            'High-Cut': get_float(metadata["LP-H2 (Hz)"]),
-            'Low-Cut': get_float(metadata["HP-H2 (Hz)"])}
+            filter_params2 = {
+                'Type': FILTER_TYPE[metadata["Type of Filter"]],
+                'Order': None,
+                'Passes': get_positive_int(metadata['npass']),
+                'NRoll': get_positive_int(metadata['nroll']),
+                'High-Cut': get_positive_float(metadata["LP-H2 (Hz)"]),
+                'Low-Cut': get_positive_float(metadata["HP-H2 (Hz)"])}
+        else:
+            filter_params1, filter_params2 = None, None
 
         intensity_measures = {
             # All m - convert to cm
@@ -451,10 +517,16 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             'PGV': None,
             'PGD': None
             }
-
-        lup1 = 1. / get_float(metadata["Lowest Usable Freq - H1 (Hz)"])
-        lup2 = 1. / get_float(metadata["Lowest Usable Freq - H2 (Hz)"])
-
+        luf1 = get_float(metadata["Lowest Usable Freq - H1 (Hz)"])
+        if luf1 and luf1 > 0.0:
+           lup1 = 1. / luf1
+        else:
+           lup1 = None
+        luf2 = get_float(metadata["Lowest Usable Freq - H2 (Hz)"])
+        if luf2 and luf2 > 0.0:
+            lup2 = 1. / luf2
+        else:
+            lup2 = None
         xcomp = Component(wfid, "1",
             ims=intensity_measures,
             longest_period=lup1,
@@ -466,10 +538,9 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
             longest_period=lup2,
             waveform_filter=filter_params2,
             units=metadata["Unit (cm/s/s; m/s/s; g)"])
-
-        if get_float(metadata["Lowest Usable Freq - V (Hz)"]) is None:
-            return xcomp, ycomp, None
-        else:
+        
+        luf3 = get_float(metadata["Lowest Usable Freq - V (Hz)"])
+        if luf3 and luf3 > 0.0:
             filter_params3 = {
                 'Type': FILTER_TYPE[metadata["Type of Filter"]],
                 'Order': None,
@@ -477,16 +548,17 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
                 'NRoll': get_int(metadata['nroll']),
                 'High-Cut': get_float(metadata["LP-V (Hz)"]),
                 'Low-Cut': get_float(metadata["HP-V (Hz)"])}
-
-            lup3 = 1. / get_float(metadata["Lowest Usable Freq - V (Hz)"])
-
+            lup3 = 1. / luf3
             zcomp = Component(wfid, "V",
                 ims=intensity_measures,
                 longest_period=lup3,
                 waveform_filter=filter_params3,
                 units=metadata["Unit (cm/s/s; m/s/s; g)"])
-
             return xcomp, ycomp, zcomp
+        else:
+            return xcomp, ycomp, None
+
+
 
 
 class NearFaultFlatFileParser(SimpleFlatfileParserV9):

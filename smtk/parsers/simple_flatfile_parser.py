@@ -181,6 +181,8 @@ class SimpleFlatfileParser(SMDatabaseReader):
             ztor=ztor_model  
         # Rupture
         eqk.rupture = Rupture(eq_id,
+                              eq_name,
+                              pref_mag,
                               length,
                               width,
                               ztor)

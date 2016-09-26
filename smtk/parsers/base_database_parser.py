@@ -30,6 +30,39 @@ def get_int(xval):
     else:
         return None
 
+def get_positive_float(xval):
+    """
+    Returns a float value if valid and positive - or else None
+    """
+    if xval.strip():
+        try:
+            value = float(xval)
+        except:
+            return None
+        if value >= 0.0:
+            return value
+        else:
+            return None
+    else:
+        return None
+
+def get_positive_int(xval):
+    """
+    Returns an int value or none
+    """
+    if xval.strip():
+        try:
+            value = int(xval)
+        except:
+            return None
+        if value >= 0:
+            return value
+        else:
+            return None
+    else:
+        return None
+    
+
 class SMDatabaseReader(object):
     """
     Abstract base class for strong motion database parser
