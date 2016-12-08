@@ -15,6 +15,7 @@ from smtk.residuals.gmpe_residuals import (Residuals,
                                            Likelihood,
                                            SingleStationAnalysis)
 
+
 class ResidualPlot(object):
     """
     Class to create a simple histrogram of strong ground motion residuals 
@@ -32,6 +33,7 @@ class ResidualPlot(object):
         kwargs.setdefault('plot_type', "log")
         kwargs.setdefault('distance_type', "rjb")
         kwargs.setdefault("figure_size", (7, 5))
+        kwargs.setdefault("show", True)
         self._assertion_check(residuals)
         self.residuals = residuals
         if not gmpe in residuals.gmpe_list:
@@ -47,6 +49,7 @@ class ResidualPlot(object):
         self.distance_type = kwargs["distance_type"]
         self.plot_type = kwargs["plot_type"]
         self.figure_size = kwargs["figure_size"]
+        self.show = kwargs["show"]
         self.create_plot()
 
     def _assertion_check(self, residuals):
@@ -79,7 +82,8 @@ class ResidualPlot(object):
                 bin_width)
             tloc += 1
         _save_image(self.filename, self.filetype, self.dpi)
-        plt.show()
+        if self.show:
+            plt.show()
            
     def _density_plot(self, ax, data, res_type, statistics, bin_width=0.5):
         """
@@ -152,7 +156,8 @@ class LikelihoodPlot(ResidualPlot):
                 bin_width)
             tloc += 1
         _save_image(self.filename, self.filetype, self.dpi)
-        plt.show()
+        if self.show:
+            plt.show()
         
 
     def _density_plot(self, ax, lh_values, res_type, statistics, 
@@ -199,7 +204,7 @@ class ResidualWithDistance(ResidualPlot):
 
         """
         data = self.residuals.residuals[self.gmpe][self.imt]
-        distances = self._get_distances()
+
         fig = plt.figure(figsize=self.figure_size)
         fig.set_tight_layout(True)
         if self.num_plots > 1:
@@ -210,6 +215,7 @@ class ResidualWithDistance(ResidualPlot):
             ncol = 1
         tloc = 1
         for res_type in data.keys():
+            distances = self._get_distances(self.gmpe, self.imt, res_type)
             self._residual_plot(
                 plt.subplot(nrow, ncol, tloc),
                 distances,
@@ -217,7 +223,8 @@ class ResidualWithDistance(ResidualPlot):
                 res_type)
             tloc += 1
         _save_image(self.filename, self.filetype, self.dpi)
-        plt.show()
+        if self.show:
+            plt.show()
 
 
     def _residual_plot(self, ax, distances, data, res_type):
@@ -225,6 +232,8 @@ class ResidualWithDistance(ResidualPlot):
 
         """
         slope, intercept, _, pval, _ = linregress(distances, data[res_type])
+        print("Distance (%s): a = %.5f  b = %.5f  p = %.5f" % (res_type,
+            intercept, slope, pval))
         model_x = np.arange(np.min(distances),
                             np.max(distances) + 1.0,
                             1.0)
@@ -259,15 +268,22 @@ class ResidualWithDistance(ResidualPlot):
                                        pval)
         ax.set_title(title_string, fontsize=12)
 
-    def _get_distances(self):
+    def _get_distances(self, gmpe, imt, res_type):
         """
 
         """
         distances = np.array([])
-        for ctxt in self.residuals.contexts:
-            distances = np.hstack([
-                distances,
-                getattr(ctxt["Distances"], self.distance_type)])
+        for i, ctxt in enumerate(self.residuals.contexts):
+            # Get the distances
+            if res_type == "Inter event":
+                ctxt_dist = getattr(ctxt["Distances"], self.distance_type)[
+                    self.residuals.unique_indices[gmpe][imt][i]]
+                distances = np.hstack([distances, ctxt_dist])
+            else:
+                distances = np.hstack([
+                    distances,
+                    getattr(ctxt["Distances"], self.distance_type)
+                    ])
         return distances
 
 
@@ -288,7 +304,7 @@ class ResidualWithMagnitude(ResidualPlot):
         Creates the plot
         """
         data = self.residuals.residuals[self.gmpe][self.imt]
-        magnitudes = self._get_magnitudes()
+
         fig = plt.figure(figsize=self.figure_size)
         fig.set_tight_layout(True)
         if self.num_plots > 1:
@@ -299,6 +315,7 @@ class ResidualWithMagnitude(ResidualPlot):
             ncol = 1
         tloc = 1
         for res_type in data.keys():
+            magnitudes = self._get_magnitudes(self.gmpe, self.imt, res_type)
             self._residual_plot(
                 plt.subplot(nrow, ncol, tloc),
                 magnitudes,
@@ -306,7 +323,8 @@ class ResidualWithMagnitude(ResidualPlot):
                 res_type)
             tloc += 1
         _save_image(self.filename, self.filetype, self.dpi)
-        plt.show()
+        if self.show:
+            plt.show()
 
 
     def _residual_plot(self, ax, magnitudes, data, res_type):
@@ -314,6 +332,8 @@ class ResidualWithMagnitude(ResidualPlot):
         Plots the residuals with magnitude
         """
         slope, intercept, _, pval, _ = linregress(magnitudes, data[res_type])
+        print("Magnitude (%s): a = %.5f  b = %.5f  p = %.5f" % (res_type,
+            intercept, slope, pval))
         model_x = np.arange(np.min(magnitudes),
                             np.max(magnitudes) + 1.0,
                             1.0)
@@ -336,16 +356,24 @@ class ResidualWithMagnitude(ResidualPlot):
                                        pval)
         ax.set_title(title_string, fontsize=12)
 
-    def _get_magnitudes(self):
+    def _get_magnitudes(self, gmpe, imt, res_type):
         """
         Returns an array of magnitudes equal in length to the number of
         residuals
         """
         magnitudes = np.array([])
-        for ctxt in self.residuals.contexts:
-            magnitudes = np.hstack([
-                magnitudes,
-                ctxt["Rupture"].mag * np.ones(len(ctxt["Distances"].repi))])
+        for i, ctxt in enumerate(self.residuals.contexts):
+            if res_type == "Inter event":
+
+                nval = np.ones(
+                    len(self.residuals.unique_indices[gmpe][imt][i])
+                    )
+            else:
+                nval = np.ones(len(ctxt["Distances"].repi))
+
+            magnitudes = np.hstack([magnitudes, ctxt["Rupture"].mag * nval])
+                #magnitudes,
+                #ctxt["Rupture"].mag * np.ones(len(ctxt["Distances"].repi))])
         return magnitudes
     
 
@@ -367,7 +395,7 @@ class ResidualWithDepth(ResidualPlot):
         Creates the plot
         """
         data = self.residuals.residuals[self.gmpe][self.imt]
-        depths = self._get_depths()
+
         fig = plt.figure(figsize=self.figure_size)
         fig.set_tight_layout(True)
         if self.num_plots > 1:
@@ -378,6 +406,7 @@ class ResidualWithDepth(ResidualPlot):
             ncol = 1
         tloc = 1
         for res_type in data.keys():
+            depths = self._get_depths(self.gmpe, self.imt, res_type)
             self._residual_plot(
                 plt.subplot(nrow, ncol, tloc),
                 depths,
@@ -385,7 +414,8 @@ class ResidualWithDepth(ResidualPlot):
                 res_type)
             tloc += 1
         _save_image(self.filename, self.filetype, self.dpi)
-        plt.show()
+        if self.show:
+            plt.show()
 
 
     def _residual_plot(self, ax, depths, data, res_type):
@@ -393,6 +423,8 @@ class ResidualWithDepth(ResidualPlot):
         Plots the residuals with magnitude
         """
         slope, intercept, _, pval, _ = linregress(depths, data[res_type])
+        print("Depth (%s): a = %.5f  b = %.5f  p = %.5f" % (res_type,
+            intercept, slope, pval))
         model_x = np.arange(np.min(depths),
                             np.max(depths) + 1.0,
                             1.0)
@@ -414,23 +446,31 @@ class ResidualWithDepth(ResidualPlot):
                                        pval)
         ax.set_title(title_string, fontsize=12)
 
-    def _get_depths(self):
+    def _get_depths(self, gmpe, imt, res_type):
         """
         Returns an array of magnitudes equal in length to the number of
         residuals
         """
         depths = np.array([])
-        for ctxt in self.residuals.contexts:
+        for i, ctxt in enumerate(self.residuals.contexts):
+            if res_type == "Inter event":
+                nvals = np.ones(
+                    len(self.residuals.unique_indices[gmpe][imt][i]))
+            else:
+                nvals = np.ones(len(ctxt["Distances"].repi))
             # TODO This hack needs to be fixed!!!
             if not ctxt["Rupture"].hypo_depth:
-                depths = np.hstack([
-                    depths, 
-                    10.0 * np.ones(len(ctxt["Distances"].repi))])
+                depths = np.hstack([depths, 10.0 * nvals])
             else:
-                depths = np.hstack([
-                    depths,
-                    ctxt["Rupture"].hypo_depth *
-                    np.ones(len(ctxt["Distances"].repi))])
+                depths = np.hstack([depths,
+                                    ctxt["Rupture"].hypo_depth * nvals])
+#                    depths, 
+#                    10.0 * np.ones(len(ctxt["Distances"].repi))])
+#            else:
+#                depths = np.hstack([
+#                    depths,
+#                    ctxt["Rupture"].hypo_depth *
+#                    np.ones(len(ctxt["Distances"].repi))])
         return depths
 
 
@@ -452,7 +492,7 @@ class ResidualWithVs30(ResidualPlot):
 
         """
         data = self.residuals.residuals[self.gmpe][self.imt]
-        vs30 = self._get_vs30()
+
         fig = plt.figure(figsize=self.figure_size)
         fig.set_tight_layout(True)
         if self.num_plots > 1:
@@ -463,6 +503,7 @@ class ResidualWithVs30(ResidualPlot):
             ncol = 1
         tloc = 1
         for res_type in data.keys():
+            vs30 = self._get_vs30(self.gmpe, self.imt, res_type)
             self._residual_plot(
                 plt.subplot(nrow, ncol, tloc),
                 vs30,
@@ -470,7 +511,8 @@ class ResidualWithVs30(ResidualPlot):
                 res_type)
             tloc += 1
         _save_image(self.filename, self.filetype, self.dpi)
-        plt.show()
+        if self.show:
+            plt.show()
 
 
     def _residual_plot(self, ax, vs30, data, res_type):
@@ -478,6 +520,8 @@ class ResidualWithVs30(ResidualPlot):
 
         """
         slope, intercept, _, pval, _ = linregress(vs30, data[res_type])
+        print("Site (%s): a = %.5f  b = %.5f  p = %.5f" % (res_type,
+            intercept, slope, pval))
         model_x = np.arange(np.min(vs30),
                             np.max(vs30) + 1.0,
                             1.0)
@@ -499,13 +543,17 @@ class ResidualWithVs30(ResidualPlot):
                                        pval)
         ax.set_title(title_string, fontsize=12)
 
-    def _get_vs30(self):
+    def _get_vs30(self, gmpe, imt, res_type):
         """
 
         """
         vs30 = np.array([])
-        for ctxt in self.residuals.contexts:
-            vs30 = np.hstack([vs30, ctxt["Sites"].vs30])
+        for i, ctxt in enumerate(self.residuals.contexts):
+            if res_type == "Inter event":
+                vs30 = np.hstack([vs30, ctxt["Sites"].vs30[
+                    self.residuals.unique_indices[gmpe][imt][i]]])
+            else:
+                vs30 = np.hstack([vs30, ctxt["Sites"].vs30])
         return vs30
 
 
@@ -549,7 +597,8 @@ class ResidualWithSite(ResidualPlot):
                 res_type)
             tloc += 1
         _save_image(self.filename, self.filetype, self.dpi)
-        plt.show()
+        if self.show:
+            plt.show()
 
 
     def _residual_plot(self, ax, data, res_type):
@@ -643,7 +692,8 @@ class IntraEventResidualWithSite(ResidualPlot):
                             phi_ss[self.gmpe][self.imt],
                             phi_s2ss[self.gmpe][self.imt])
         _save_image(self.filename, self.filetype, self.dpi)
-        plt.show()
+        if self.show:
+            plt.show()
 
 
     def _residual_plot(self, fig, data, phi_ss, phi_s2ss):

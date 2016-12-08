@@ -9,6 +9,7 @@ Module to get GMPE residuals - total, inter and intra
 
 """
 import sys
+import re, os
 import h5py
 import numpy as np
 from math import sqrt, ceil
@@ -17,9 +18,11 @@ from scipy.stats import scoreatpercentile, norm
 from copy import deepcopy
 from collections import OrderedDict
 from openquake.hazardlib.gsim import get_available_gsims
+from openquake.hazardlib.gsim.gsim_table import GMPETable
 import smtk.intensity_measures as ims
 from openquake.hazardlib import imt
 from smtk.strong_motion_selector import SMRecordSelector
+from smtk.trellis.trellis_plots import _get_gmpe_name, _check_gsim_list
 
 
 GSIM_LIST = get_available_gsims()
@@ -28,6 +31,31 @@ GSIM_KEYS = set(GSIM_LIST.keys())
 #SCALAR_IMTS = ["PGA", "PGV", "PGD", "CAV", "Ia"]
 SCALAR_IMTS = ["PGA", "PGV"]
 STDDEV_KEYS = ["Mean", "Total", "Inter event", "Intra event"]
+
+
+def _check_gsim_list(gsim_list):
+    """
+    Checks the list of GSIM models and returns an instance of the 
+    openquake.hazardlib.gsim class. Raises error if GSIM is not supported in
+    OpenQuake
+    :param list gsim_list:
+        List of GSIM names (str)
+    :returns:
+        Ordered dictionary of GMPE names and instances
+    """
+    output_gsims = []
+    for gsim in gsim_list:
+        if gsim.startswith("GMPETable"):
+            # Get filename
+            match = re.match(r'^GMPETable\(([^)]+?)\)$', gsim)
+            filepath = match.group(1).split("=")[1]
+            gmpe_table = GMPETable(gmpe_table=filepath[1:-1])
+            output_gsims.append((_get_gmpe_name(gmpe_table), gmpe_table))
+        elif not gsim in GSIM_LIST.keys():
+            raise ValueError('%s Not supported by OpenQuake' % gsim)
+        else:
+            output_gsims.append((gsim, GSIM_LIST[gsim]()))
+    return OrderedDict(output_gsims)
 
 
 def get_interpolated_period(target_period, periods, values):
@@ -230,23 +258,24 @@ class Residuals(object):
         :param list imts:
             List of Intensity Measures
         """
-        self.gmpe_list = gmpe_list
+        self.gmpe_list = _check_gsim_list(gmpe_list)
         self.number_gmpes = len(self.gmpe_list)
         self.types = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
         self.residuals = []
         self.modelled = []
         self.imts = imts
-        for gmpe in gmpe_list:
-            if not gmpe in GSIM_LIST:
-                raise ValueError("%s not supported in OpenQuake" % gmpe) 
+        self.unique_indices = {}
+        for gmpe in self.gmpe_list:
             gmpe_dict_1 = {}
             gmpe_dict_2 = {}
+            self.unique_indices[gmpe] = {}
             for imtx in self.imts:
                 gmpe_dict_1[imtx] = {}
                 gmpe_dict_2[imtx] = {}
+                self.unique_indices[gmpe][imtx] = []
                 self.types[gmpe][imtx] = []
                 for res_type in \
-                    GSIM_LIST[gmpe].DEFINED_FOR_STANDARD_DEVIATION_TYPES:
+                    self.gmpe_list[gmpe].DEFINED_FOR_STANDARD_DEVIATION_TYPES:
                     gmpe_dict_1[imtx][res_type] = []
                     gmpe_dict_2[imtx][res_type] = []
                     self.types[gmpe][imtx].append(res_type)
@@ -279,10 +308,24 @@ class Residuals(object):
             for gmpe in self.residuals.keys():
                 for imtx in self.residuals[gmpe].keys():
                     for res_type in self.residuals[gmpe][imtx].keys():
-                        self.residuals[gmpe][imtx][res_type].extend(
-                            context["Residual"][gmpe][imtx][res_type].tolist())
+                        if res_type == "Inter event":
+                            inter_ev = \
+                                context["Residual"][gmpe][imtx][res_type]
+                            inter_ev, inter_idx = np.unique(
+                                inter_ev,
+                                return_index=True)
+                            self.residuals[gmpe][imtx][res_type].extend(
+                                inter_ev.tolist())
+                            #inter_mags = (context["Rupture"].mag *
+                            #              np.ones(len(inter_ev))).tolist()
+                            self.unique_indices[gmpe][imtx].append(
+                                inter_idx)
+                        else:
+                            self.residuals[gmpe][imtx][res_type].extend(
+                                context["Residual"][gmpe][imtx][res_type].tolist())
                         self.modelled[gmpe][imtx][res_type].extend(
                             context["Expected"][gmpe][imtx][res_type].tolist())
+
                     self.modelled[gmpe][imtx]["Mean"].extend(
                         context["Expected"][gmpe][imtx]["Mean"].tolist())
 
@@ -297,6 +340,8 @@ class Residuals(object):
                         self.modelled[gmpe][imtx][res_type])
                 self.modelled[gmpe][imtx]["Mean"] = np.array(
                     self.modelled[gmpe][imtx]["Mean"])
+                #self.unique_magnitudes[gmpe][imtx] = np.array(
+                #    self.unique_magnitudes[gmpe][imtx])
 
     def get_observations(self, context, component="Geometric"):
         """
@@ -344,16 +389,17 @@ class Residuals(object):
         for gmpe in self.gmpe_list:
             expected[gmpe] = OrderedDict([(imtx, {}) for imtx in self.imts])
             for imtx in self.imts:
-                for res_type in self.types[gmpe][imtx]:
-                    gsim = GSIM_LIST[gmpe]()
-                    mean, stddev = gsim.get_mean_and_stddevs(
-                        context["Sites"],
-                        context["Rupture"],
-                        context["Distances"],
-                        imt.from_string(imtx),
-                        [res_type])
-                    expected[gmpe][imtx]["Mean"] = mean
-                    expected[gmpe][imtx][res_type] = stddev[0]
+                gsim = self.gmpe_list[gmpe]
+                mean, stddev = gsim.get_mean_and_stddevs(
+                    context["Sites"],
+                    context["Rupture"],
+                    context["Distances"],
+                    imt.from_string(imtx),
+                    self.types[gmpe][imtx])
+                expected[gmpe][imtx]["Mean"] = mean
+                for i, res_type in enumerate(self.types[gmpe][imtx]):
+                    expected[gmpe][imtx][res_type] = stddev[i]
+
         context["Expected"] = expected
         return context
                     
@@ -407,6 +453,22 @@ class Residuals(object):
             for imtx in self.imts:
                 statistics[gmpe][imtx] = {}
                 for res_type in self.types[gmpe][imtx]:
+#                    if res_type == "Inter event":
+#                        # As the inter-event term may be vectorial with
+#                        # repeated columns, get take only one value of inter-
+#                        # event residual if unique
+#                        delta_e = np.array([], dtype="float")
+#                        for ctxt in self.contexts:
+#                            iev_res = np.unique(
+#                                ctxt["Residual"][gmpe][imtx]["Inter event"])
+#                            delta_e = np.hstack([delta_e, iev_res])
+#                        #print delta_e
+#                        data = {
+#                            "Mean": np.mean(delta_e),
+#                                #self.residuals[gmpe][imtx][res_type]),
+#                            "Std Dev": np.std(delta_e)}
+#                                #self.residuals[gmpe][imtx][res_type])}
+#                    else:
                     data = {
                         "Mean": np.mean(
                             self.residuals[gmpe][imtx][res_type]),
@@ -498,6 +560,18 @@ class Residuals(object):
         but overwritten in subclasses
         """
         return data
+
+    def _get_magnitudes(self):
+        """
+        Returns an array of magnitudes equal in length to the number of
+        residuals
+        """
+        magnitudes = np.array([])
+        for ctxt in self.contexts:
+            magnitudes = np.hstack([
+                magnitudes,
+                ctxt["Rupture"].mag * np.ones(len(ctxt["Distances"].repi))])
+        return magnitudes
 
 
 class Likelihood(Residuals):
@@ -648,17 +722,18 @@ class SingleStationAnalysis(object):
 
         """
         self.site_ids = site_id_list
-        self.gmpe_list = gmpe_list
+        self.input_gmpe_list = deepcopy(gmpe_list)
+        self.gmpe_list = _check_gsim_list(gmpe_list)
         self.imts = imts
         self.site_residuals = []
         self.types = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
-        for gmpe in gmpe_list:
-            if not gmpe in GSIM_LIST:
-                raise ValueError("%s not supported in OpenQuake" % gmpe) 
+        for gmpe in self.gmpe_list:
+            #if not gmpe in GSIM_LIST:
+            #    raise ValueError("%s not supported in OpenQuake" % gmpe) 
             for imtx in self.imts:
                 self.types[gmpe][imtx] = []
                 for res_type in \
-                    GSIM_LIST[gmpe].DEFINED_FOR_STANDARD_DEVIATION_TYPES:
+                    self.gmpe_list[gmpe].DEFINED_FOR_STANDARD_DEVIATION_TYPES:
                     self.types[gmpe][imtx].append(res_type)
 
     def get_site_residuals(self, database):
@@ -671,7 +746,7 @@ class SingleStationAnalysis(object):
             print site_id
             selector = SMRecordSelector(database)
             site_db = selector.select_from_site_id(site_id, as_db=True)
-            resid = Residuals(self.gmpe_list, self.imts)
+            resid = Residuals(self.input_gmpe_list, self.imts)
             resid.get_residuals(site_db, normalise=False)
             setattr(
                 resid,
@@ -705,12 +780,19 @@ class SingleStationAnalysis(object):
                 for imtx in self.imts:
                     n_events = len(resid.residuals[gmpe][imtx]["Total"])
                     resid.site_analysis[gmpe][imtx]["events"] = n_events
+                    resid.site_analysis[gmpe][imtx]["Total"] = np.copy(
+                        t_resid.residuals[gmpe][imtx]["Total"])
+                    resid.site_analysis[gmpe][imtx]["Expected Total"] = \
+                        np.copy(t_resid.modelled[gmpe][imtx]["Total"])
+                    if not "Intra event" in t_resid.residuals[gmpe][imtx]:
+                        # GMPE has no within-event term - skip
+                        continue
+
                     resid.site_analysis[gmpe][imtx]["Intra event"] = np.copy(
                         t_resid.residuals[gmpe][imtx]["Intra event"])
                     resid.site_analysis[gmpe][imtx]["Inter event"] = np.copy(
                         t_resid.residuals[gmpe][imtx]["Inter event"])
-                    resid.site_analysis[gmpe][imtx]["Total"] = np.copy(
-                        t_resid.residuals[gmpe][imtx]["Total"])
+
                     delta_s2ss = self._get_delta_s2ss(
                         resid.residuals[gmpe][imtx]["Intra event"],
                         n_events)
@@ -726,8 +808,7 @@ class SingleStationAnalysis(object):
                             delta_s2ss,
                             n_events)
                     # Get expected values too
-                    resid.site_analysis[gmpe][imtx]["Expected Total"] = \
-                        np.copy(t_resid.modelled[gmpe][imtx]["Total"])
+
                     resid.site_analysis[gmpe][imtx]["Expected Inter"] =\
                         np.copy(t_resid.modelled[gmpe][imtx]["Inter event"])
                     resid.site_analysis[gmpe][imtx]["Expected Intra"] =\
@@ -772,6 +853,11 @@ class SingleStationAnalysis(object):
             for imtx in self.imts:
                 if pretty_print:
                     print >> fid, "%s" % imtx
+                if not "Intra event" in self.site_residuals[0].site_analysis[
+                    gmpe][imtx]:
+                    print "GMPE %s and IMT %s do not have defined "\
+                        "random effects residuals" % (str(gmpe), str(imtx))
+                    continue
                 n_events = []
                 numerator_sum = 0.0
                 d2ss = []
@@ -807,6 +893,4 @@ class SingleStationAnalysis(object):
             if filename:
                 fid.close()
         return phi_ss, phi_s2ss
-   
-
        

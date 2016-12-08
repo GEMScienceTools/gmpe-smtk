@@ -529,6 +529,7 @@ class Component(object):
         self.id = waveform_id
         self.orientation = orientation
         self.lup = longest_period
+        self.sup = None
         self.filter = waveform_filter
         self.baseline = baseline
         self.ims = ims
@@ -595,6 +596,20 @@ class GroundMotionRecord(object):
         self.datafile = None
         self.misc = None
 
+    def get_azimuth(self):
+        """
+        If the azimuth is missing, returns the epicentre to station azimuth
+        """
+        if self.distance.azimuth:
+            return self.distance.azimuth
+        else:
+            self.distance.azimuth = geodetic.azimuth(
+                self.event.longitude,
+                self.event.latitude,
+                self.site.longitude,
+                self.site.latitude)
+        return self.distance.azimuth
+
 
 class GroundMotionDatabase(object):
     """
@@ -625,6 +640,27 @@ class GroundMotionDatabase(object):
         Returns number of records
         """
         return len(self.records)
+
+    def __len__(self):
+        """
+        Returns the number of records
+        """
+        return len(self.records)
+
+    def __iter__(self):
+        """
+        Iterate of the records
+        """
+        for record in self.records:
+            yield record
+
+    def __repr__(self):
+        """
+        String with database ID and name
+        """
+        return "{:s} - ID({:s}) - Name ({:s})".format(self.__class__.__name__,
+                                                      self.id,
+                                                      self.name)
 
     def get_contexts(self, nodal_plane_index=1):
         """
