@@ -172,6 +172,36 @@ def z1pt0_to_z2pt5(z1pt0):
     """
     return 0.519 + 3.595 * (z1pt0 / 1000.)
 
+def vs30_to_z1pt0_cy14(vs30, japan=False):
+    """
+    Returns the estimate depth to the 1.0 km/s velocity layer based on Vs30
+    from Chiou & Youngs (2014) California model
+
+    :param numpy.ndarray vs30:
+        Input Vs30 values in m/s
+    :param bool japan:
+        If true returns the Japan model, otherwise the California model
+    :returns:
+        Z1.0 in m
+    """
+    if japan:
+        c1 = 412. ** 2.
+        c2 = 1360.0 ** 2.
+        return np.exp((-5.23 / 2.0) * np.log((vs30 ** 2. + c1) / (c2 + c1)))
+    else:
+        c1 = 571 ** 4.
+        c2 = 1360.0 ** 4.
+        return np.exp((-7.15 / 4.0) * np.log((vs30 ** 4. + c1) / (c2 + c1)))
+        
+def vs30_to_z2pt5_cb14(vs30, japan=False):
+    """
+    """
+    if japan:
+        return np.exp(5.359 - 1.102 * np.log(vs30))
+    else:
+        return np.exp(7.089 - 1.144 * np.log(vs30))
+
+
 
 
 def _setup_site_peripherals(azimuth, origin_point, vs30, z1pt0, z2pt5, strike, 
@@ -180,41 +210,66 @@ def _setup_site_peripherals(azimuth, origin_point, vs30, z1pt0, z2pt5, strike,
 
     """
     if not z1pt0:
-        z1pt0 = vs30_to_z1pt0_as08(vs30)
-
+        z1pt0 = vs30_to_z1pt0_cy14(vs30)
+    #    z1pt0 = vs30_to_z1pt0_as08(vs30)
     if not z2pt5:
-        z2pt5 = z1pt0_to_z2pt5(z1pt0)
+        #z2pt5 = z1pt0_to_z2pt5(z1pt0)
+        z2pt5 = vs30_to_z2pt5_cb14(vs30)
     azimuth = (strike + azimuth) % 360.
-    origin_point = get_hypocentre_on_planar_surface(surface,
-                                                    origin_point)
-    origin_point.depth = 0.0
-    return azimuth, origin_point, z1pt0, z2pt5
+    origin_location = get_hypocentre_on_planar_surface(surface,
+                                                       origin_point)
+    origin_location.depth = 0.0
+    return azimuth, origin_location, z1pt0, z2pt5
 
 
 def _rup_to_point(distance, surface, origin, azimuth, distance_type='rjb',
-        iter_stop=1E-5, maxiter=1000):
+        iter_stop=1E-3, maxiter=1000):
     """
 
     """
     pt0 = origin
     pt1 = origin.point_at(distance, 0., azimuth)
+    print pt0, pt1
     r_diff = np.inf
+    dip = surface.dip
+    sin_dip = np.sin(np.radians(dip))
+    dist_sin_dip = distance / sin_dip
+    #max_surf_dist = surface.width / np.cos(np.radians(dip))
     iterval = 0
     while (np.fabs(r_diff) >= iter_stop) and (iterval <= maxiter):
         pt1mesh = Mesh(np.array([pt1.longitude]),
                        np.array([pt1.latitude]),
                        None)
-        if distance_type == 'rjb':
-            r_diff =  distance - surface.get_joyner_boore_distance(pt1mesh)
+        if distance_type == 'rjb' or np.fabs(dip - 90.0) < 1.0E-3:
+            r_diff =  (distance -
+                       surface.get_joyner_boore_distance(pt1mesh)).flatten()
+            pt0 = Point(pt1.longitude, pt1.latitude)
+            if r_diff > 0.:
+                pt1 = pt0.point_at(r_diff, 0., azimuth)
+            else:
+                pt1 = pt0.point_at(np.fabs(r_diff), 0.,
+                                   (azimuth + 180.) % 360.)
         elif distance_type == 'rrup':
-            r_diff =  distance - surface.get_min_distance(pt1mesh)
+            rrup = surface.get_min_distance(pt1mesh).flatten()
+            if azimuth >= 0.0 and azimuth <= 180.0:
+                # On hanging wall
+                r_diff = dist_sin_dip - (rrup / sin_dip)   
+
+            else:
+                # On foot wall
+                r_diff = distance - rrup 
+            pt0 = Point(pt1.longitude, pt1.latitude)
+            
+            #print azimuth, (azimuth + 180.0) % 360,  rrup, r_diff, np.fabs(r_diff)
+            if r_diff > 0.:
+                pt1 = pt0.point_at(r_diff, 0., azimuth)
+            else:
+                pt1 = pt0.point_at(np.fabs(r_diff), 0.,
+                                   (azimuth + 180.) % 360.)
+            
         else:
             raise ValueError('Distance type must be rrup or rjb!')
-        pt0 = Point(pt1.longitude, pt1.latitude)
-        if r_diff > 0.:
-            pt1 = pt0.point_at(r_diff, 0., azimuth)
-        else:
-            pt1 = pt0.point_at(r_diff, 0., (azimuth + 180.) % 360.)
+        iterval += 1
     return pt1
 
 class PointAtDistance(object):
@@ -235,18 +290,18 @@ class PointAtRuptureDistance(PointAtDistance):
     """
 
     def point_at_distance(self, model, distance, vs30, line_azimuth=90., 
-            origin_point=(0.5, 0.5), vs30measured=True, z1pt0=None, z2pt5=None,
+            origin_point=(0.5, 0.), vs30measured=True, z1pt0=None, z2pt5=None,
             backarc=False):
         """
         Generates a site given a specified rupture distance from the 
         rupture surface
         """
-        azimuth, origin_point, z1pt0, z2pt5 = _setup_site_peripherals(
+        azimuth, origin_location, z1pt0, z2pt5 = _setup_site_peripherals(
             line_azimuth, origin_point, vs30, z1pt0, z2pt5, model.strike,
             model.surface)
         selected_point = _rup_to_point(distance,
                                        model.surface,
-                                       origin_point,
+                                       origin_location,
                                        azimuth,
                                        'rrup')
         target_sites = SiteCollection([Site(selected_point,
@@ -270,12 +325,12 @@ class PointAtJoynerBooreDistance(PointAtDistance):
         Generates a site given a specified rupture distance from the 
         rupture surface
         """
-        azimuth, origin_point, z1pt0, z2pt5 = _setup_site_peripherals(
+        azimuth, origin_location, z1pt0, z2pt5 = _setup_site_peripherals(
             line_azimuth, origin_point, vs30, z1pt0, z2pt5, model.strike,
             model.surface)
         selected_point = _rup_to_point(distance,
                                        model.surface,
-                                       origin_point,
+                                       origin_location,
                                        azimuth,
                                        'rjb')
         target_sites = SiteCollection([Site(selected_point,
@@ -375,6 +430,7 @@ class GSIMRupture(object):
         self.hypocentre = get_hypocentre_on_planar_surface(self.surface,
                                                            self.hypo_loc)
         self.rupture = self.get_rupture()
+        self.target_sites_config = None
         self.target_sites = None
 
     def get_rupture(self):
@@ -477,10 +533,12 @@ class GSIMRupture(object):
         site_list = []
 
         if not z1pt0:
-            z1pt0 = vs30_to_z1pt0_as08(vs30)
+            #z1pt0 = vs30_to_z1pt0_as08(vs30)
+            z1pt0 = vs30_to_z1pt0_cy14(vs30)
 
         if not z2pt5:
-            z2pt5 = z1pt0_to_z2pt5(z1pt0)
+            #z2pt5 = z1pt0_to_z2pt5(z1pt0)
+            z2pt5 = vs30_to_z2pt5_cb14(vs30)
 
         for iloc in range(0, npts):
             site_list.append(Site(Point(gridx[iloc], gridy[iloc], 0.),
@@ -490,6 +548,15 @@ class GSIMRupture(object):
                                   z2pt5,
                                   backarc=backarc))
         self.target_sites = SiteCollection(site_list)
+        self.target_sites_config = {
+            "TYPE": "Mesh",
+            "RMAX": maximum_distance,
+            "SPACING": spacing,
+            "VS30": vs30,
+            "VS30MEASURED": vs30measured,
+            "Z1.0": z1pt0,
+            "Z2.5": z2pt5,
+            "BACKARC": backarc}
         return self.target_sites
 
 
@@ -499,7 +566,8 @@ class GSIMRupture(object):
         """
         Defines the target sites along a line with respect to the rupture
         """
-        azimuth, origin_point, z1pt0, z2pt5 = _setup_site_peripherals(
+        #input_origin_point = deepcopy(origin_point)
+        azimuth, origin_location, z1pt0, z2pt5 = _setup_site_peripherals(
             line_azimuth,
             origin_point,
             vs30,
@@ -508,7 +576,7 @@ class GSIMRupture(object):
             self.strike,
             self.surface)
 
-        self.target_sites = [Site(origin_point,
+        self.target_sites = [Site(origin_location,
                                   vs30,
                                   vs30measured,
                                   z1pt0,
@@ -518,7 +586,7 @@ class GSIMRupture(object):
                                              spacing,
                                              as_log)
         for offset in spacings:
-            target_loc= origin_point.point_at(offset, 0., azimuth)
+            target_loc= origin_location.point_at(offset, 0., azimuth)
             # Get Rupture distance
             temp_mesh = Mesh(np.array(target_loc.longitude),
                              np.array(target_loc.latitude),
@@ -530,6 +598,18 @@ class GSIMRupture(object):
                                           z1pt0,
                                           z2pt5,
                                           backarc=backarc))
+        self.target_sites_config = {
+            "TYPE": "Line",
+            "RMAX": maximum_distance,
+            "SPACING": spacing,
+            "AZIMUTH": line_azimuth,
+            "ORIGIN": origin_point,
+            "AS_LOG": as_log,
+            "VS30": vs30,
+            "VS30MEASURED": vs30measured,
+            "Z1.0": z1pt0,
+            "Z2.5": z2pt5,
+            "BACKARC": backarc}
         self.target_sites = SiteCollection(self.target_sites)
         return self.target_sites
 
@@ -579,6 +659,27 @@ class GSIMRupture(object):
             raise ValueError("Distance type must be one of: Rupture ('rrup'), "
                              "Joyner-Boore ('rjb'), Epicentral ('repi') or "
                              "Hypocentral ('rhyp')")
+        #input_origin_point = deepcopy(origin_point)
+        azimuth, origin_location, z1pt0, z2pt5 = _setup_site_peripherals(
+            line_azimuth,
+            origin_point,
+            vs30,
+            z1pt0,
+            z2pt5,
+            self.strike,
+            self.surface)
+        self.target_sites_config = {
+            "TYPE": "Point",
+            "R": distance,
+            "RTYPE": distance_type,
+            "AZIMUTH": line_azimuth,
+            "ORIGIN": origin_point,
+            "VS30": vs30,
+            "VS30MEASURED": vs30measured,
+            "Z1.0": z1pt0,
+            "Z2.5": z2pt5,
+            "BACKARC": backarc}
+
         self.target_sites = POINT_AT_MAPPING[distance_type].point_at_distance(
             self, 
             distance,
@@ -717,6 +818,7 @@ class GSIMRupture(object):
                           -rupture_mesh.depths,
                           rstride=1,
                           cstride=1)
+
         # Scatter the target sites
         ax.scatter(self.target_sites.mesh.lons,
                    self.target_sites.mesh.lats,
@@ -726,6 +828,7 @@ class GSIMRupture(object):
         ax.set_xlabel('Longitude')
         ax.set_ylabel('Latitude')
         ax.set_zlabel('Depth (km)')
+        ax.set_zlim(-np.ceil(np.max(rupture_mesh.depths)), 0.0)
         _save_image(filename, filetype, dpi)
         plt.show()
         
