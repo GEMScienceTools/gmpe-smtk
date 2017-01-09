@@ -27,7 +27,7 @@ Copyright (C) 2014-2017 GEM Foundation
 """
 
 setup(
-    name='hmtk',
+    name='smtk',
     version='0.0.1',
     description=README,
     url=url,
@@ -53,7 +53,7 @@ setup(
     keywords="seismic hazard",
     license="AGPL3",
     platforms=["any"],
-    package_data={"hmtk": [
+    package_data={"smtk": [
         "README.md", "LICENSE"]},
     include_package_data=True,
     zip_safe=False,
