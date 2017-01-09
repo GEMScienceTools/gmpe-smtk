@@ -10,10 +10,6 @@ addons:
     packages:
     - git
 
-env:
-    global:
-    - PYTHONPATH=$TRAVIS_BUILD_DIR/oq-hazardlib:$TRAVIS_BUILD_DIR/oq-engine
-
 install:
   # Clone oq-hazardlib and oq-engine
   - git clone --depth=1 https://github.com/gem/oq-hazardlib.git
