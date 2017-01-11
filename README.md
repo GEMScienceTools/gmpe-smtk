@@ -16,7 +16,7 @@ License as published by the Free Software Foundation, either version
 3 of the License, or (at your option) any later version. Please take 
 a minute of your time to read the disclaimer below.
 
-Copyright (c) 2014, GEM Foundation
+Copyright (c) 2014-2017 GEM Foundation
 
 
 Disclaimer
@@ -56,12 +56,12 @@ dependencies
 The gmpe-smtk currently requires the following dependencies:
 
 
-* OpenQuake Hazard Library (oq-hazardlib)
+* OpenQuake Hazard Library ([oq-hazardlib](https://github.com/gem/oq-hazardlib))
 * Numpy (1.6.1 or later) (installed with oq-hazardlib)
 * Scipy (0.11.0 or later) (installed with oq-hazardlib)
 * Shapely (installed with oq-hazardlib)
 * Matplotlib (1.3.x or later)
-* h5py (2.2.0)
+* h5py (2.2.0 or later)
 
 installation
 ============
@@ -74,12 +74,16 @@ To install oq-hazardlib it is recommended to install MinGW or Github for Windows
 If using Github for Windows simply open a bash shell, clone the oq-hazardlib
 repository using:
 
->> git clone https://github.com/gem/oq-hazardlib.git
+```bash
+git clone https://github.com/gem/oq-hazardlib.git
+```
 
 Then type
 
->> cd oq-hazardlib
->> python setup.py install build --compiler=mingw32
+```bash
+cd oq-hazardlib
+python setup.py install
+```
 
 To install the gmpe-smtk simply download the zipped code from the repository,
 unzip it to a location of your choice then add the directory path to
@@ -96,12 +100,16 @@ list of directories.
 To install oq-hazardlib simply clone the oq-hazardlib repository into a folder
 of your choice.
 
->> git clone https://github.com/gem/oq-hazardlib.git
+```bash
+git clone https://github.com/gem/oq-hazardlib.git
+```
 
 Then run
 
->> cd oq-hazardlib
->> python setup.py install
+```bash
+cd oq-hazardlib
+python setup.py install
+```
 
 Matplotlib and h5py can both be installed from the native package managers,
 although it is recommended to use pip for this purpose.
@@ -109,4 +117,6 @@ although it is recommended to use pip for this purpose.
 To install the gmpe-smtk, clone the code from the repository and then
 add the following line to your bash or profile script:
 
+```bash
 export PYTHONPATH=/path/to/gmpe-smtk/:$PYTHONPATH
+```
