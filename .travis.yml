@@ -21,8 +21,8 @@ install:
   - pip install -r oq-engine/requirements-py27-linux64.txt
   # Install HMTK extra dependencies
   - pip install -r requirements-py27-linux64.txt
-  - pip install -e oq-hazardlib/ && pip install oq-engine/
-  - pip install .
+  - pip install -e oq-hazardlib/ && pip install -e oq-engine/
+  - pip install -e .
 
 script:
   - nosetests -vx tests
