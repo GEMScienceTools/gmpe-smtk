@@ -9,19 +9,14 @@ from collections import OrderedDict
 from shapely import wkt
 from openquake.hazardlib.geo.point import Point
 from openquake.hazardlib.geo.surface import PlanarSurface
-from openquake.hazardlib.geo.mesh import Mesh
 from openquake.hazardlib.geo.geodetic import geodetic_distance
-from openquake.hazardlib.geo.surface.simple_fault import SimpleFaultSurface
-from openquake.hazardlib.source.simple_fault import SimpleFaultSource
-from openquake.hazardlib.source.rupture import Rupture
 from openquake.hazardlib.correlation import JB2009CorrelationModel
 from openquake.hazardlib.site import Site, SiteCollection
 from openquake.hazardlib.imt import from_string
 from openquake.hazardlib.gsim import get_available_gsims
 from openquake.hazardlib.gsim.base import ContextMaker
-from openquake.commonlib.node import read_nodes
-from openquake.commonlib.sourceconverter import RuptureConverter
-from openquake.commonlib.nrml import nodefactory
+from openquake.hazardlib.sourceconverter import RuptureConverter
+from openquake.hazardlib import nrml
 from smtk.residuals.gmpe_residuals import Residuals
 
 
@@ -60,19 +55,19 @@ def build_planar_surface(geometry):
                          top_right,
                          bottom_right,
                          bottom_left)
-    
+
 
 def build_rupture_from_file(rupture_file, simple_mesh_spacing=1.0,
-        complex_mesh_spacing=1.0):
+                            complex_mesh_spacing=1.0):
     """
     Parses a rupture from the OpenQuake nrml 4.0 format and parses it to
     an instance of :class: openquake.hazardlib.source.rupture.Rupture
     """
-    rup_node, = read_nodes(rupture_file, lambda el: 'Rupture' in el.tag,
-                           nodefactory['sourceModel'])
+    [rup_node] = nrml.read(rupture_file)
     conv = RuptureConverter(simple_mesh_spacing,
                             complex_mesh_spacing)
     return conv.convert_node(rup_node)
+
 
 def get_regular_site_collection(limits, vs30, z1pt0=100.0, z2pt5=1.0):
     """
