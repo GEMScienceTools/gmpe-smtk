@@ -1,4 +1,4 @@
-#!/usr/bin/env/python 
+#!/usr/bin/env python 
 
 """
 Class to hold GMPE residual plotting functions

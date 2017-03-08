@@ -1,4 +1,4 @@
-#!/usr/bin/env/python
+#!/usr/bin/env python
 
 '''
 General Class for extracting Ground Motion Intensity Measures (IMs) from a

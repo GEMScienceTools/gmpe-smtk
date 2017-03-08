@@ -1,4 +1,4 @@
-#!/usr/bin/env/python
+#!/usr/bin/env python
 
 """
 Example of conditional simulation of ground motion fields with the OQ-hazardlib

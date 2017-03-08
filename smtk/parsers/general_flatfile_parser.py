@@ -1,4 +1,4 @@
-#!/usr/bin/env/python
+#!/usr/bin/env python
 
 """
 General Flatfile Only Parser - to handle the cases in which the only strong

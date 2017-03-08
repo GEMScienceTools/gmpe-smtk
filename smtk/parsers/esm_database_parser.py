@@ -1,4 +1,4 @@
-#!/usr/bin/env/python
+#!/usr/bin/env python
 """
 Parser set for the European Strong Motion database format.
 Detailed documentation on the format is here: 

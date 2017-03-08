@@ -1,4 +1,4 @@
-#!/usr/bin/env/python
+#!/usr/bin/env python
 
 """
 Basic Pseudo-database built on top of hdf5 for a set of processed strong

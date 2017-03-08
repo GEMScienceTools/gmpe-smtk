@@ -1,4 +1,4 @@
-#!/usr/bin/env/python
+#!/usr/bin/env python
 
 """
 Parser from a "Simple Flatfile + ascii format" to SMTK

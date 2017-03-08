@@ -1,4 +1,4 @@
-#!/usr/bin/env/python
+#!/usr/bin/env python
 # LICENSE
 #
 # Copyright (c) 2010-2014, GEM Foundation, G. Weatherill, M. Pagani,

@@ -1,4 +1,4 @@
-#!/usr/bin/env/python
+#!/usr/bin/env python
 """
 Applies spectral smoothing via the Konno & Ohmachi (1998) smoothing algorithm
 

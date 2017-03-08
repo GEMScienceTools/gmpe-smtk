@@ -1,4 +1,4 @@
-#!/usr/bin/env/python
+#!/usr/bin/env python
 
 '''
 Simple Python Script to integrate a strong motion record using 
