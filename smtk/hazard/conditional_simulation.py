@@ -136,6 +136,9 @@ def conditional_simulation(known_sites, residuals, unknown_sites, imt, nsim,
     """
     # Get site to site distances for known
     imt = from_string(imt)
+    # Make sure that sites are at the surface (to check!)
+    known_sites.depths = np.zeros_like(known_sites.depths)
+    unknown_sites.depths = np.zeros_like(unknown_sites.depths)
     cov_kk = correlation_model._get_correlation_matrix(known_sites, imt).I
     cov_uu = correlation_model._get_correlation_matrix(unknown_sites, imt)
     d_k_uk = np.zeros([known_sites.total_sites, unknown_sites.total_sites],
