@@ -365,8 +365,8 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         
         # If nodal plane 2 is valid then swap over
         if valid_plane_2:
-            np1 = deepcopy(nodal_planes.nodal_plane_1)
-            np2 = deepcopy(nodal_planes.nodal_plane_2)
+            np1 = copy.deepcopy(nodal_planes.nodal_plane_1)
+            np2 = copy.deepcopy(nodal_planes.nodal_plane_2)
             nodal_planes.nodal_plane_1 = np2
             nodal_planes.nodal_plane_2 = np1
         else:
