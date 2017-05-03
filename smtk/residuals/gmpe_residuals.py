@@ -282,11 +282,27 @@ class Residuals(object):
         self.modelled = []
         self.imts = imts
         self.unique_indices = {}
+        self.gmpe_sa_limits = {}
+        self.gmpe_scalars = {}
         for gmpe in self.gmpe_list:
             gmpe_dict_1 = {}
             gmpe_dict_2 = {}
             self.unique_indices[gmpe] = {}
+            # Get the period range and the coefficient types
+            gmpe_i = GSIM_LIST[gmpe]()
+            pers = [sa.period for sa in gmpe_i.COEFFS.sa_coeffs]
+            min_per, max_per = (min(pers), max(pers))
+            self.gmpe_sa_limits[gmpe] = (min_per, max_per)
+            self.gmpe_scalars[gmpe] = gmpe_i.COEFFS.non_sa_coeffs.keys()
             for imtx in self.imts:
+                if "SA(" in imtx:
+                    period = imt.from_string(imtx).period
+                    if period < min_per or period > max_per:
+                        print("IMT %s outside period range for GMPE %s"
+                              % (imtx, gmpe))
+                        gmpe_dict_1[imtx] = None
+                        gmpe_dict_2[imtx] = None
+                        continue
                 gmpe_dict_1[imtx] = {}
                 gmpe_dict_2[imtx] = {}
                 self.unique_indices[gmpe][imtx] = []
@@ -316,7 +332,6 @@ class Residuals(object):
         self.database = SMRecordSelector(database)
         self.contexts = []
         for context in contexts:
-            
             # Get the observed strong ground motions
             context = self.get_observations(context, component)
             # Get the expected ground motions
@@ -324,6 +339,8 @@ class Residuals(object):
             context = self.calculate_residuals(context, normalise)
             for gmpe in self.residuals.keys():
                 for imtx in self.residuals[gmpe].keys():
+                    if not context["Residual"][gmpe][imtx]:
+                        continue
                     for res_type in self.residuals[gmpe][imtx].keys():
                         if res_type == "Inter event":
                             inter_ev = \
@@ -350,6 +367,8 @@ class Residuals(object):
        
         for gmpe in self.residuals.keys():
             for imtx in self.residuals[gmpe].keys():
+                if not self.residuals[gmpe][imtx]:
+                    continue
                 for res_type in self.residuals[gmpe][imtx].keys():
                     self.residuals[gmpe][imtx][res_type] = np.array(
                         self.residuals[gmpe][imtx][res_type])
@@ -403,10 +422,17 @@ class Residuals(object):
         if not context["Rupture"].rake:
             context["Rupture"].rake = 0.0
         expected = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
+        # Period range for GSIM
         for gmpe in self.gmpe_list:
             expected[gmpe] = OrderedDict([(imtx, {}) for imtx in self.imts])
             for imtx in self.imts:
                 gsim = self.gmpe_list[gmpe]
+                if "SA(" in imtx:
+                    period = imt.from_string(imtx).period
+                    if period < self.gmpe_sa_limits[gmpe][0] or\
+                        period > self.gmpe_sa_limits[gmpe][1]:
+                        expected[gmpe][imtx] = None
+                        continue
                 mean, stddev = gsim.get_mean_and_stddevs(
                     context["Sites"],
                     context["Rupture"],
@@ -431,6 +457,9 @@ class Residuals(object):
             for imtx in self.imts:
                 residual[gmpe][imtx] = {}
                 obs = np.log(context["Observations"][imtx])
+                if not context["Expected"][gmpe][imtx]:
+                    residual[gmpe][imtx] = None
+                    continue
                 mean = context["Expected"][gmpe][imtx]["Mean"]
                 total_stddev = context["Expected"][gmpe][imtx]["Total"]
                 residual[gmpe][imtx]["Total"] = (obs - mean) / total_stddev
@@ -468,6 +497,8 @@ class Residuals(object):
         statistics = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
         for gmpe in self.gmpe_list:
             for imtx in self.imts:
+                if not self.residuals[gmpe][imtx]:
+                    continue
                 statistics[gmpe][imtx] = {}
                 for res_type in self.types[gmpe][imtx]:
 #                    if res_type == "Inter event":
@@ -511,11 +542,15 @@ class Residuals(object):
         header_set.extend(["{:s}-Obs.".format(imt) for imt in self.imts])
         for imt in self.imts:
             for gmpe in self.gmpe_list:
+                if not event["Expected"][gmpe][imt]:
+                    continue
                 for key in event["Expected"][gmpe][imt].keys():
                     header_set.append(
                         "{:s}-{:s}-{:s}-Exp.".format(imt, gmpe, key))
         for imt in self.imts:
             for gmpe in self.gmpe_list:
+                if not event["Residual"][gmpe][imt]:
+                    continue
                 for key in event["Residual"][gmpe][imt].keys():
                     header_set.append(
                         "{:s}-{:s}-{:s}-Res.".format(imt, gmpe, key))
@@ -552,12 +587,16 @@ class Residuals(object):
             # Expected
             for imt in self.imts:
                 for gmpe in self.gmpe_list:
+                    if not event["Expected"][gmpe][imt]:
+                        continue
                     for key in event["Expected"][gmpe][imt].keys():
                         data.append("{:.8e}".format(
                             event["Expected"][gmpe][imt][key][i]))
             # Residuals
             for imt in self.imts:
                 for gmpe in self.gmpe_list:
+                    if not event["Expected"][gmpe][imt]:
+                        continue
                     for key in event["Residual"][gmpe][imt].keys():
                         data.append("{:.8e}".format(
                             event["Residual"][gmpe][imt][key][i]))
@@ -605,6 +644,10 @@ class Likelihood(Residuals):
         lh_values = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
         for gmpe in self.gmpe_list:
             for imtx in self.imts:
+                if not self.residuals[gmpe][imtx]:
+                    print("IMT %s not found in Residuals for %s"
+                          % (imtx, gmpe))
+                    continue
                 lh_values[gmpe][imtx] = {}
                 for res_type in self.types[gmpe][imtx]:
                     zvals = np.fabs(self.residuals[gmpe][imtx][res_type])
@@ -620,20 +663,33 @@ class LLH(Residuals):
     Implements of average sample log-likelihood estimator from
     Scherbaum et al (2009)
     """
-    def get_loglikelihood_values(self):
+    def get_loglikelihood_values(self, imts):
         log_residuals = OrderedDict([(gmpe, np.array([]))
                                       for gmpe in self.gmpe_list])
-        llh = OrderedDict([(gmpe, None) for gmpe in self.gmpe_list])
+        imt_list = [(imtx, None) for imtx in imts]
+        imt_list.append(("All", None))
+        llh = OrderedDict([(gmpe, OrderedDict(imt_list))
+                           for gmpe in self.gmpe_list])
         for gmpe in self.gmpe_list:
-            for imtx in self.imts:
-                asll = np.log2(norm.pdf(self.residuals[gmpe][imtx]["Total"], 
+            for imtx in imts:
+                if not imtx in self.imts or not self.residuals[gmpe][imtx]:
+                    print("IMT %s not found in Residuals for %s"
+                          % (imtx, gmpe))
+                    continue
+                # Get log-likelihood distance for IMT
+                asll = np.log2(norm.pdf(self.residuals[gmpe][imtx]["Total"],
                                0., 
                                1.0))
-                log_residuals[gmpe] = np.hstack([log_residuals[gmpe], asll])
-            llh[gmpe] = -(1. / float(len(log_residuals[gmpe]))) *\
+                log_residuals[gmpe] = np.hstack([
+                    log_residuals[gmpe],
+                    asll])
+                llh[gmpe][imtx] = -(1.0 / float(len(asll))) * np.sum(asll)
+
+            llh[gmpe]["All"] = -(1. / float(len(log_residuals[gmpe]))) *\
                 np.sum(log_residuals[gmpe])
         # Get weights
-        weights = np.array([2.0 ** -llh[gmpe] for gmpe in self.gmpe_list])
+        weights = np.array([2.0 ** -llh[gmpe]["All"]
+                            for gmpe in self.gmpe_list])
         weights = weights / np.sum(weights)
         model_weights = OrderedDict([
             (gmpe, weights[iloc]) for iloc, gmpe in enumerate(self.gmpe_list)]
@@ -753,7 +809,7 @@ class SingleStationAnalysis(object):
                     self.gmpe_list[gmpe].DEFINED_FOR_STANDARD_DEVIATION_TYPES:
                     self.types[gmpe][imtx].append(res_type)
 
-    def get_site_residuals(self, database):
+    def get_site_residuals(self, database, component="Geometric"):
         """
         Calculates the total, inter-event and within-event residuals for
         each site
@@ -764,7 +820,7 @@ class SingleStationAnalysis(object):
             selector = SMRecordSelector(database)
             site_db = selector.select_from_site_id(site_id, as_db=True)
             resid = Residuals(self.input_gmpe_list, self.imts)
-            resid.get_residuals(site_db, normalise=False)
+            resid.get_residuals(site_db, normalise=False, component=component)
             setattr(
                 resid,
                 "site_analysis",
@@ -795,6 +851,8 @@ class SingleStationAnalysis(object):
 
             for gmpe in self.gmpe_list:
                 for imtx in self.imts:
+                    if not resid.residuals[gmpe][imtx]:
+                        continue
                     n_events = len(resid.residuals[gmpe][imtx]["Total"])
                     resid.site_analysis[gmpe][imtx]["events"] = n_events
                     resid.site_analysis[gmpe][imtx]["Total"] = np.copy(

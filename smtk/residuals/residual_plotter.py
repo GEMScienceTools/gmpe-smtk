@@ -80,6 +80,9 @@ class ResidualPlot(object):
         Creates a histogram plot
         """
         data = self.residuals.residuals[self.gmpe][self.imt]
+        if not data:
+            print("No residuals found for %s (%s)" % (self.gmpe, self.imt))
+            return
         statistics = self.residuals.get_residual_statistics()
         fig = plt.figure(figsize=self.figure_size)
         fig.set_tight_layout(True)
@@ -221,6 +224,9 @@ class ResidualWithDistance(ResidualPlot):
 
         """
         data = self.residuals.residuals[self.gmpe][self.imt]
+        if not data:
+            print("No residuals found for %s (%s)" % (self.gmpe, self.imt))
+            return
 
         fig = plt.figure(figsize=self.figure_size)
         fig.set_tight_layout(True)
@@ -321,6 +327,9 @@ class ResidualWithMagnitude(ResidualPlot):
         Creates the plot
         """
         data = self.residuals.residuals[self.gmpe][self.imt]
+        if not data:
+            print("No residuals found for %s (%s)" % (self.gmpe, self.imt))
+            return
 
         fig = plt.figure(figsize=self.figure_size)
         fig.set_tight_layout(True)
@@ -412,6 +421,9 @@ class ResidualWithDepth(ResidualPlot):
         Creates the plot
         """
         data = self.residuals.residuals[self.gmpe][self.imt]
+        if not data:
+            print("No residuals found for %s (%s)" % (self.gmpe, self.imt))
+            return
 
         fig = plt.figure(figsize=self.figure_size)
         fig.set_tight_layout(True)
@@ -509,6 +521,9 @@ class ResidualWithVs30(ResidualPlot):
 
         """
         data = self.residuals.residuals[self.gmpe][self.imt]
+        if not data:
+            print("No residuals found for %s (%s)" % (self.gmpe, self.imt))
+            return
 
         fig = plt.figure(figsize=self.figure_size)
         fig.set_tight_layout(True)

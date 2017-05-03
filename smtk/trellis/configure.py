@@ -28,14 +28,17 @@ from copy import deepcopy
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
-from openquake.hazardlib.geo.point import Point
-from openquake.hazardlib.geo.line import Line
-from openquake.hazardlib.geo.polygon import Polygon
-from openquake.hazardlib.geo.mesh import Mesh
-from openquake.hazardlib.geo.surface.planar import PlanarSurface
+#from openquake.hazardlib.geo.point import Point
+#from openquake.hazardlib.geo.line import Line
+#from openquake.hazardlib.geo.polygon import Polygon
+#from openquake.hazardlib.geo.mesh import Mesh
+#from openquake.hazardlib.geo.surface.planar import PlanarSurface
+from openquake.baselib.slots import with_slots
+from openquake.hazardlib.geo import (Point, Line, Polygon, Mesh,
+                                     PlanarSurface, NodalPlane)
 from openquake.hazardlib.scalerel.wc1994 import WC1994
 from openquake.hazardlib.site import Site, SiteCollection
-from openquake.hazardlib.source.rupture import Rupture
+#from openquake.hazardlib.source.rupture import Rupture
 from openquake.hazardlib.source.point import PointSource
 from openquake.hazardlib.gsim.base import (SitesContext,
                                            RuptureContext,
@@ -48,6 +51,61 @@ TO_RAD = pi / 180.
 FROM_RAD = 180. / pi
 # Default point - some random location on Earth
 DEFAULT_POINT = Point(45.18333, 9.15, 0.)
+
+# This object was original from the OQ-Hazardlib. It has now been removed to
+# a direct copy and paste is found here
+@with_slots
+class Rupture(object):
+    """
+    Rupture object represents a single earthquake rupture.
+
+    :param mag:
+        Magnitude of the rupture.
+    :param rake:
+        Rake value of the rupture.
+        See :class:`~openquake.hazardlib.geo.nodalplane.NodalPlane`.
+    :param tectonic_region_type:
+        Rupture's tectonic regime. One of constants
+        in :class:`openquake.hazardlib.const.TRT`.
+    :param hypocenter:
+        A :class:`~openquake.hazardlib.geo.point.Point`, rupture's hypocenter.
+    :param surface:
+        An instance of subclass of
+        :class:`~openquake.hazardlib.geo.surface.base.BaseSurface`.
+        Object representing the rupture surface geometry.
+    :param source_typology:
+        Subclass of :class:`~openquake.hazardlib.source.base.BaseSeismicSource`
+        (class object, not an instance) referencing the typology
+        of the source that produced this rupture.
+    :param rupture_slip_direction:
+        Angle describing rupture propagation direction in decimal degrees.
+
+    :raises ValueError:
+        If magnitude value is not positive, hypocenter is above the earth
+        surface or tectonic region type is unknown.
+
+    NB: if you want to convert the rupture into XML, you should set the
+    attribute surface_nodes to an appropriate value.
+    """
+    _slots_ = '''mag rake tectonic_region_type hypocenter surface
+    surface_nodes source_typology rupture_slip_direction'''.split()
+
+    def __init__(self, mag, rake, tectonic_region_type, hypocenter,
+                 surface, source_typology, rupture_slip_direction=None,
+                 surface_nodes=()):
+        if not mag > 0:
+            raise ValueError('magnitude must be positive')
+        if not hypocenter.depth > 0:
+            raise ValueError('rupture hypocenter must have positive depth')
+        NodalPlane.check_rake(rake)
+        self.tectonic_region_type = tectonic_region_type
+        self.rake = rake
+        self.mag = mag
+        self.hypocenter = hypocenter
+        self.surface = surface
+        self.source_typology = source_typology
+        self.surface_nodes = surface_nodes
+        self.rupture_slip_direction = rupture_slip_direction
 
 
 def create_planar_surface(top_centroid, strike, dip, area, aspect):

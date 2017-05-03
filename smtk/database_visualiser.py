@@ -57,7 +57,7 @@ def get_magnitude_distances(db1, dist_type):
         elif dist_type == "rrup":
             rrup = DISTANCES[dist_type](record)
             if rrup:
-                dists.append(rrrip)
+                dists.append(rrup)
             else:
                 dists.append(DISTANCES["rhypo"](record))
         else:
