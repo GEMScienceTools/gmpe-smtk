@@ -299,16 +299,15 @@ class SMRecordSelector(object):
                     continue
             elif alternative and isinstance(alternative, tuple):
                 alt_value = getattr(record.distance, alternative[0])
-                if alt_value:
-                    if (alt_value >= alternative[1]) and\
-                        (alt_value <= alternative[2]):
-                        idx.append(iloc)
-                else:
-                    raise ValueError("Record %s is missing selected distance "
-                        "metric and alternative metric" % record.id)
+                if alt_value and (alt_value >= alternative[1]) and\
+                    (alt_value <= alternative[2]):
+                    idx.append(iloc)
+#                else:
+#                    raise ValueError("Record %s is missing selected distance "
+#                        "metric and alternative metric" % record.id)
             else:
-                raise ValueError("Record %s is missing selected distance "
-                                 "metric" % record.id)
+                print("Record %s is missing selected distance metric"
+                      % record.id)
         return self.select_records(idx, as_db)
 
     # Event-based selection
@@ -364,9 +363,27 @@ class SMRecordSelector(object):
             epi_loc = Mesh(np.array([record.event.longitude]),
                             np.array([record.event.latitude]),
                             None)
-            if polygon.intersects(epi_loc)[0]:
+            if region.intersects(epi_loc)[0]:
                 idx.append(iloc)
         return self.select_records(idx, as_db)
+
+    def select_epicentre_within_bounding_box(self, llon, llat, ulon, ulat,
+                                             as_db=False):
+        """
+        Selects earthquakes whose epicentres are within a longitude
+        and latitude bounding box
+        """
+        assert ulon >= llon and ulat >= llat
+        idx = []
+        for iloc, record in enumerate(self.database.records):
+            bbox_check = record.event.longitude >= llon and\
+                record.event.longitude <= ulon and\
+                record.event.latitude >= llat and\
+                record.event.latitude <= ulat
+            if bbox_check:
+                idx.append(iloc)
+        return self.select_records(idx, as_db)
+
 
     def select_longest_usable_period(self, lup, as_db=False):
         """

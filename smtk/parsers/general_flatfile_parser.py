@@ -352,30 +352,31 @@ class GeneralFlatfileParser(SimpleFlatfileParserV9):
         Rx = get_float(metadata["Rx (km)"]) # Rx can be negative
 
         #Rhypo = get_float(metadata["Hypocentral Distance (km)"])
-        if Rhypo is None:
+        if Rhypo is None or Rhypo < 0.0:
             Rhypo = hypocenter.distance_to_mesh(target_site)
         # Repi
         #Repi = get_float(metadata["Epicentral Distance (km)"])
-        if Repi is None:
+        if Repi is None or Repi < 0.0:
             Repi= hypocenter.distance_to_mesh(target_site, with_depths=False)
         # Rrup
         #Rrup = get_float(metadata["Rupture Distance (km)"])
-        if Rrup is None:
-            Rrup = surface_modeled.get_min_distance(target_site)
+        if Rrup is None or Rrup < 0.0:
+            Rrup = surface_modeled.get_min_distance(target_site)[0]
         # Rjb
         #Rjb = get_float(metadata["Joyner-Boore Distance (km)"])
-        if Rjb is None:
-            Rjb = surface_modeled.get_joyner_boore_distance(target_site)
+        if Rjb is None or Rjb < 0.0:
+            Rjb = surface_modeled.get_joyner_boore_distance(
+                target_site)[0]
         # Need to check if Rx and Ry0 are consistant with the other metrics
         # when those are coming from the flatfile?
         # Rx
         #Rx = get_float(metadata["Rx (km)"])
-        if Rx is None:
-            Rx = surface_modeled.get_rx_distance(target_site)
+        if Rx is None or Rx < 0.0:
+            Rx = surface_modeled.get_rx_distance(target_site)[0]
         # Ry0
         Ry0 = get_float(metadata["Ry0 (km)"])
-        if Ry0 is None:
-            Ry0 = surface_modeled.get_ry0_distance(target_site)
+        if Ry0 is None or Ry0 < 0.0:
+            Ry0 = surface_modeled.get_ry0_distance(target_site)[0]
         
         distance = RecordDistance(
             repi = Repi,

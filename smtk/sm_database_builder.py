@@ -222,7 +222,17 @@ class SMDatabaseBuilder(object):
                                               scalar_fieldnames,
                                               spectra_fieldnames,
                                               component, damping, units)
-            print("Record %s written to output file %s" % (wfid, output_file))
+            self.database.records[idx].datafile = output_file
+            if (i % 100) == 0:
+                print("Record %g written" % i)
+            #print("Record %s written to output file %s" % (wfid, output_file))
+        print "Updating metadata file"
+        os.remove(self.metafile)
+        f = open(self.metafile, "w+")
+        cPickle.dump(self.database, f)
+        f.close()
+        print "Done!"
+
 
     def _build_spectra_hdf5_from_row(self, output_file, row, periods,
                                      scalar_fields, spectra_fields, component,
