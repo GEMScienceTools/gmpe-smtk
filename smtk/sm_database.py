@@ -498,6 +498,24 @@ class RecordSite(object):
         return None
 
 
+     def vs30_from_ec8(self):
+        """
+        Returns an approximation of Vs30 given an EC8 site class (e.g. for the case
+        when Vs30 is not measured but the site class is given).
+        """
+        if self.ec8 == 'A':
+            return 900
+        if self.ec8 == 'B':
+            return 580
+        if self.ec8 == 'C':
+            return 220
+        if self.ec8 == 'D':
+            return 100
+        if self.ec8 == 'E':
+            return 100
+        else:
+            print "Cannot determine Vs30 from EC8 site class"
+
 Filter = {'Type': None,
           'Order': None,
           'Passes': None,

@@ -360,18 +360,19 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
             metadata["STATION_NAME"],
             _to_float(metadata["STATION_LONGITUDE_DEGREE"]),
             _to_float(metadata["STATION_LATITUDE_DEGREE"]),
-            _to_float(metadata["STATION_ELEVATION_M"]),
-            vs30=_to_float(metadata["VS30_M/S"]))
+            _to_float(metadata["STATION_ELEVATION_M"]))
         site.morphology = metadata["MORPHOLOGIC_CLASSIFICATION"]
-        if metadata["SITE_CLASSIFICATION_EC8"]:
-            if "*" in metadata["SITE_CLASSIFICATION_EC8"]:
-                site.ec8 = metadata["SITE_CLASSIFICATION_EC8"][:-1]
-                site.vs30_measured = False
-            else:
-                site.ec8 = metadata["SITE_CLASSIFICATION_EC8"]
-        elif site.vs30:
+        # Vs30 was measured
+        if metadata["VS30_M/S"]:
+            site.vs30=_to_float(metadata["VS30_M/S"])
             site.ec8 = site.get_ec8_class()
             site.nehrp = site.get_nehrp_class()
+            site.vs30_measured = True
+        # Only an estimate of site class is provided
+        elif metadata["SITE_CLASSIFICATION_EC8"]:
+            site.ec8 = metadata["SITE_CLASSIFICATION_EC8"][:-1]
+            site.vs30=site.vs30_from_ec8()
+            site.vs30_measured = False
         else:
             pass
         return site   
