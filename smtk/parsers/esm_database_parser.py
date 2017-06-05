@@ -151,7 +151,7 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
         with a particular recording into a dictionary
         """
         skip_files = []
-        for file_str in os.listdir(self.filename):
+        for file_str in sorted(os.listdir(self.filename)):
             if (file_str in skip_files) or ("ds_store" in file_str.lower()) or\
                 ("DIS.ASC" in file_str[-7:]) or ("VEL.ASC" in file_str[-7:]):
                 continue
