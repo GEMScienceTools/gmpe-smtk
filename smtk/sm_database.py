@@ -498,7 +498,7 @@ class RecordSite(object):
         return None
 
 
-     def vs30_from_ec8(self):
+    def vs30_from_ec8(self):
         """
         Returns an approximation of Vs30 given an EC8 site class (e.g. for the case
         when Vs30 is not measured but the site class is given).
