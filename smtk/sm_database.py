@@ -860,17 +860,8 @@ class GroundMotionDatabase(object):
             setattr(rctx, 'rake',
                 rup.event.mechanism.nodal_planes.nodal_plane_2['rake'])
         else:
-            setattr(rctx, 'strike',
-                rup.event.mechanism.nodal_planes.nodal_plane_1['strike'])
-            setattr(rctx, 'dip',
-                rup.event.mechanism.nodal_planes.nodal_plane_1['dip'])
-            setattr(rctx, 'rake',
-                rup.event.mechanism.nodal_planes.nodal_plane_1['rake'])
-        if not rctx.strike:
             setattr(rctx, 'strike', 0.0)
-        if not rctx.dip:
             setattr(rctx, 'dip', 90.0)
-        if not rctx.rake:
             rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
         if rup.event.rupture:
             setattr(rctx, 'ztor', rup.event.rupture.depth)
