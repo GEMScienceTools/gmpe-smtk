@@ -320,8 +320,12 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
         else:
             raise ValueError("Record %s has no magnitude!" % file_str)
         # Get focal mechanism data - here only the general type is reported
-        foc_mech = FocalMechanism(eq_id, eq_name, None, None,
-            mechanism_type=ESMD_MECHANISM_TYPE[metadata["FOCAL_MECHANISM"]])
+        if metadata["FOCAL_MECHANISM"]:
+            foc_mech = FocalMechanism(eq_id, eq_name, None, None,
+                mechanism_type=ESMD_MECHANISM_TYPE[metadata["FOCAL_MECHANISM"]])
+        else:
+            foc_mech = FocalMechanism(eq_id, eq_name, None, None,
+                mechanism_type=None)
         # Build event
         eqk = Earthquake(eq_id, eq_name, eq_datetime,
             _to_float(metadata["EVENT_LONGITUDE_DEGREE"]),
