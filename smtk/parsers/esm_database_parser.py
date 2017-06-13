@@ -181,17 +181,17 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
                     skip_files.append(os.path.split(test_filename)[-1])
                     # Get SA, SD and PSV
                     # SA - x-component
-                    sa_filename = test_filename.replace("ACC", "SA")
+                    sa_filename = 'SA'.join(test_filename.rsplit('ACC', 1))
                     if os.path.exists(sa_filename):
                         file_dict["SA"]["X"] = sa_filename
                         skip_files.append(os.path.split(sa_filename)[-1])
                     # SD - x-component
-                    sd_filename = test_filename.replace("ACC", "SD")
+                    sd_filename = 'SD'.join(test_filename.rsplit('ACC', 1))
                     if os.path.exists(sd_filename):
                         file_dict["SD"]["X"] = sd_filename
                         skip_files.append(os.path.split(sd_filename)[-1])
                     # PSV - x-component
-                    psv_filename = test_filename.replace("ACC", "PSV")
+                    psv_filename = 'PSV'.join(test_filename.rsplit('ACC', 1))
                     if os.path.exists(psv_filename):
                         file_dict["PSV"]["X"] = psv_filename
                         skip_files.append(os.path.split(psv_filename)[-1])
@@ -203,19 +203,19 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
                             file_dict["Time-Series"]["Y"] = y_filename
                             skip_files.append(os.path.split(y_filename)[-1])
                             # SA
-                            sa_filename = y_filename.replace("ACC", "SA")
+                            sa_filename = 'SA'.join(y_filename.rsplit('ACC', 1))
                             if os.path.exists(sa_filename):
                                 file_dict["SA"]["Y"] = sa_filename
                                 skip_files.append(
                                     os.path.split(sa_filename)[-1])
                             # SD
-                            sd_filename = y_filename.replace("ACC", "SD")
+                            sd_filename = 'SD'.join(y_filename.rsplit('ACC', 1))
                             if os.path.exists(sd_filename):
                                 file_dict["SD"]["Y"] = sd_filename
                                 skip_files.append(
                                     os.path.split(sd_filename)[-1])
                             # PSV
-                            psv_filename = y_filename.replace("ACC", "PSV")
+                            psv_filename = 'PSV'.join(y_filename.rsplit('ACC', 1))
                             if os.path.exists(psv_filename):
                                 file_dict["PSV"]["Y"] = psv_filename
                                 skip_files.append(
@@ -228,20 +228,21 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
                         file_dict["Time-Series"]["Z"] = v_filename
                         skip_files.append(os.path.split(v_filename)[-1])
                         # Get SA 
-                        sa_filename = v_filename.replace("ACC", "SA")
+                        sa_filename = 'SA'.join(v_filename.rsplit('ACC', 1))
                         if os.path.exists(sa_filename):
                             file_dict["SA"]["Z"] = sa_filename
                             skip_files.append(os.path.split(sa_filename)[-1])
                         # Get SD
-                        sd_filename = v_filename.replace("ACC", "SD")
+                        sd_filename = 'SD'.join(v_filename.rsplit('ACC', 1))
                         if os.path.exists(sd_filename):
                             file_dict["SD"]["Z"] = sd_filename
                             skip_files.append(os.path.split(sd_filename)[-1])
                         # Get PSV
-                        psv_filename = v_filename.replace("ACC", "PSV")
+                        psv_filename = 'PSV'.join(v_filename.rsplit('ACC', 1))
                         if os.path.exists(psv_filename):
                             file_dict["PSV"]["Z"] = psv_filename
                             skip_files.append(os.path.split(psv_filename)[-1])
+            self.ORGANIZER.append(file_dict)
             self.ORGANIZER.append(file_dict)
 
     def parse_metadata(self, metadata, file_dict):
