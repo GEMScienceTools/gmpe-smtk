@@ -160,7 +160,6 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
                          "SA": {"X": None, "Y": None, "Z": None},
                          "SD": {"X": None, "Y": None, "Z": None}}
 
-
             file_info = _get_filename_info(file_str)
             code1 = ".".join([file_info[key] for key in ["Net", "Station",
                                                          "Location"]])
@@ -242,7 +241,6 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
                         if os.path.exists(psv_filename):
                             file_dict["PSV"]["Z"] = psv_filename
                             skip_files.append(os.path.split(psv_filename)[-1])
-            self.ORGANIZER.append(file_dict)
             self.ORGANIZER.append(file_dict)
 
     def parse_metadata(self, metadata, file_dict):
