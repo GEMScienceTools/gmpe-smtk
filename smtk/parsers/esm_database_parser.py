@@ -377,7 +377,7 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
             site.vs30=site.vs30_from_ec8()
             site.vs30_measured = False
         else:
-            pass
+            raise ValueError('Station %s has no information about site class or Vs30' % metadata["STATION_CODE"])
         return site   
             
     def _parse_processing_data(self, wfid, metadata):
