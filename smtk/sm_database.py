@@ -168,7 +168,35 @@ MECHANISM_TYPE = {"Normal": -90.0,
                   "Strike-Slip": 0.0,
                   "Reverse": 90.0,
                   "Oblique": 0.0,
-                  "Unknown": 0.0}
+                  "Unknown": 0.0,
+                  "N": -90.0, # Flatfile conventions
+                  "S": 0.0,
+                  "R": 90.0,
+                  "U": 0.0,
+                  "NF": -90., # ESM flatfile conventions
+                  "SS": 0.,
+                  "TF": 90.,
+                  "NS": -45., # Normal with strike-slip component
+                  "TS": 45., # Reverse with strike-slip component
+                  "O": 0.0
+                  }
+
+DIP_TYPE = {"Normal": 60.0,
+            "Strike-Slip": 90.0,
+            "Reverse": 35.0,
+            "Oblique": 60.0,
+            "Unknown": 90.0,
+            "N": 60.0, # Flatfile conventions
+            "S": 90.0,
+            "R": 35.0,
+            "U": 90.0,
+            "NF": 60., # ESM flatfile conventions
+            "SS": 90.,
+            "TF": 35.,
+            "NS": 70., # Normal with strike-slip component
+            "TS": 45., # Reverse with strike-slip component
+            "O": 90.0
+            }
 
 class FocalMechanism(object):
     """
@@ -406,12 +434,14 @@ class RecordSite(object):
         self.instrument_type = None
         self.digitiser = None
         self.network_code = network_code
+        self.sensor_depth = None
         self.country = country
         self.z1pt0 = None
         self.z1pt5 = None
         self.z2pt5 = None
         self.backarc = backarc
         self.morphology = None
+        self.slope = None
 
     def to_openquake_site(self, missing_vs30=None):
         """
