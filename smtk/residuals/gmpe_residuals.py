@@ -399,7 +399,6 @@ class Residuals(object):
 
                 elif "SA(" in imtx:
                     target_period = imt.from_string(imtx).period
-                    
                     spectrum = fle[selection_string + component 
                                    + "/damping_05"].value
                     periods = fle["IMS/H/Spectra/Response/Periods"].value
