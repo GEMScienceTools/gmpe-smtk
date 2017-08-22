@@ -30,6 +30,7 @@ from openquake.hazardlib.gsim.base import (SitesContext, DistancesContext,
 from openquake.hazardlib.site import Site, SiteCollection
 from openquake.hazardlib.geo.point import Point
 from smtk.trellis.configure import vs30_to_z1pt0_as08, z1pt0_to_z2pt5
+from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 
 class Magnitude(object):
     """
@@ -763,8 +764,12 @@ class GroundMotionDatabase(object):
                 vs30_measured.append(rup.site.vs30_measured)
             if rup.site.z1pt0 is not None:
                 z1pt0.append(rup.site.z1pt0)
+            else:
+                z1pt0.append(vs30_to_z1pt0_cy14(rup.site.vs30))
             if rup.site.z2pt5 is not None:
                 z2pt5.append(rup.site.z2pt5)
+            else:
+                z2pt5.append(vs30_to_z2pt5_cb14(rup.site.vs30))
             if ("backarc" in dir(rup.site)) and rup.site.backarc is not None:
                 backarc.append(rup.site.backarc)
         setattr(sctx, 'vs30', np.array(vs30))
