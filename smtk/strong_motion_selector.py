@@ -21,6 +21,7 @@
 Strong motion record selection tools
 """
 import numpy as np
+from datetime import datetime
 from copy import deepcopy
 from collections import OrderedDict
 from openquake.hazardlib.geo.mesh import Mesh

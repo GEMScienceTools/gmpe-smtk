@@ -30,7 +30,7 @@ import cPickle
 import smtk.intensity_measures as ims
 import smtk.sm_utils as utils
 from smtk.parsers.base_database_parser import get_float 
-SCALAR_LIST = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia", "D5-95"]
+SCALAR_LIST = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia", "D5-95", "Housner"]
 
 def _get_fieldnames_from_csv(reader):
     """
@@ -452,7 +452,7 @@ def add_recursive_nameset(fle, string):
             current_level = "/".join([current_level, new_level])
 
 
-SCALAR_IMS = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia"]
+SCALAR_IMS = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia", "T90", "Housner"]
 
 SPECTRAL_IMS = ["Geometric", "Arithmetic", "Envelope", "Larger PGA"]
 
