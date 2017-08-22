@@ -30,6 +30,7 @@ from openquake.hazardlib.gsim.base import (SitesContext, DistancesContext,
 from openquake.hazardlib.site import Site, SiteCollection
 from openquake.hazardlib.geo.point import Point
 from smtk.trellis.configure import vs30_to_z1pt0_as08, z1pt0_to_z2pt5
+from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 
 class Magnitude(object):
     """
@@ -528,6 +529,24 @@ class RecordSite(object):
         return None
 
 
+    def vs30_from_ec8(self):
+        """
+        Returns an approximation of Vs30 given an EC8 site class (e.g. for the case
+        when Vs30 is not measured but the site class is given).
+        """
+        if self.ec8 == 'A':
+            return 900
+        if self.ec8 == 'B':
+            return 580
+        if self.ec8 == 'C':
+            return 220
+        if self.ec8 == 'D':
+            return 100
+        if self.ec8 == 'E':
+            return 100
+        else:
+            print "Cannot determine Vs30 from EC8 site class"
+
 Filter = {'Type': None,
           'Order': None,
           'Passes': None,
@@ -775,8 +794,12 @@ class GroundMotionDatabase(object):
                 vs30_measured.append(rup.site.vs30_measured)
             if rup.site.z1pt0 is not None:
                 z1pt0.append(rup.site.z1pt0)
+            else:
+                z1pt0.append(vs30_to_z1pt0_cy14(rup.site.vs30))
             if rup.site.z2pt5 is not None:
                 z2pt5.append(rup.site.z2pt5)
+            else:
+                z2pt5.append(vs30_to_z2pt5_cb14(rup.site.vs30))
             if ("backarc" in dir(rup.site)) and rup.site.backarc is not None:
                 backarc.append(rup.site.backarc)
         setattr(sctx, 'vs30', np.array(vs30))
@@ -872,22 +895,15 @@ class GroundMotionDatabase(object):
             setattr(rctx, 'rake',
                 rup.event.mechanism.nodal_planes.nodal_plane_2['rake'])
         else:
-            setattr(rctx, 'strike',
-                rup.event.mechanism.nodal_planes.nodal_plane_1['strike'])
-            setattr(rctx, 'dip',
-                rup.event.mechanism.nodal_planes.nodal_plane_1['dip'])
-            setattr(rctx, 'rake',
-                rup.event.mechanism.nodal_planes.nodal_plane_1['rake'])
-        if not rctx.strike:
             setattr(rctx, 'strike', 0.0)
-        if not rctx.dip:
             setattr(rctx, 'dip', 90.0)
-        if not rctx.rake:
             rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
         if rup.event.rupture:
             setattr(rctx, 'ztor', rup.event.rupture.depth)
             setattr(rctx, 'width', rup.event.rupture.width)
             setattr(rctx, 'hypo_loc', rup.event.rupture.hypo_loc)
+        else:
+            setattr(rctx, 'ztor', 0.0)
         setattr(rctx, 'hypo_depth', rup.event.depth)
         setattr(rctx, 'hypo_lat', rup.event.latitude)
         setattr(rctx, 'hypo_lon', rup.event.longitude)
