@@ -903,7 +903,7 @@ class GroundMotionDatabase(object):
             setattr(rctx, 'width', rup.event.rupture.surface.width)
             #setattr(rctx, 'hypo_loc', rup.event.rupture.surface.get_hypo_location(1000))
         else:
-            setattr(rctx, 'ztor', rup.event.rupture.hypocenter)
+            setattr(rctx, 'ztor', rup.event.depth)
         setattr(rctx, 'hypo_depth', rup.event.depth)
         setattr(rctx, 'hypo_lat', rup.event.latitude)
         setattr(rctx, 'hypo_lon', rup.event.longitude)
