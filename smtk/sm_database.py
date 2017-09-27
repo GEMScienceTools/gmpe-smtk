@@ -901,7 +901,7 @@ class GroundMotionDatabase(object):
         if rup.event.rupture:
             setattr(rctx, 'ztor', rup.event.rupture.surface.get_top_edge_depth())
             setattr(rctx, 'width', rup.event.rupture.surface.width)
-            #setattr(rctx, 'hypo_loc', rup.event.rupture.surface.get_hypo_location(1000))
+            setattr(rctx, 'hypo_loc', rup.event.rupture.surface.get_hypo_location(1000))
         else:
             setattr(rctx, 'ztor', rup.event.depth)
         setattr(rctx, 'hypo_depth', rup.event.depth)
