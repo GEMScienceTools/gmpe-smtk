@@ -290,10 +290,14 @@ class Residuals(object):
             self.unique_indices[gmpe] = {}
             # Get the period range and the coefficient types
             gmpe_i = GSIM_LIST[gmpe]()
-            pers = [sa.period for sa in gmpe_i.COEFFS.sa_coeffs]
+            for c in dir(gmpe_i):
+                if 'COEFFS' in c:
+                    pers = [sa.period for sa in getattr(gmpe_i,c).sa_coeffs]
             min_per, max_per = (min(pers), max(pers))
             self.gmpe_sa_limits[gmpe] = (min_per, max_per)
-            self.gmpe_scalars[gmpe] = gmpe_i.COEFFS.non_sa_coeffs.keys()
+            for c in dir(gmpe_i):
+                if 'COEFFS' in c:
+                    self.gmpe_scalars[gmpe] = getattr(gmpe_i,c).non_sa_coeffs.keys()
             for imtx in self.imts:
                 if "SA(" in imtx:
                     period = imt.from_string(imtx).period

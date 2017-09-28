@@ -115,7 +115,7 @@ def _get_xyz_metadata(file_dict):
             file_dict["Time-Series"]["Z"])
     return metadata
 
-ESMD_MECHANISM_TYPE = {"NF": -90., "SS": 0.0, "TF": 90.0, "U": 0.0}
+ESMD_MECHANISM_TYPE = {"NF": -90., "SS": 180.0, "TF": 90.0, "U": 0.0}
 DATA_TYPE_KEYS = {
     "ACCELERATION": "PGA_",
     "VELOCITY": "PGV_",
