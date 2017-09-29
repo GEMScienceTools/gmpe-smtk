@@ -695,6 +695,82 @@ class LLH(Residuals):
             )
         return llh, model_weights
 
+
+class MultivariateLLH(Residuals):
+    """
+    Multivariate formulation of the LLH function as proposed by Mak et al.
+    (2016)
+    """
+    def get_likelihood_values(self, sum_imts=False):
+        """
+        Calculates the multivariate LLH to return a 
+        """
+        multi_llh_values = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
+        # Get number of events and records
+        neqs = len(self.contexts)
+        nrecs = sum([ctxt["Num. Sites"] for ctxt in self.contexts])
+        # Get observations
+        observations = np.zeros([nrecs, len(self.imts)])
+        i = 0
+        for ctxt in self.contexts:
+            n_s = ctxt["Num. Sites"]
+            for j, imt in enumerate(self.imts):
+                observations[i:(i + n_s), j] = ctxt["Observations"][imt]
+            i += n_s
+        observations = np.log(observations)
+        for gmpe in self.gmpe_list:
+            for j, imt in enumerate(self.imts):
+                v_mat, expected_mat = self._build_matrices(gmpe, imt,
+                                                           neqs, nrecs)
+                sign, logdetv = np.linalg.slogdet(v_mat)
+                b_mat = observations[:, j] - expected_mat
+                multi_llh_values[gmpe][imt] = -float(nrecs) * \
+                    np.log(2.0 * np.pi) / 2. - (logdetv / 2.) -\
+                    (b_mat.T.dot(solve(v_mat, b_mat)) / 2.)
+            if sum_imts:
+                total_llh = 0.0
+                for imt in self.imts:
+                    total_llh += multi_llh_values[gmpe][imt]
+                multi_llh_values[gmpe] = total_llh
+        return multi_llh_values
+
+    def _build_matrices(self, gmpe, imt, neqs, nrecs):
+        """
+        Constructs the R and Z_G matrices (based on the implementation
+        in the supplement to Mak et al (2016)
+        """
+        r_mat = np.zeros(nrecs, dtype=float)
+        z_g_mat = np.zeros([nrecs, neqs], dtype=float)
+        expected_mat = np.zeros(nrecs, dtype=float)
+        i = 0 
+        for j, ctxt in enumerate(self.contexts):
+            if not("Intra event" in ctxt["Expected"][gmpe][imt]) and
+                not("Inter event" in ctxt["Expected"][gmpe[imt]]):
+                # Only the total sigma exists
+                # Total sigma is used as intra-event sigma (from S. Mak)
+                n_r = len(ctxt["Expected"][gmpe][imt]["Total"])
+                r_mat[i:(i + n_r)] = ctxt["Expected"][gmpe][imt]["Total"]
+                # Inter-event sigma is set to 0
+                i += n_r
+                continue
+            n_r = len(ctxt["Expected"][gmpe][imt]["Intra event"])
+            r_mat[i:(i + n_r)] = ctxt["Expected"][gmpe][imt]["Intra event"]
+            # Get expected mean
+            expected_mat[i:(i + n_r)] = ctxt["Expected"][gmpe][imt]["Mean"]
+            if len(ctxt["Expected"][gmpe][imt]["Inter event"]) == 1:
+                # Single inter event residual
+                z_g_mat[i:(i + n_r), j] =\
+                    ctxt["Expected"][gmpe][imt]["Inter event"][0]
+            else:
+                # inter-event residual given at a vector
+                z_g_mat[i:(i + n_r), j] =\
+                    ctxt["Expected"][gmpe][imt]["Inter event"]
+            i += n_r
+        
+        v_mat = np.diag(r_mat ** 2.) + z_g_mat.dot(z_g_mat.T)
+        return v_mat, expected_mat
+
+
 class EDR(Residuals):
     """
     Implements the Euclidean Distance-Based Ranking Method for GMPE selection

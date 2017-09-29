@@ -546,6 +546,8 @@ class GSIMRupture(object):
         # Azimuth - ignored at present
         setattr(dctx, 'azimuth', None)
         setattr(dctx, 'hanging_wall', None)
+        # Rvolc
+        setattr(dctx, "rvolc", np.zeros_like(self.target_sites.mesh.lons))
         # Sites
         sctx = SitesContext()
         key_list = ['_vs30', '_vs30measured', '_z1pt0', '_z2pt5', '_backarc']
