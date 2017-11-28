@@ -362,6 +362,18 @@ class SMRecordSelector(object):
                 idx.append(iloc)
         return self.select_records(idx, as_db)
 
+    def select_trt_type(self, trt_type, as_db=False):
+        """
+        Select records based on tectonic region type
+        :param str trt_type:
+            Tectonic Region
+        """
+        idx = []
+        for iloc, record in enumerate(self.database.records):
+            if record.event.tectonic_region == trt_type:
+                idx.append(iloc)
+        return self.select_records(idx, as_db)
+
     def select_event_country(self, country, as_db=False):
         """
         Select records corresponding to events within a specific country

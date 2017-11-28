@@ -230,7 +230,6 @@ def z1pt0_to_z2pt5(z1pt0):
     """
     return 0.519 + 3.595 * (z1pt0 / 1000.)
 
-
 def vs30_to_z1pt0_cy14(vs30, japan=False):
     """
     Returns the estimate depth to the 1.0 km/s velocity layer based on Vs30
@@ -246,12 +245,11 @@ def vs30_to_z1pt0_cy14(vs30, japan=False):
     if japan:
         c1 = 412. ** 2.
         c2 = 1360.0 ** 2.
-        return np.exp((-5.23 / 2.0) * np.log((vs30 ** 2. + c1) / (c2 + c1)))
+        return np.exp((-5.23 / 2.0) * np.log((np.power(vs30,2.) + c1) / (c2 + c1)))
     else:
         c1 = 571 ** 4.
         c2 = 1360.0 ** 4.
         return np.exp((-7.15 / 4.0) * np.log((vs30 ** 4. + c1) / (c2 + c1)))
-
 
 def vs30_to_z2pt5_cb14(vs30, japan=False):
     """

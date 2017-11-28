@@ -115,7 +115,7 @@ def _get_xyz_metadata(file_dict):
             file_dict["Time-Series"]["Z"])
     return metadata
 
-ESMD_MECHANISM_TYPE = {"NF": -90., "SS": 0.0, "TF": 90.0, "U": 0.0}
+ESMD_MECHANISM_TYPE = {"NF": -90., "SS": 180.0, "TF": 90.0, "U": 0.0}
 DATA_TYPE_KEYS = {
     "ACCELERATION": "PGA_",
     "VELOCITY": "PGV_",
@@ -151,7 +151,7 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
         with a particular recording into a dictionary
         """
         skip_files = []
-        for file_str in os.listdir(self.filename):
+        for file_str in sorted(os.listdir(self.filename)):
             if (file_str in skip_files) or ("ds_store" in file_str.lower()) or\
                 ("DIS.ASC" in file_str[-7:]) or ("VEL.ASC" in file_str[-7:]):
                 continue
@@ -159,7 +159,6 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
                          "PSV": {"X": None, "Y": None, "Z": None},
                          "SA": {"X": None, "Y": None, "Z": None},
                          "SD": {"X": None, "Y": None, "Z": None}}
-
 
             file_info = _get_filename_info(file_str)
             code1 = ".".join([file_info[key] for key in ["Net", "Station",
@@ -181,17 +180,17 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
                     skip_files.append(os.path.split(test_filename)[-1])
                     # Get SA, SD and PSV
                     # SA - x-component
-                    sa_filename = test_filename.replace("ACC", "SA")
+                    sa_filename = 'SA'.join(test_filename.rsplit('ACC', 1))
                     if os.path.exists(sa_filename):
                         file_dict["SA"]["X"] = sa_filename
                         skip_files.append(os.path.split(sa_filename)[-1])
                     # SD - x-component
-                    sd_filename = test_filename.replace("ACC", "SD")
+                    sd_filename = 'SD'.join(test_filename.rsplit('ACC', 1))
                     if os.path.exists(sd_filename):
                         file_dict["SD"]["X"] = sd_filename
                         skip_files.append(os.path.split(sd_filename)[-1])
                     # PSV - x-component
-                    psv_filename = test_filename.replace("ACC", "PSV")
+                    psv_filename = 'PSV'.join(test_filename.rsplit('ACC', 1))
                     if os.path.exists(psv_filename):
                         file_dict["PSV"]["X"] = psv_filename
                         skip_files.append(os.path.split(psv_filename)[-1])
@@ -203,19 +202,19 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
                             file_dict["Time-Series"]["Y"] = y_filename
                             skip_files.append(os.path.split(y_filename)[-1])
                             # SA
-                            sa_filename = y_filename.replace("ACC", "SA")
+                            sa_filename = 'SA'.join(y_filename.rsplit('ACC', 1))
                             if os.path.exists(sa_filename):
                                 file_dict["SA"]["Y"] = sa_filename
                                 skip_files.append(
                                     os.path.split(sa_filename)[-1])
                             # SD
-                            sd_filename = y_filename.replace("ACC", "SD")
+                            sd_filename = 'SD'.join(y_filename.rsplit('ACC', 1))
                             if os.path.exists(sd_filename):
                                 file_dict["SD"]["Y"] = sd_filename
                                 skip_files.append(
                                     os.path.split(sd_filename)[-1])
                             # PSV
-                            psv_filename = y_filename.replace("ACC", "PSV")
+                            psv_filename = 'PSV'.join(y_filename.rsplit('ACC', 1))
                             if os.path.exists(psv_filename):
                                 file_dict["PSV"]["Y"] = psv_filename
                                 skip_files.append(
@@ -228,17 +227,17 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
                         file_dict["Time-Series"]["Z"] = v_filename
                         skip_files.append(os.path.split(v_filename)[-1])
                         # Get SA 
-                        sa_filename = v_filename.replace("ACC", "SA")
+                        sa_filename = 'SA'.join(v_filename.rsplit('ACC', 1))
                         if os.path.exists(sa_filename):
                             file_dict["SA"]["Z"] = sa_filename
                             skip_files.append(os.path.split(sa_filename)[-1])
                         # Get SD
-                        sd_filename = v_filename.replace("ACC", "SD")
+                        sd_filename = 'SD'.join(v_filename.rsplit('ACC', 1))
                         if os.path.exists(sd_filename):
                             file_dict["SD"]["Z"] = sd_filename
                             skip_files.append(os.path.split(sd_filename)[-1])
                         # Get PSV
-                        psv_filename = v_filename.replace("ACC", "PSV")
+                        psv_filename = 'PSV'.join(v_filename.rsplit('ACC', 1))
                         if os.path.exists(psv_filename):
                             file_dict["PSV"]["Z"] = psv_filename
                             skip_files.append(os.path.split(psv_filename)[-1])
@@ -320,8 +319,12 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
         else:
             raise ValueError("Record %s has no magnitude!" % file_str)
         # Get focal mechanism data - here only the general type is reported
-        foc_mech = FocalMechanism(eq_id, eq_name, None, None,
-            mechanism_type=ESMD_MECHANISM_TYPE[metadata["FOCAL_MECHANISM"]])
+        if metadata["FOCAL_MECHANISM"]:
+            foc_mech = FocalMechanism(eq_id, eq_name, None, None,
+                mechanism_type=ESMD_MECHANISM_TYPE[metadata["FOCAL_MECHANISM"]])
+        else:
+            foc_mech = FocalMechanism(eq_id, eq_name, None, None,
+                mechanism_type=None)
         # Build event
         eqk = Earthquake(eq_id, eq_name, eq_datetime,
             _to_float(metadata["EVENT_LONGITUDE_DEGREE"]),
@@ -360,20 +363,21 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
             metadata["STATION_NAME"],
             _to_float(metadata["STATION_LONGITUDE_DEGREE"]),
             _to_float(metadata["STATION_LATITUDE_DEGREE"]),
-            _to_float(metadata["STATION_ELEVATION_M"]),
-            vs30=_to_float(metadata["VS30_M/S"]))
+            _to_float(metadata["STATION_ELEVATION_M"]))
         site.morphology = metadata["MORPHOLOGIC_CLASSIFICATION"]
-        if metadata["SITE_CLASSIFICATION_EC8"]:
-            if "*" in metadata["SITE_CLASSIFICATION_EC8"]:
-                site.ec8 = metadata["SITE_CLASSIFICATION_EC8"][:-1]
-                site.vs30_measured = False
-            else:
-                site.ec8 = metadata["SITE_CLASSIFICATION_EC8"]
-        elif site.vs30:
+        # Vs30 was measured
+        if metadata["VS30_M/S"]:
+            site.vs30=_to_float(metadata["VS30_M/S"])
             site.ec8 = site.get_ec8_class()
             site.nehrp = site.get_nehrp_class()
+            site.vs30_measured = True
+        # Only an estimate of site class is provided
+        elif metadata["SITE_CLASSIFICATION_EC8"]:
+            site.ec8 = metadata["SITE_CLASSIFICATION_EC8"][:-1]
+            site.vs30=site.vs30_from_ec8()
+            site.vs30_measured = False
         else:
-            pass
+            print 'Station %s has no information about site class or Vs30' % metadata["STATION_CODE"]
         return site   
             
     def _parse_processing_data(self, wfid, metadata):
