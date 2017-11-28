@@ -840,7 +840,7 @@ class GroundMotionDatabase(object):
                 azimuth.append(rup.distance.azimuth)
             if rup.distance.hanging_wall is not None:
                 hanging_wall.append(rup.distance.hanging_wall)
-            if ("rvolc" in dir(rup.distance) and\
+            if "rvolc" in dir(rup.distance) and\
                 rup.distance.rvolc is not None:
                 rvolc.append(rup.distance.rvolc)
 

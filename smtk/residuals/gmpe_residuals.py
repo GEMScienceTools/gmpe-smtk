@@ -29,11 +29,14 @@ import sys
 import re, os
 import h5py
 import numpy as np
+from datetime import datetime
 from math import sqrt, ceil
 from scipy.special import erf
-from scipy.stats import scoreatpercentile, norm
+from scipy.stats import scoreatpercentile, norm, multivariate_normal
+from scipy.linalg import solve
 from copy import deepcopy
 from collections import OrderedDict
+from openquake.baselib import parallel
 from openquake.hazardlib.gsim import get_available_gsims
 from openquake.hazardlib.gsim.gsim_table import GMPETable
 import smtk.intensity_measures as ims
@@ -696,10 +699,95 @@ class LLH(Residuals):
         return llh, model_weights
 
 
+def _build_matrices(contexts, gmpe, imt):
+    """
+    Constructs the R and Z_G matrices (based on the implementation
+    in the supplement to Mak et al (2017)
+    """
+    neqs = len(contexts)
+    nrecs = sum([ctxt["Num. Sites"] for ctxt in contexts])
+
+    r_mat = np.zeros(nrecs, dtype=float)
+    z_g_mat = np.zeros([nrecs, neqs], dtype=float)
+    expected_mat = np.zeros(nrecs, dtype=float)
+    # Get observations
+    observations = np.zeros(nrecs)
+    i = 0
+    # Determine the total number of records and pass the log of the
+    # obserations to the observations dictionary
+    for ctxt in contexts:
+        n_s = ctxt["Num. Sites"]
+        observations[i:(i + n_s)] = np.log(ctxt["Observations"][imt])
+        i += n_s
+
+    i = 0 
+    for j, ctxt in enumerate(contexts):
+        if not("Intra event" in ctxt["Expected"][gmpe][imt]) and\
+            not("Inter event" in ctxt["Expected"][gmpe][imt]):
+            # Only the total sigma exists
+            # Total sigma is used as intra-event sigma (from S. Mak)
+            n_r = len(ctxt["Expected"][gmpe][imt]["Total"])
+            r_mat[i:(i + n_r)] = ctxt["Expected"][gmpe][imt]["Total"]
+            expected_mat[i:(i + n_r)] = ctxt["Expected"][gmpe][imt]["Mean"]
+            # Inter-event sigma is set to 0
+            i += n_r
+            continue
+        n_r = len(ctxt["Expected"][gmpe][imt]["Intra event"])
+        r_mat[i:(i + n_r)] = ctxt["Expected"][gmpe][imt]["Intra event"]
+        # Get expected mean
+        expected_mat[i:(i + n_r)] = ctxt["Expected"][gmpe][imt]["Mean"]
+        if len(ctxt["Expected"][gmpe][imt]["Inter event"]) == 1:
+            # Single inter event residual
+            z_g_mat[i:(i + n_r), j] =\
+                ctxt["Expected"][gmpe][imt]["Inter event"][0]
+        else:
+            # inter-event residual given at a vector
+            z_g_mat[i:(i + n_r), j] =\
+                ctxt["Expected"][gmpe][imt]["Inter event"]
+        i += n_r
+    
+    v_mat = np.diag(r_mat ** 2.) + z_g_mat.dot(z_g_mat.T)
+    return observations, v_mat, expected_mat, neqs, nrecs
+
+
+def get_multivariate_ll(contexts, gmpe, imt):
+    """
+    Returns the multivariate loglikelihood, as described om equation 7 of
+    Mak et al. (2017)
+    """ 
+    observations, v_mat, expected_mat, neqs, nrecs = _build_matrices(
+        contexts, gmpe, imt)
+    sign, logdetv = np.linalg.slogdet(v_mat)
+    b_mat = observations - expected_mat
+    return (float(nrecs) * np.log(2.0 * np.pi) + logdetv +
+            (b_mat.T.dot(solve(v_mat, b_mat)))) / 2.
+
+
+def bootstrap_llh(ij, contexts, gmpes, imts):
+    """
+    Applyies the cluster bootstrap. A set of events, equal in length to that
+    of the original data, is sampled randomly from the list of contexts. All of
+    the sigmas for that specific event are transfered to the sample
+    """
+    # Sample contexts
+    timer_on = datetime.now()
+    print(ij)
+    neqs = len(contexts)
+    isamp = np.random.randint(0, neqs, neqs)
+    new_contexts = [contexts[i] for i in isamp]
+    outputs = np.zeros([len(gmpes), len(imts)])
+    for i, gmpe in enumerate(gmpes):
+        for j, imt in enumerate(imts):
+            outputs[i, j] = get_multivariate_ll(new_contexts, gmpe, imt)
+    print("Bootstrap completed in {:.2f} seconds".format(
+        (datetime.now() - timer_on).total_seconds()))
+    return outputs
+
+
 class MultivariateLLH(Residuals):
     """
     Multivariate formulation of the LLH function as proposed by Mak et al.
-    (2016)
+    (2017)
     """
     def get_likelihood_values(self, sum_imts=False):
         """
@@ -707,68 +795,99 @@ class MultivariateLLH(Residuals):
         """
         multi_llh_values = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
         # Get number of events and records
-        neqs = len(self.contexts)
-        nrecs = sum([ctxt["Num. Sites"] for ctxt in self.contexts])
-        # Get observations
-        observations = np.zeros([nrecs, len(self.imts)])
-        i = 0
-        for ctxt in self.contexts:
-            n_s = ctxt["Num. Sites"]
-            for j, imt in enumerate(self.imts):
-                observations[i:(i + n_s), j] = ctxt["Observations"][imt]
-            i += n_s
-        observations = np.log(observations)
         for gmpe in self.gmpe_list:
+            print("GMPE = {:s}".format(gmpe))
             for j, imt in enumerate(self.imts):
-                v_mat, expected_mat = self._build_matrices(gmpe, imt,
-                                                           neqs, nrecs)
-                sign, logdetv = np.linalg.slogdet(v_mat)
-                b_mat = observations[:, j] - expected_mat
-                multi_llh_values[gmpe][imt] = -float(nrecs) * \
-                    np.log(2.0 * np.pi) / 2. - (logdetv / 2.) -\
-                    (b_mat.T.dot(solve(v_mat, b_mat)) / 2.)
+                if self.residuals[gmpe][imt] is None:
+                    # IMT missing for this GMPE
+                    multi_llh_values[gmpe][imt] = 0.0
+                else:
+                    multi_llh_values[gmpe][imt] = get_multivariate_ll(
+                        self.contexts, gmpe, imt)
             if sum_imts:
                 total_llh = 0.0
                 for imt in self.imts:
+                    if np.isnan(multi_llh_values[gmpe][imt]):
+                        continue
                     total_llh += multi_llh_values[gmpe][imt]
                 multi_llh_values[gmpe] = total_llh
         return multi_llh_values
 
-    def _build_matrices(self, gmpe, imt, neqs, nrecs):
+    def bootstrap_likelihood_values(self, number_bootstraps, sum_imts=False,
+                                    parallelize=False, concurrent_tasks=8):
         """
-        Constructs the R and Z_G matrices (based on the implementation
-        in the supplement to Mak et al (2016)
+        Bootstrap the analysis using cluster sampling. OpenQuake's :class:
+        `openquake.baselib.parallel.Starmap` utility is invoked to parallelise
+        the calculations by bootstrap
         """
-        r_mat = np.zeros(nrecs, dtype=float)
-        z_g_mat = np.zeros([nrecs, neqs], dtype=float)
-        expected_mat = np.zeros(nrecs, dtype=float)
-        i = 0 
-        for j, ctxt in enumerate(self.contexts):
-            if not("Intra event" in ctxt["Expected"][gmpe][imt]) and
-                not("Inter event" in ctxt["Expected"][gmpe[imt]]):
-                # Only the total sigma exists
-                # Total sigma is used as intra-event sigma (from S. Mak)
-                n_r = len(ctxt["Expected"][gmpe][imt]["Total"])
-                r_mat[i:(i + n_r)] = ctxt["Expected"][gmpe][imt]["Total"]
-                # Inter-event sigma is set to 0
-                i += n_r
-                continue
-            n_r = len(ctxt["Expected"][gmpe][imt]["Intra event"])
-            r_mat[i:(i + n_r)] = ctxt["Expected"][gmpe][imt]["Intra event"]
-            # Get expected mean
-            expected_mat[i:(i + n_r)] = ctxt["Expected"][gmpe][imt]["Mean"]
-            if len(ctxt["Expected"][gmpe][imt]["Inter event"]) == 1:
-                # Single inter event residual
-                z_g_mat[i:(i + n_r), j] =\
-                    ctxt["Expected"][gmpe][imt]["Inter event"][0]
-            else:
-                # inter-event residual given at a vector
-                z_g_mat[i:(i + n_r), j] =\
-                    ctxt["Expected"][gmpe][imt]["Inter event"]
-            i += n_r
-        
-        v_mat = np.diag(r_mat ** 2.) + z_g_mat.dot(z_g_mat.T)
-        return v_mat, expected_mat
+        # Setup multivariate log-likelihood dict
+        multi_llh_values = []
+        nmods = []
+        for i, gmpe in enumerate(self.gmpe_list):
+            for j, imt in enumerate(self.imts):
+                nmods.append((i, j))
+                multi_llh_values.append((gmpe, imt))
+                #nmods += 1
+        outputs = np.zeros([len(self.gmpe_list), len(self.imts),
+                            number_bootstraps])
+        if parallelize:
+            raise NotImplementedError("Parellelisation not turned on yet!")
+#            results = parallel.Starmap.apply(
+#                bootstrap_llh,
+#                (np.arange(0, number_bootstraps),
+#                 self.contexts, self.gmpe_list, self.imts),
+#                 concurrent_tasks=concurrent_tasks).reduce()
+#            print results
+#            for j, result in enumerate(results):
+#                print(result)
+#                outputs[:, :, j] = result
+        else:
+            for j in range(number_bootstraps):
+                print("Bootstrap {:g} of {:g}".format(j + 1,
+                      number_bootstraps))
+                outputs[:, :, j] = bootstrap_llh(j,
+                                                 self.contexts,
+                                                 self.gmpe_list,
+                                                 self.imts)
+                    
+        distinctiveness = self.get_distinctiveness(outputs,
+                                                   number_bootstraps,
+                                                   sum_imts)
+        return distinctiveness, outputs
+    
+    def get_distinctiveness(self, outputs, number_bootstraps, sum_imts):
+        """
+        Return the distinctiveness index as described in equation 9 of Mak
+        et al. (2017)
+        """
+        ngmpes = len(self.gmpe_list)
+        nbs = float(number_bootstraps)
+        nimts = float(len(self.imts))
+        if sum_imts:
+            distinctiveness = np.zeros([ngmpes, ngmpes])
+            # Get only one index for each GMPE
+            for i, gmpe in enumerate(self.gmpe_list):
+                for j, gmpe in enumerate(self.gmpe_list):
+                    if i == j:
+                        continue
+                    data_i = outputs[i, :, :]
+                    data_j = outputs[j, :, :]
+                    distinctiveness[i, j] = float(np.sum(data_i < data_j) -
+                        np.sum(data_j < data_i)) / (nbs * nimts)
+            return distinctiveness
+        else:
+            distinctiveness = np.zeros([ngmpes, ngmpes, len(self.imts)])
+            for i, gmpe in enumerate(self.gmpe_list):
+                for j, gmpe in enumerate(self.gmpe_list):
+                    if i == j:
+                        continue
+                    for k in range(len(self.imts)):
+                        data_i = outputs[i, k, :]
+                        data_j = outputs[j, k, :]
+                        distinctiveness[i, j, k] =\
+                            float(np.sum(data_i < data_j) -
+                                  np.sum(data_j < data_i)) / nbs
+        return distinctiveness
 
 
 class EDR(Residuals):
