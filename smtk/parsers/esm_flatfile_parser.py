@@ -112,9 +112,6 @@ class ESMFlatfileParser(SMDatabaseReader):
         self.database = GroundMotionDatabase(self.id, self.name)
         counter = 0
         for row in reader:
-            #if (counter % 1) == 0:
-            #    print("Processed record %s - %s" % (str(counter),
-            #                                        row["event_id"]))
             if self._sanitise(row, reader):
                 # Build the metadata
                 record = self._parse_record(row)
@@ -155,7 +152,7 @@ class ESMFlatfileParser(SMDatabaseReader):
         metadata_file = os.path.join(output_location, "metadatafile.pkl")
         f = open(metadata_file, "w+")
         print("Storing metadata to file %s" % metadata_file)
-        cPickle.dump(database, f)
+        cPickle.dump(database.database, f)
         f.close()
         return database
     
@@ -264,11 +261,38 @@ class ESMFlatfileParser(SMDatabaseReader):
             mechanism = FocalMechanism(
                 eq_id, eq_name, GCMTNodalPlanes(), None,
                 mechanism_type=MECHANISM_TYPE[sof])
-            mechanism.nodal_planes.nodal_plane_1 = {
-                "strike": 0.0,  # Basically unused
-                "dip": DIP_TYPE[sof],
-                "rake": MECHANISM_TYPE[sof]
-                }
+            # See if focal mechanism exists
+            fm_set = []
+            for key in ["strike_1", "dip_1", "rake_1"]:
+                if key in metadata:
+                    fm_param = valid.vfloat(metadata[key], key)
+                    if fm_param is not None:
+                        fm_set.append(fm_param)
+            if len(fm_set) == 3:
+                # Have one valid focal mechanism
+                mechanism.nodal_planes.nodal_plane_1 = {"strike": fm_set[0],
+                                                        "dip": fm_set[1],
+                                                        "rake": fm_set[2]}
+            fm_set = []
+            for key in ["strike_2", "dip_2", "rake_2"]:
+                if key in metadata:
+                    fm_param = valid.vfloat(metadata[key], key)
+                    if fm_param is not None:
+                        fm_set.append(fm_param)
+            if len(fm_set) == 3:
+                # Have one valid focal mechanism
+                mechanism.nodal_planes.nodal_plane_2 = {"strike": fm_set[0],
+                                                        "dip": fm_set[1],
+                                                        "rake": fm_set[2]}
+
+            if not mechanism.nodal_planes.nodal_plane_1 and not\
+                mechanism.nodal_planes.nodal_plane_2:
+                # Absolutely no information - base on stye-of-faulting
+                mechanism.nodal_planes.nodal_plane_1 = {
+                    "strike": 0.0,  # Basically unused
+                    "dip": DIP_TYPE[sof],
+                    "rake": MECHANISM_TYPE[sof]
+                    }
             return rupture, mechanism
         #print(metadata["es_strike"], metadata["es_dip"], metadata["es_rake"])
         strike = valid.strike(metadata["es_strike"])

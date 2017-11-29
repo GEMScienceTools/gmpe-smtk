@@ -311,7 +311,7 @@ class RecordDistance(object):
         average DPP used
     """
     def __init__(self, repi, rhypo, rjb=None, rrup=None, r_x=None, ry0=None,
-                 flag=None, rcdpp=None):
+                 flag=None, rcdpp=None, rvolc=None):
         """
         Instantiates class
         """
@@ -325,6 +325,7 @@ class RecordDistance(object):
         self.flag = flag
         self.hanging_wall = None
         self.rcdpp = rcdpp
+        self.rvolc = rvolc
 
 # Eurocode 8 Site Class Vs30 boundaries
 EC8_VS30_BOUNDARIES = {
@@ -833,6 +834,7 @@ class GroundMotionDatabase(object):
         rcdpp = []
         azimuth = []
         hanging_wall = []
+        rvolc = []
         for idx_j in idx:
             # Distance parameters
             rup = self.records[idx_j]
@@ -854,12 +856,16 @@ class GroundMotionDatabase(object):
                 r_x.append(rup.distance.repi)
             if ("ry0" in dir(rup.distance)) and rup.distance.ry0 is not None:
                 ry0.append(rup.distance.ry0)
-            if ("rcdpp" in dir(rup.distance)) and rup.distance.rcdpp is not None:
+            if ("rcdpp" in dir(rup.distance)) and\
+                rup.distance.rcdpp is not None:
                 rcdpp.append(rup.distance.rcdpp)
             if rup.distance.azimuth is not None:
                 azimuth.append(rup.distance.azimuth)
             if rup.distance.hanging_wall is not None:
                 hanging_wall.append(rup.distance.hanging_wall)
+            if "rvolc" in dir(rup.distance) and\
+                rup.distance.rvolc is not None:
+                rvolc.append(rup.distance.rvolc)
 
         setattr(dctx, 'repi', np.array(repi))
         setattr(dctx, 'rhypo', np.array(rhypo))
@@ -877,6 +883,8 @@ class GroundMotionDatabase(object):
             setattr(dctx, 'azimuth', np.array(azimuth))
         if len(hanging_wall) > 0:
             setattr(dctx, 'hanging_wall', np.array(hanging_wall))
+        if len(rvolc) > 0:
+            setattr(dctx, 'rvolc', np.array(rvolc))
         return dctx
 
     def _get_event_context(self, idx, nodal_plane_index=1):

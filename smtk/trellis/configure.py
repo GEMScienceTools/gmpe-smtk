@@ -28,11 +28,6 @@ from copy import deepcopy
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
-#from openquake.hazardlib.geo.point import Point
-#from openquake.hazardlib.geo.line import Line
-#from openquake.hazardlib.geo.polygon import Polygon
-#from openquake.hazardlib.geo.mesh import Mesh
-#from openquake.hazardlib.geo.surface.planar import PlanarSurface
 from openquake.baselib.slots import with_slots
 from openquake.hazardlib.geo import (Point, Line, Polygon, Mesh,
                                      PlanarSurface, NodalPlane)
@@ -51,6 +46,7 @@ TO_RAD = pi / 180.
 FROM_RAD = 180. / pi
 # Default point - some random location on Earth
 DEFAULT_POINT = Point(45.18333, 9.15, 0.)
+
 
 # This object was original from the OQ-Hazardlib. It has now been removed to
 # a direct copy and paste is found here
@@ -253,10 +249,21 @@ def vs30_to_z1pt0_cy14(vs30, japan=False):
     else:
         c1 = 571 ** 4.
         c2 = 1360.0 ** 4.
-        return np.exp((-7.15 / 4.0) * np.log((np.power(vs30,4.) + c1) / (c2 + c1)))
-        
+        return np.exp((-7.15 / 4.0) * np.log((vs30 ** 4. + c1) / (c2 + c1)))
+
 def vs30_to_z2pt5_cb14(vs30, japan=False):
     """
+    Converts vs30 to depth to 2.5 km/s interface using model proposed by
+    Campbell & Bozorgnia (2014)
+
+    :param vs30:
+        Vs30 values (numpy array or float)
+
+    :param bool japan:
+        Use Japan formula (True) or California formula (False)
+
+    :returns:
+        Z2.5 in km
     """
     if japan:
         return np.exp(5.359 - 1.102 * np.log(vs30))
@@ -264,12 +271,10 @@ def vs30_to_z2pt5_cb14(vs30, japan=False):
         return np.exp(7.089 - 1.144 * np.log(vs30))
 
 
-
-
 def _setup_site_peripherals(azimuth, origin_point, vs30, z1pt0, z2pt5, strike, 
                             surface):
     """
-
+    For a given configuration determine the site periferal values
     """
     if not z1pt0:
         z1pt0 = vs30_to_z1pt0_cy14(vs30)
@@ -287,11 +292,11 @@ def _setup_site_peripherals(azimuth, origin_point, vs30, z1pt0, z2pt5, strike,
 def _rup_to_point(distance, surface, origin, azimuth, distance_type='rjb',
         iter_stop=1E-3, maxiter=1000):
     """
-
+    Place a point at a given distance from a rupture along a specified azimuth
     """
     pt0 = origin
     pt1 = origin.point_at(distance, 0., azimuth)
-    print pt0, pt1
+    #print pt0, pt1
     r_diff = np.inf
     dip = surface.dip
     sin_dip = np.sin(np.radians(dip))
@@ -334,6 +339,7 @@ def _rup_to_point(distance, surface, origin, azimuth, distance_type='rjb',
         iterval += 1
     return pt1
 
+
 class PointAtDistance(object):
     """
     Abstract Base class to implement set of methods for rendering a point at
@@ -344,6 +350,7 @@ class PointAtDistance(object):
             backarc=False):
         """
         """
+        raise NotImplementedError
  
 
 class PointAtRuptureDistance(PointAtDistance):
@@ -431,8 +438,6 @@ class PointAtHypocentralDistance(PointAtDistance):
     """
     Locate a point at a given hypocentral distance from a source
     """
-
-
     def point_at_distance(self, model, distance, vs30, line_azimuth=90., 
             origin_point=(0.5, 0.), vs30measured=True, z1pt0=None, z2pt5=None,
             backarc=False):
@@ -458,18 +463,20 @@ POINT_AT_MAPPING = {'rrup': PointAtRuptureDistance(),
                     'repi': PointAtEpicentralDistance(),
                     'rhypo': PointAtHypocentralDistance()}
 
+
 class GSIMRupture(object):
     """
-    Creates a rupture plane consistent with the properties specified for
-    the trellis plots
-    
+    Defines a rupture plane consistent with the properties specified for
+    the trellis plotting. Also contains methods for configuring the site
+    locations
     """
     def __init__(self, magnitude, dip, aspect, 
                  tectonic_region='Active Shallow Crust' , rake=0., ztor=0., 
                  strike=0., msr=WC1994(), initial_point=DEFAULT_POINT,
                  hypocentre_location=None):
         """
-        Instantiate the rupture
+        Instantiate the rupture - requires a minimum of a magnitude, dip
+        and aspect ratio
         """
         self.magnitude = magnitude
         self.dip = dip
@@ -483,7 +490,8 @@ class GSIMRupture(object):
         # If the top of rupture depth in the initial
         if fabs(self.location.depth - self.ztor) > 1E-9:
             self.location.depth = ztor
-        self.area = msr.get_median_area(self.magnitude, self.rake)
+        self.msr = msr
+        self.area = self.msr.get_median_area(self.magnitude, self.rake)
         self.surface = create_planar_surface(self.location,
                                              self.strike,
                                              self.dip,
@@ -546,6 +554,8 @@ class GSIMRupture(object):
         # Azimuth - ignored at present
         setattr(dctx, 'azimuth', None)
         setattr(dctx, 'hanging_wall', None)
+        # Rvolc
+        setattr(dctx, "rvolc", np.zeros_like(self.target_sites.mesh.lons))
         # Sites
         sctx = SitesContext()
         key_list = ['_vs30', '_vs30measured', '_z1pt0', '_z2pt5', '_backarc']
@@ -810,6 +820,8 @@ class GSIMRupture(object):
 
     def _site_collection_to_mesh(self):
         """
+        Returns a collection of sites as an instance of the :class:
+        `openquake.hazardlib.geo.Mesh`
         """
         if isinstance(self.target_sites, SiteCollection):
             locations = np.array([len(self.target_sites.sites), 3], 

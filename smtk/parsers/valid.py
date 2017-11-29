@@ -50,6 +50,8 @@ def vint(value, key):
     Returns value or None if not possible to calculate
     """
     value = value.strip()
+    if "." in value:
+        value = value.split(".")[0]
     if value:
         try:
             return int(value)
@@ -77,7 +79,7 @@ def longitude(value):
     if not lon:
         return False
     if (lon >= -180.0) and (lon <= 180.0):
-        return True
+        return lon
     print("Longitude %s is outside of range -180 <= lon <= 180" % str(lon))
     return False
 
@@ -90,7 +92,7 @@ def latitude(value):
         print("Latitude is missing")
         return False
     if (lat >= -90.0) and (lat <= 90.0):
-        return True 
+        return lat 
     print("Latitude %s is outside of range -90 <= lat <= 90" % str(lat))
     return False
 

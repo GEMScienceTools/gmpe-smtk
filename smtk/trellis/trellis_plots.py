@@ -38,6 +38,7 @@ from smtk.sm_utils import _save_image, _save_image_tight
 import smtk.trellis.trellis_utils as utils
 from smtk.trellis.configure import GSIMRupture
 
+# Default - defines a 21 color and line-type cycle
 matplotlib.rcParams["axes.prop_cycle"] = \
     cycler(u'color', [u'b', u'g', u'r', u'c', u'm', u'y', u'k',
                       u'b', u'g', u'r', u'c', u'm', u'y', u'k',
@@ -45,8 +46,11 @@ matplotlib.rcParams["axes.prop_cycle"] = \
     cycler(u'linestyle', ["-", "-", "-", "-", "-", "-", "-",
                           "--", "--", "--", "--", "--", "--", "--",
                           "-.", "-.", "-.", "-.", "-.", "-.", "-."])
+
+# Get a list of the available GSIMs
 AVAILABLE_GSIMS = gsim.get_available_gsims()
 
+# Generic dictionary of parameters needed for a trellis calculation
 PARAM_DICT = {'magnitudes': [],
               'distances': [],
               'distance_type': 'rjb',
@@ -59,6 +63,7 @@ PARAM_DICT = {'magnitudes': [],
               'hypo_loc': (0.5, 0.5),
               'msr': WC1994()}
 
+# Defines the plotting units for given intensitiy measure type
 PLOT_UNITS = {'PGA': 'g',
               'PGV': 'cm/s',
               'SA': 'g',
@@ -67,13 +72,16 @@ PLOT_UNITS = {'PGA': 'g',
               'RSD': 's',
               'MMI': ''}
 
+# Verbose label for each given distance type
 DISTANCE_LABEL_MAP = {'repi': 'Epicentral Dist.',
                       'rhypo': 'Hypocentral Dist.',
                       'rjb': 'Joyner-Boore Dist.',
                       'rrup': 'Rupture Dist.',
                       'rx': 'Rx Dist.'}
 
+# Default figure size
 FIG_SIZE = (7, 5)
+
 
 # RESET Axes tick labels
 matplotlib.rc("xtick", labelsize=12)
@@ -81,10 +89,14 @@ matplotlib.rc("ytick", labelsize=12)
 
 def simplify_contexts(rupture):
     """
+    Reduce a rupture to a set of basic openquake context objects
+    :returns:
+        openquake.hazardlib.gsim.base.SitesContext
+        openquake.hazardlib.gsim.base.DistancesContexts
+        openquake.hazardlib.gsim.base.RuptureContext
     """
     sctx, rctx, dctx = rupture.get_gsim_contexts()
     sctx.__dict__.update(rctx.__dict__)
-    #print dctx.__dict__
     for val in dctx.__dict__:
         if getattr(dctx, val) is not None:
             setattr(dctx, val, getattr(dctx, val)[0])
@@ -101,6 +113,7 @@ def _get_gmpe_name(gsim):
         return os.path.splitext(filepath.split("/")[-1])[0]
     else:
         return gsim.__class__.__name__
+
 
 def _check_gsim_list(gsim_list):
     """
@@ -122,6 +135,7 @@ def _check_gsim_list(gsim_list):
         else:
             output_gsims.append(AVAILABLE_GSIMS[gsim]())
     return output_gsims
+
 
 def _get_imts(imts):
     """
@@ -176,6 +190,16 @@ class BaseTrellis(object):
         Type of plot (only used in distance Trellis)
     :param str distance_type:
         Type of source-site distance to be used in distances trellis
+    :param tuple figure_size:
+        Size of figure (passed to Matplotlib pyplot.figure() function)
+    :param tuple xlim:
+        Limits on the x-axis (will apply to all subplot axes)
+    :param tuple ylim:
+        Limits on the y-axis (will apply to all subplot axes)
+    :param float legend_fontsize:
+        Controls the fontsize of the legend (default 14)
+    :param int ncol:
+        Number of columns for the legend (default 1)
     """
 
     def __init__(self, magnitudes, distances, gsims, imts, params,
@@ -189,6 +213,10 @@ class BaseTrellis(object):
         kwargs.setdefault('plot_type', "loglog")
         kwargs.setdefault('distance_type', "rjb")
         kwargs.setdefault('figure_size', FIG_SIZE)
+        kwargs.setdefault('xlim', None)
+        kwargs.setdefault('ylim', None)
+        kwargs.setdefault("legend_fontsize", 14)
+        kwargs.setdefault("ncol", 1)
         self.rupture = rupture
         self.magnitudes = magnitudes
         self.distances = distances
@@ -209,6 +237,10 @@ class BaseTrellis(object):
         self.plot_type = kwargs['plot_type']
         self.distance_type = kwargs['distance_type']
         self.figure_size = kwargs["figure_size"]
+        self.xlim = kwargs["xlim"]
+        self.ylim = kwargs["ylim"]
+        self.legend_fontsize = kwargs["legend_fontsize"]
+        self.ncol = kwargs["ncol"]
         self.create_plot()
 
 
@@ -323,6 +355,8 @@ class BaseTrellis(object):
         kwargs.setdefault('dpi', 300)
         kwargs.setdefault('plot_type', "loglog")
         kwargs.setdefault('distance_type', "rjb")
+        kwargs.setdefault('xlim', None)
+        kwargs.setdefault('ylim', None)
         assert isinstance(rupture, GSIMRupture)
         magnitudes = [rupture.magnitude]
         sctx, rctx, dctx = rupture.get_gsim_contexts()
@@ -350,12 +384,14 @@ class BaseTrellis(object):
 
 class MagnitudeIMTTrellis(BaseTrellis):
     """
-    Class to generate a plots showing the scaling of a set of IMTs with
+    Class to generate plots showing the scaling of a set of IMTs with
     magnitude
     """
     def __init__(self, magnitudes, distances, gsims, imts, params,
             stddevs="Total", **kwargs):
-        """ 
+        """
+        Instantiate with list of magnitude and the corresponding distances
+        given in a dictionary
         """
         for key in distances.keys():
             if isinstance(distances[key], float):
@@ -393,7 +429,9 @@ class MagnitudeIMTTrellis(BaseTrellis):
         lgd = plt.legend(self.lines,
                          self.labels,
                          loc=2,
-                         bbox_to_anchor=(1.05, 1.))
+                         bbox_to_anchor=(1.05, 1.),
+                         fontsize=self.legend_fontsize,
+                         ncol=self.ncol)
         _save_image_tight(fig, lgd, self.filename, self.filetype, self.dpi)
         plt.show()
 
@@ -422,7 +460,13 @@ class MagnitudeIMTTrellis(BaseTrellis):
             self.lines.append(line)
             ax.grid(True)
             #ax.set_title(i_m, fontsize=12)
-            ax.set_xlim(floor(self.magnitudes[0]), ceil(self.magnitudes[-1]))
+            if isinstance(self.xlim, tuple):
+                ax.set_xlim(self.xlim[0], self.xlim[1])
+            else:
+                ax.set_xlim(floor(self.magnitudes[0]),
+                            ceil(self.magnitudes[-1]))
+            if isinstance(self.ylim, tuple):
+                ax.set_ylim(self.ylim[0], self.ylim[1])
             self._set_labels(i_m, ax)
      
     def _set_labels(self, i_m, ax):
@@ -434,7 +478,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
                 units = PLOT_UNITS['SA']
             else:
                 units = PLOT_UNITS[i_m]
-            ax.set_ylabel("Median %s (%s)" % (i_m, units), fontsize=16)
+            ax.set_ylabel("Mean %s (%s)" % (i_m, units), fontsize=16)
         
 
     def get_ground_motion_values(self):
@@ -609,7 +653,13 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
             self.lines.append(line)
             ax.grid(True)
             #ax.set_title(i_m, fontsize=12)
-            ax.set_xlim(floor(self.magnitudes[0]), ceil(self.magnitudes[-1]))
+            if isinstance(self.xlim, tuple):
+                ax.set_xlim(self.xlim[0], self.xlim[1])
+            else:
+                ax.set_xlim(floor(self.magnitudes[0]),
+                            ceil(self.magnitudes[-1]))
+            if isinstance(self.ylim, tuple):
+                ax.set_ylim(self.ylim[0], self.ylim[1])
             self._set_labels(i_m, ax)
     
     def get_ground_motion_values(self):
@@ -692,11 +742,11 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
     Trellis class to generate a plot of the GMPE attenuation with distance
     """
     XLABEL = "%s (km)"
-    YLABEL = "Median %s (%s)"
+    YLABEL = "Mean %s (%s)"
     def __init__(self, magnitudes, distances, gsims, imts, params, 
             stddevs="Total", **kwargs):
         """
-       
+        Instandi 
         """
         if isinstance(magnitudes, float):
             magnitudes = [magnitudes]
@@ -744,7 +794,12 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
             self.lines.append(line)
             ax.grid(True)
             #ax.set_title(i_m, fontsize=12)
-            ax.set_xlim(min_x, max_x)
+            if isinstance(self.xlim, tuple):
+                ax.set_xlim(self.xlim[0], self.xlim[1])
+            else:
+                ax.set_xlim(min_x, max_x)
+            if isinstance(self.ylim, tuple):
+                ax.set_ylim(self.ylim[0], self.ylim[1])  
             self._set_labels(i_m, ax)
 
         
@@ -758,7 +813,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
                 units = PLOT_UNITS['SA']
             else:
                 units = PLOT_UNITS[i_m]
-            ax.set_ylabel("Median %s (%s)" % (i_m, units), fontsize=16)
+            ax.set_ylabel("Mean %s (%s)" % (i_m, units), fontsize=16)
 
     def pretty_print(self, filename=None, sep=","):
         """
@@ -806,8 +861,6 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
         fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
                                      for (key, val) in self.params.items()]))
         
-
-
 
 class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
     """
@@ -913,7 +966,13 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
             ax.grid(True)
             #ax.set_title(i_m, fontsize=12)
             
-            ax.set_xlim(min_x, max_x)
+            if isinstance(self.xlim, tuple):
+                ax.set_xlim(self.xlim[0], self.xlim[1])
+            else:
+                ax.set_xlim(min_x, max_x)
+            if isinstance(self.ylim, tuple):
+                ax.set_ylim(self.ylim[0], self.ylim[1])
+                
             self._set_labels(i_m, ax)
 
         
@@ -935,6 +994,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
         fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
                                      for (key, val) in self.params.items()]))
 
+
 class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
     """
 
@@ -948,37 +1008,6 @@ class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
         super(MagnitudeDistanceSpectraTrellis, self).__init__(magnitudes, 
             distances, gsims, imts, params, stddevs, **kwargs)
     
-#    @classmethod
-#    def from_rupture_model(cls, rupture, magnitudes, distances,
-#                           gsims, imts, stddevs='Total', **kwargs):
-#        """
-#        Constructs the Base Trellis Class from a rupture model
-#        :param rupture:
-#            Rupture as instance of the :class:
-#            smtk.trellis.configure.GSIMRupture
-#        """
-#        kwargs.setdefault('filename', None)
-#        kwargs.setdefault('filetype', "png")
-#        kwargs.setdefault('dpi', 300)
-#        kwargs.setdefault('plot_type', "loglog")
-#        kwargs.setdefault('distance_type', "rjb")
-#        assert isinstance(rupture, GSIMRupture)
-#        #magnitudes = [rupture.magnitude]
-#        sctx, rctx, dctx = rupture.get_gsim_contexts()
-#        # Create distances dictionary
-#        distances = {}
-#        for key in dctx._slots_:
-#            distances[key] = getattr(dctx, key)
-#        # Add all other parameters to the dictionary
-#        params = {}
-#        for key in rctx._slots_:
-#            params[key] = getattr(rctx, key)
-#        #for key in sctx.__slots__:
-#        for key in sctx._slots_:
-#        #for key in ['vs30', 'vs30measured', 'z1pt0', 'z2pt5']:
-#            params[key] = getattr(sctx, key)
-#        return cls(magnitudes, distances, gsims, imts, params, stddevs,
-#                   rupture=rupture)
 
     def create_plot(self):
         """
@@ -986,9 +1015,6 @@ class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
         """
         nrow = len(self.magnitudes)
         # Get means and standard deviations
-        #if self.rupture:
-        #    gmvs = self.get_ground_motion_values_from_rupture()
-        #else:
         gmvs = self.get_ground_motion_values()
         fig = plt.figure(figsize=self.figure_size)
         fig.set_tight_layout({"pad":0.5})
@@ -1003,7 +1029,8 @@ class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
         lgd = plt.legend(self.lines,
                          self.labels,
                          loc=2,
-                         bbox_to_anchor=(1.1, 1.))
+                         bbox_to_anchor=(1.1, 1.),
+                         ncol=self.ncol)
         _save_image_tight(fig, lgd, self.filename, self.filetype, self.dpi)
         plt.show()
 
@@ -1071,6 +1098,8 @@ class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
 
             self.lines.append(line)
             ax.set_xlim(min_period, max_period)
+            if isinstance(self.ylim, tuple):
+                ax.set_ylim(self.ylim[0], self.ylim[1])
             ax.grid(True)
             self._set_labels(i_m, ax)
 
