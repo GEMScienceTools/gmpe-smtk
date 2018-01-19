@@ -149,7 +149,8 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         # Site information
         site = self._parse_site_data(metadata)
         # Distance Information
-        distances = self._parse_distance_data(event, site, metadata)
+        distances, surface = self._parse_distance_data(event, site, metadata)
+        event.rupture.surface = surface
         # Components
         x_comp, y_comp, vertical = self._parse_processing_data(wfid, metadata)
         # Return record metadata
@@ -461,7 +462,7 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         else:
             pass
         
-        return distance
+        return distance, surface_modeled
 
     def _parse_site_data(self, metadata):
         """
