@@ -53,7 +53,7 @@ liability for use of the software.
 Installation
 ============
 
-The gmpe-smtk is built on top of the [OpenQuake-engine](https//github.com/gem/oq-engine).
+The gmpe-smtk is built on top of the [OpenQuake-engine](https://github.com/gem/oq-engine).
 
 To install the toolkit, and ensure that it is aligned with the OpenQuake-engine
 we recommend to install the OpenQuake-engine according to the instructions
