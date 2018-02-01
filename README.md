@@ -50,15 +50,15 @@ The GEM Foundation, and the authors of the software, assume no
 liability for use of the software.
 
 
-installation
+Installation
 ============
 
-The gmpe-smtk is built on top of the ([OpenQuake-engine](https//github.com/gem/oq-engine)).
+The gmpe-smtk is built on top of the [OpenQuake-engine](https//github.com/gem/oq-engine).
 
 To install the toolkit, and ensure that it is aligned with the OpenQuake-engine
 we recommend to install the OpenQuake-engine according to the instructions
 given for your specific operating system. The full installation instructions for
-OpenQuake can be found here: ([https://github.com/gem/oq-engine](https://github.com/gem/oq-engine)).
+OpenQuake can be found here: [https://github.com/gem/oq-engine](https://github.com/gem/oq-engine).
 
 Once the OpenQuake-engine is installed, the gmpe-smtk repository is cloned by:
 ```bash
@@ -73,7 +73,7 @@ python setup.py install
 
 For users interested in developing new features or contributing code to the
 repository we strongly recommend to install the OpenQuake-engine according to
-the instructions for ([installing OpenQuake for development](https://github.com/gem/oq-engine/blob/master/doc/installing/development.md)).
+the instructions for [installing OpenQuake for development](https://github.com/gem/oq-engine/blob/master/doc/installing/development.md).
 
 The gmpe-smtk is currently written in Python 2.7 and work is now underway to
 port this to Python 3.5.
