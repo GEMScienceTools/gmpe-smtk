@@ -16,7 +16,7 @@ License as published by the Free Software Foundation, either version
 3 of the License, or (at your option) any later version. Please take 
 a minute of your time to read the disclaimer below.
 
-Copyright (c) 2014-2017 GEM Foundation
+Copyright (c) 2014-2018 GEM Foundation
 
 
 Disclaimer
@@ -50,73 +50,31 @@ The GEM Foundation, and the authors of the software, assume no
 liability for use of the software.
 
 
-dependencies
-============
-
-The gmpe-smtk currently requires the following dependencies:
-
-
-* OpenQuake Hazard Library ([oq-hazardlib](https://github.com/gem/oq-hazardlib))
-* Numpy (1.6.1 or later) (installed with oq-hazardlib)
-* Scipy (0.11.0 or later) (installed with oq-hazardlib)
-* Shapely (installed with oq-hazardlib)
-* Matplotlib (1.3.x or later)
-* h5py (2.2.0 or later)
-
 installation
 ============
 
-* Windows
+The gmpe-smtk is built on top of the ([OpenQuake-engine](https//github.com/gem/oq-engine)).
 
-Windows users should install the PythonXY software package (https://code.google.com/p/pythonxy/), which will install all of the dependencies except oq-hazardlib 
-To install oq-hazardlib it is recommended to install MinGW or Github for Windows.
+To install the toolkit, and ensure that it is aligned with the OpenQuake-engine
+we recommend to install the OpenQuake-engine according to the instructions
+given for your specific operating system. The full installation instructions for
+OpenQuake can be found here: ([https://github.com/gem/oq-engine](https://github.com/gem/oq-engine)).
 
-If using Github for Windows simply open a bash shell, clone the oq-hazardlib
-repository using:
-
+Once the OpenQuake-engine is installed, the gmpe-smtk repository is cloned by:
 ```bash
-git clone https://github.com/gem/oq-hazardlib.git
+git clone https://github.com/GEMScienceTools/gmpe-smtk
 ```
 
-Then type
-
+Then:
 ```bash
-cd oq-hazardlib
+cd gmpe-smtk
 python setup.py install
 ```
 
-To install the gmpe-smtk simply download the zipped code from the repository,
-unzip it to a location of your choice then add the directory path to
-the Environment Variables found in:
+For users interested in developing new features or contributing code to the
+repository we strongly recommend to install the OpenQuake-engine according to
+the instructions for ([installing OpenQuake for development](https://github.com/gem/oq-engine/blob/master/doc/installing/development.md)).
 
-My Computer -> Properties -> System Properties -> Advanced -> Environment Variables
+The gmpe-smtk is currently written in Python 2.7 and work is now underway to
+port this to Python 3.5.
 
-In the Environment Variables you will see a list of System Variables. Select
-"Path" and then "Edit". Then simply add the directory of the gmpe-smtk to the
-list of directories.
-
-* OSX/Linux
-
-To install oq-hazardlib simply clone the oq-hazardlib repository into a folder
-of your choice.
-
-```bash
-git clone https://github.com/gem/oq-hazardlib.git
-```
-
-Then run
-
-```bash
-cd oq-hazardlib
-python setup.py install
-```
-
-Matplotlib and h5py can both be installed from the native package managers,
-although it is recommended to use pip for this purpose.
-
-To install the gmpe-smtk, clone the code from the repository and then
-add the following line to your bash or profile script:
-
-```bash
-export PYTHONPATH=/path/to/gmpe-smtk/:$PYTHONPATH
-```
