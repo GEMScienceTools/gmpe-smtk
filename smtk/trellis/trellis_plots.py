@@ -572,7 +572,8 @@ class MagnitudeIMTTrellis(BaseTrellis):
                         iml_to_list.append(val)
                 gmv_dict["figures"][imt].append((gsim, iml_to_list))
             gmv_dict["figures"][imt] = OrderedDict(gmv_dict["figures"][imt])
-        json.dump(gmv_dict, open(filename, "w"))
+        #json.dump(gmv_dict, open(filename, "w"))
+        json.dumps(gmv_dict)
 
     def get_ground_motion_values(self):
         """
@@ -900,7 +901,8 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
                 imt_dict["yvalues"].append((gsim, data))
             imt_dict["yvalues"] = OrderedDict(imt_dict["yvalues"])
             gmv_dict["figures"][imt] = imt_dict
-        json.dump(gmv_dict, open(filename, "w"))
+        #json.dump(gmv_dict, open(filename, "w"))
+        json.dumps(gmv_dict)
 
     def pretty_print(self, filename=None, sep=","):
         """
@@ -1405,7 +1407,8 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                         else:
                             gmv_dict["figures"][pos_name]["yvalues"][gsim].\
                                 append(None)
-        json.dump(gmv_dict, open(filename, "w"))
+        #json.dump(gmv_dict, open(filename, "w"))
+        json.dumps(gmv_dict)
 
     def _get_ylabel(self, i_m):
         """
