@@ -18,8 +18,6 @@ install:
   # Install oq-engine dependencies
   - pip -q install -r oq-engine/requirements-py27-linux64.txt
   - pip -q install -e oq-engine/
-  # Install HMTK extra dependencies
-  - pip -q install -r requirements-py27-linux64.txt
   - pip -q install -e .
 
 script:
