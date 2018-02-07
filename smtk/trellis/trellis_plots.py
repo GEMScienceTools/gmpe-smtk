@@ -548,7 +548,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
             units = PLOT_UNITS[i_m]
         return "Mean {:s} ({:s})".format(i_m, units)
 
-    def to_json(self, filename):
+    def to_json(self):
         """
         Serializes the ground motion values to json
         """
@@ -881,7 +881,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
             units = PLOT_UNITS[i_m]
         return "Mean {:s} ({:s})".format(i_m, units)
 
-    def to_json(self, filename):
+    def to_json(self):
         """
         Exports ground motion values to json
         """
@@ -1370,7 +1370,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         ax.set_xlabel("Period (s)", fontsize=14)
         ax.set_ylabel("Sa (g)", fontsize=14)
 
-    def to_json(self, filename):
+    def to_json(self):
         """
         Export ground motion values dictionary to json
         """
