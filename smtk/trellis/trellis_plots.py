@@ -43,10 +43,10 @@ from smtk.trellis.configure import GSIMRupture, DEFAULT_POINT
 
 # Default - defines a 21 color and line-type cycle
 matplotlib.rcParams["axes.prop_cycle"] = \
-    cycler(u'color', [u'b', u'g', u'r', u'c', u'm', u'y', u'k',
-                      u'b', u'g', u'r', u'c', u'm', u'y', u'k',
-                      u'b', u'g', u'r', u'c', u'm', u'y', u'k',
-                      u'b', u'g', u'r', u'c', u'm', u'y', u'k']) +\
+    cycler(u'color', ['b', 'g', 'r', 'c', 'm', 'y', 'k',
+                      'b', 'g', 'r', 'c', 'm', 'y', 'k',
+                      'b', 'g', 'r', 'c', 'm', 'y', 'k',
+                      'b', 'g', 'r', 'c', 'm', 'y', 'k']) +\
     cycler(u'linestyle', ["-", "-", "-", "-", "-", "-", "-",
                           "--", "--", "--", "--", "--", "--", "--",
                           "-.", "-.", "-.", "-.", "-.", "-.", "-.",
@@ -136,7 +136,7 @@ def _check_gsim_list(gsim_list):
             match = re.match(r'^GMPETable\(([^)]+?)\)$', gsim)
             filepath = match.group(1).split("=")[1]
             output_gsims.append(GMPETable(gmpe_table=filepath))
-        elif not gsim in AVAILABLE_GSIMS.keys():
+        elif not gsim in AVAILABLE_GSIMS:
             raise ValueError('%s Not supported by OpenQuake' % gsim)
         else:
             output_gsims.append(AVAILABLE_GSIMS[gsim]())
@@ -259,7 +259,7 @@ class BaseTrellis(object):
         for gmpe in self.gsims:
             gsim_distances = [dist for dist in gmpe.REQUIRES_DISTANCES]
             for dist in gsim_distances:
-                if not dist in self.distances.keys():
+                if not dist in self.distances:
                     raise ValueError('GMPE %s requires distance type %s'
                                      % (_get_gmpe_name(gmpe), dist))
                                     # % (gmpe.__class.__.__name__, dist))
@@ -291,7 +291,7 @@ class BaseTrellis(object):
             for param in rup_params:
                 if param == 'mag':
                     continue
-                elif not param in self.params.keys():
+                elif not param in self.params:
                     raise ValueError("GMPE %s requires rupture parameter %s"
                                      % (_get_gmpe_name(gmpe), param))
                                      #% (gmpe.__class__.__name__, param))
@@ -316,7 +316,7 @@ class BaseTrellis(object):
         for gmpe in self.gsims:
             site_params = [param for param in gmpe.REQUIRES_SITES_PARAMETERS]
             for param in site_params:
-                if not param in self.params.keys():
+                if not param in self.params:
                     raise ValueError("GMPE %s requires site parameter %s"
                                      % (_get_gmpe_name(gmpe), param))
                                      #% (gmpe.__class__.__name__, param))
@@ -361,7 +361,6 @@ class BaseTrellis(object):
         kwargs.setdefault('distance_type', "rjb")
         kwargs.setdefault('xlim', None)
         kwargs.setdefault('ylim', None)
-        print(rupture.__class__)
         assert isinstance(rupture, GSIMRupture)
         magnitudes = [rupture.magnitude]
         sctx, rctx, dctx = rupture.get_gsim_contexts()
@@ -405,7 +404,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
         Instantiate with list of magnitude and the corresponding distances
         given in a dictionary
         """
-        for key in distances.keys():
+        for key in distances:
             if isinstance(distances[key], float):
                 distances[key] = np.array([distances[key]])
         super(MagnitudeIMTTrellis, self).__init__(magnitudes, distances, gsims,
@@ -628,7 +627,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
         self._write_pprint_header_line(fid, sep)
         # Print Distances
         distance_str = sep.join(["{:s}{:s}{:s}".format(key, sep, str(val[0]))
-                                 for (key, val) in self.dctx.__dict__.items()])
+                                 for (key, val) in self.dctx.items()])
         fid.write("Distances%s%s\n" % (sep, distance_str))
         # Loop over IMTs
         gmvs = self.get_ground_motion_values()
@@ -651,8 +650,9 @@ class MagnitudeIMTTrellis(BaseTrellis):
         Write the header lines of the pretty print function
         """
         fid.write("Magnitude IMT Trellis\n")
-        fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
-                                     for (key, val) in self.params.items()]))
+        fid.write("%s\n" % sep.join([
+            "{:s}{:s}{:s}".format(key, sep, str(val))
+            for (key, val) in self.params.items()]))
 
 
 class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
@@ -767,8 +767,9 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
         """
         fid.write("Magnitude IMT %s Standard Deviations Trellis\n" %
                   self.stddevs)
-        fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
-                                     for (key, val) in self.params.items()]))
+        fid.write("%s\n" % sep.join([
+            "{:s}{:s}{:s}".format(key, sep, str(val))
+            for (key, val) in self.params.items()]))
         
     
 class DistanceIMTTrellis(MagnitudeIMTTrellis):
@@ -1162,7 +1163,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
             gsim_distances = [dist for dist in gmpe.REQUIRES_DISTANCES]
             for mag_distances in self.distances:
                 for dist in gsim_distances:
-                    if not dist in mag_distances.keys():
+                    if not dist in mag_distances:
                         raise ValueError('GMPE %s requires distance type %s'
                                          % (_get_gmpe_name(gmpe), dist))
 
@@ -1246,11 +1247,11 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                 sctx, rctx, dctx = rup.get_gsim_contexts()
                 if not distance_dict:   
                     distance_dict = []
-                    for key, val in dctx.__dict__.iteritems():
+                    for (key, val) in dctx.__dict__.items():
                         distance_dict.append((key, val))
                     distance_dict = dict(distance_dict)
                 else:
-                    for key, val in dctx.__dict__.iteritems():
+                    for (key, val) in dctx.__dict__.items():
                         distance_dict[key] = np.hstack([
                                 distance_dict[key], val])
             distance_dicts.append(distance_dict)
@@ -1267,8 +1268,8 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         gmvs = self.get_ground_motion_values()
         fig = plt.figure(figsize=self.figure_size)
         fig.set_tight_layout({"pad":0.5})
-        for rowloc in xrange(nrow):
-            for colloc in xrange(self.nsites):
+        for rowloc in range(nrow):
+            for colloc in range(self.nsites):
                 self._build_plot(
                     plt.subplot2grid((nrow, self.nsites), (rowloc, colloc)), 
                     gmvs,

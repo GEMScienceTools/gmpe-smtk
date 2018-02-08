@@ -137,7 +137,7 @@ class MagnitudeTrellisTest(BaseTrellisTest):
         np.testing.assert_array_almost_equal(old["xvalues"], new["xvalues"], 7)
         for imt in old["figures"]:
             for gsim in old["figures"][imt]:
-                if gsim == u"ylabel":
+                if gsim == "ylabel":
                     self.assertEqual(old["figures"][imt][gsim],
                                      new["figures"][imt][gsim])
                 else:
