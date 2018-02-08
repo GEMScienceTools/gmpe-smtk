@@ -558,13 +558,11 @@ class GSIMRupture(object):
         setattr(dctx, "rvolc", np.zeros_like(self.target_sites.mesh.lons))
         # Sites
         sctx = SitesContext()
-        key_list = ['_vs30', '_vs30measured', '_z1pt0', '_z2pt5', '_backarc']
+        key_list = ["lons", "lats", "vs30", "vs30measured", "z1pt0", "z2pt5",
+                    "backarc"]
         for key in key_list:
-            setattr(sctx, key[1:], getattr(self.target_sites, key))
-        for key in ['lons', 'lats']:
-            setattr(sctx, key, getattr(self.target_sites, key))
+            setattr(sctx, key, self.target_sites.array[key])
 
-        
         # Rupture
         rctx = RuptureContext()
         setattr(rctx, 'mag', self.magnitude)
@@ -727,7 +725,7 @@ class GSIMRupture(object):
         :param floar z2pt5:
             Depth to 2.5 km/s interface
         """
-        if not distance_type in POINT_AT_MAPPING.keys():
+        if not distance_type in list(POINT_AT_MAPPING.keys()):
             raise ValueError("Distance type must be one of: Rupture ('rrup'), "
                              "Joyner-Boore ('rjb'), Epicentral ('repi') or "
                              "Hypocentral ('rhyp')")
@@ -799,7 +797,7 @@ class GSIMRupture(object):
         if not filter_type:
             # Considers both footwall and hanging wall 
             return self.target_sites
-        elif not filter_type in ['HW', 'FW']:
+        elif not filter_type in ('HW', 'FW'):
             raise ValueError('Hanging wall filter must be either "HW" or "FW"')
         else:
             pass

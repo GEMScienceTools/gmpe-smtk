@@ -361,6 +361,7 @@ class BaseTrellis(object):
         kwargs.setdefault('distance_type', "rjb")
         kwargs.setdefault('xlim', None)
         kwargs.setdefault('ylim', None)
+        print(rupture.__class__)
         assert isinstance(rupture, GSIMRupture)
         magnitudes = [rupture.magnitude]
         sctx, rctx, dctx = rupture.get_gsim_contexts()
@@ -548,9 +549,9 @@ class MagnitudeIMTTrellis(BaseTrellis):
             units = PLOT_UNITS[i_m]
         return "Mean {:s} ({:s})".format(i_m, units)
 
-    def to_json(self):
+    def to_dict(self):
         """
-        Serializes the ground motion values to json
+        Parse the ground motion values to a dictionary
         """
         gmvs = self.get_ground_motion_values()
         gmv_dict = OrderedDict([
@@ -572,7 +573,13 @@ class MagnitudeIMTTrellis(BaseTrellis):
                         iml_to_list.append(val)
                 gmv_dict["figures"][imt].append((gsim, iml_to_list))
             gmv_dict["figures"][imt] = OrderedDict(gmv_dict["figures"][imt])
-        return json.dumps(gmv_dict)
+        return gmv_dict
+
+    def to_json(self):
+        """
+        Serializes the ground motion values to json
+        """
+        return json.dumps(self.to_dict())
 
     def get_ground_motion_values(self):
         """
@@ -773,7 +780,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
     def __init__(self, magnitudes, distances, gsims, imts, params, 
             stddevs="Total", **kwargs):
         """
-        Instandi 
+        Instantiation 
         """
         if isinstance(magnitudes, float):
             magnitudes = [magnitudes]
@@ -881,9 +888,9 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
             units = PLOT_UNITS[i_m]
         return "Mean {:s} ({:s})".format(i_m, units)
 
-    def to_json(self):
+    def to_dict(self):
         """
-        Exports ground motion values to json
+        Parses the ground motion values to a dictionary
         """
         gmvs = self.get_ground_motion_values()
         dist_label = "{:s} (km)".format(DISTANCE_LABEL_MAP[self.distance_type])
@@ -900,7 +907,13 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
                 imt_dict["yvalues"].append((gsim, data))
             imt_dict["yvalues"] = OrderedDict(imt_dict["yvalues"])
             gmv_dict["figures"][imt] = imt_dict
-        return json.dumps(gmv_dict)
+        return gmv_dict
+
+    def to_json(self):
+        """
+        Exports ground motion values to json
+        """
+        return json.dumps(self.to_dict())
 
     def pretty_print(self, filename=None, sep=","):
         """
@@ -1370,9 +1383,9 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         ax.set_xlabel("Period (s)", fontsize=14)
         ax.set_ylabel("Sa (g)", fontsize=14)
 
-    def to_json(self):
+    def to_dict(self):
         """
-        Export ground motion values dictionary to json
+        Export ground motion values to a dictionary
         """
         gmvs = self.get_ground_motion_values()
         periods = [float(val.split("SA(")[1].rstrip(")"))
@@ -1405,7 +1418,13 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                         else:
                             gmv_dict["figures"][pos_name]["yvalues"][gsim].\
                                 append(None)
-        return json.dumps(gmv_dict)
+        return gmv_dict
+
+    def to_json(self):
+        """
+        Exports the ground motion values to json
+        """
+        return json.dumps(self.to_dict())
 
     def _get_ylabel(self, i_m):
         """
