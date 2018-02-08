@@ -26,7 +26,7 @@ import numpy as np
 from math import sqrt
 from scipy.integrate import cumtrapz
 import matplotlib.pyplot as plt
-from sm_utils import (_save_image,
+from smtk.sm_utils import (_save_image,
                       get_time_vector,
                       convert_accel_units,
                       get_velocity_displacement)
@@ -62,7 +62,7 @@ class ResponseSpectrum(object):
         self.response_spectrum = None
 
 
-    def evaluate(self):
+    def __call__(self):
         '''
         Evaluates the response spectrum
         :returns:
@@ -88,9 +88,8 @@ class ResponseSpectrum(object):
             accel - Acceleration response of Single Degree of Freedom Oscillator 
             vel - Velocity response of Single Degree of Freedom Oscillator 
             disp - Displacement response of Single Degree of Freedom Oscillator 
-
         '''
-
+        raise NotImplementedError("Cannot call Base Response Spectrum")
 
 
 class NewmarkBeta(ResponseSpectrum):
@@ -98,7 +97,7 @@ class NewmarkBeta(ResponseSpectrum):
     Evaluates the response spectrum using the Newmark-Beta methodology
     '''
 
-    def evaluate(self):
+    def __call__(self):
         '''
         Evaluates the response spectrum
         :returns:
@@ -188,6 +187,7 @@ class NewmarkBeta(ResponseSpectrum):
             a_t[j, :] = self.acceleration[j] + accel[j, :]
         return accel, vel, disp, a_t
 
+
 class NigamJennings(ResponseSpectrum):
     """
     Evaluate the response spectrum using the algorithm of Nigam & Jennings
@@ -197,7 +197,7 @@ class NigamJennings(ResponseSpectrum):
     of the sampling frequency.
     """
 
-    def evaluate(self):
+    def __call__(self):
         """
         Define the response spectrum
         """
