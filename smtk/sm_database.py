@@ -29,8 +29,11 @@ from openquake.hazardlib.gsim.base import (SitesContext, DistancesContext,
                                           RuptureContext)
 from openquake.hazardlib.site import Site, SiteCollection
 from openquake.hazardlib.geo.point import Point
+from openquake.hazardlib.scalerel import PeerMSR
 from smtk.trellis.configure import vs30_to_z1pt0_as08, z1pt0_to_z2pt5
 from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
+
+DEFAULT_MSR = PeerMSR()
 
 class Magnitude(object):
     """
@@ -906,12 +909,18 @@ class GroundMotionDatabase(object):
             setattr(rctx, 'strike', 0.0)
             setattr(rctx, 'dip', 90.0)
             rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
-        if rup.event.rupture:
+        if rup.event.rupture.surface:
             setattr(rctx, 'ztor', rup.event.rupture.surface.get_top_edge_depth())
             setattr(rctx, 'width', rup.event.rupture.surface.width)
             setattr(rctx, 'hypo_loc', rup.event.rupture.surface.get_hypo_location(1000))
         else:
             setattr(rctx, 'ztor', rup.event.depth)
+            # Use the PeerMSR to define the area and assuming an aspect ratio
+            # of 1 get the width
+            setattr(rctx, 'width',
+                    np.sqrt(DEFAULT_MSR.get_median_area(rctx.mag, 0)))
+            # Default hypocentre location to the middle of the rupture
+            setattr(rctx, 'hypo_loc', (0.5, 0.5))
         setattr(rctx, 'hypo_depth', rup.event.depth)
         setattr(rctx, 'hypo_lat', rup.event.latitude)
         setattr(rctx, 'hypo_lon', rup.event.longitude)
