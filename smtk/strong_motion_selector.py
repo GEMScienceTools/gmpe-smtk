@@ -37,14 +37,14 @@ def rank_sites_by_record_count(database, threshold=0):
     name_id_list = [(rec.site.id, rec.site.name) for rec in database.records]
     name_id = dict([])
     for name_id_pair in name_id_list:
-        if name_id_pair[0] in name_id.keys():
+        if name_id_pair[0] in name_id:
             name_id[name_id_pair[0]]["Count"] += 1
         else:
             name_id[name_id_pair[0]] = {"Count": 1, "Name": name_id_pair[1]}
-    counts = np.array([name_id[key]["Count"] for key in name_id.keys()])
+    counts = np.array([name_id[key]["Count"] for key in name_id])
     sort_id = np.flipud(np.argsort(counts))
 
-    key_vals = name_id.keys()
+    key_vals = list(name_id)
     output_list = []
     for idx in sort_id:
         if name_id[key_vals[idx]]["Count"] >= threshold:
@@ -102,7 +102,8 @@ class SMRecordSelector(object):
         if record_id in self.record_ids:
             return self.database.records[self.record_ids.index(record_id)]
         else:
-            raise ValueError("Record %s is not in database" % record_id)
+            raise ValueError(
+                "Record {:s} is not in database".format(record_id))
 
     def select_from_record_ids(self, record_ids, as_db=False):
         """
@@ -111,7 +112,7 @@ class SMRecordSelector(object):
         idx = []
         for record_id in record_ids:
             if not record_id in self.record_ids:
-                print("Record %s is not in database" % record_id)
+                print("Record {:s} is not in database".format(record_id))
         for iloc, record in enumerate(self.database.records):
             if record.id in record_ids:
                 idx.append(iloc)
@@ -133,7 +134,7 @@ class SMRecordSelector(object):
         """
         for site_id in site_ids:
             if not site_id in self.site_ids:
-                print("Site %s is not in database" % record_id)
+                print("Site {:w is not in database" % record_id)
         idx = []
         for iloc, record in enumerate(self.database.records):
             if record.site.id in site_ids:
@@ -158,7 +159,7 @@ class SMRecordSelector(object):
         """
         for event_id in event_ids:
             if not event_id in self.event_ids:
-                print("Event %s not found in database" % event_id)
+                print("Event {:s} not found in database".format(event_id))
         idx = []
         for iloc, record in enumerate(self.database.records):
             if record.event.id in event_ids:
@@ -345,8 +346,8 @@ class SMRecordSelector(object):
 #                    raise ValueError("Record %s is missing selected distance "
 #                        "metric and alternative metric" % record.id)
             else:
-                print("Record %s is missing selected distance metric"
-                      % record.id)
+                print("Record {:s} is missing selected distance metric".format(
+                      record.id))
         return self.select_records(idx, as_db)
 
     # Event-based selection

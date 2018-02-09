@@ -233,7 +233,7 @@ class FocalMechanism(object):
         Returns an idealised "rake" based on a qualitative description of the
         style of faulting
         """
-        if self.mechanism_type in MECHANISM_TYPE.keys():
+        if self.mechanism_type in MECHANISM_TYPE:
             return MECHANISM_TYPE[self.mechanism_type]
         else:
             return 0.0
@@ -486,7 +486,7 @@ class RecordSite(object):
         if self.ec8:
             return self.ec8
         if self.vs30:
-            for key in EC8_VS30_BOUNDARIES.keys():
+            for key in EC8_VS30_BOUNDARIES:
                 in_group = (self.vs30 >= EC8_VS30_BOUNDARIES[key][0]) and\
                     (self.vs30 < EC8_VS30_BOUNDARIES[key][1])
                 if in_group:
@@ -494,14 +494,14 @@ class RecordSite(object):
                     return self.ec8
         elif self.nspt:
             # Check to see if a site class can be determined from NSPT
-            for key in EC8_NSPT_BOUNDARIES.keys():
+            for key in EC8_NSPT_BOUNDARIES:
                 in_group = (self.nspt >= EC8_NSPT_BOUNDARIES[key][0]) and\
                     (self.nspt < EC8_NSPT_BOUNDARIES[key][1])
                 if in_group:
                     self.ec8 = key
                     return self.ec8
         else:
-            print "Cannot determine EC8 site class - no Vs30 or NSPT measures!"
+            print("Cannot determine EC8 site class - no Vs30 or NSPT measures!")
         return None
     
     def get_nehrp_class(self):
@@ -511,7 +511,7 @@ class RecordSite(object):
         if self.nehrp:
             return self.nehrp
         if self.vs30:
-            for key in NEHRP_VS30_BOUNDARIES.keys():
+            for key in NEHRP_VS30_BOUNDARIES:
                 in_group = (self.vs30 >= NEHRP_VS30_BOUNDARIES[key][0]) and\
                     (self.vs30 < NEHRP_VS30_BOUNDARIES[key][1])
                 if in_group:
@@ -519,14 +519,14 @@ class RecordSite(object):
                     return self.nehrp
         elif self.nspt:
             # Check to see if a site class can be determined from NSPT
-            for key in NEHRP_NSPT_BOUNDARIES.keys():
+            for key in NEHRP_NSPT_BOUNDARIES:
                 in_group = (self.nspt >= NEHRP_NSPT_BOUNDARIES[key][0]) and\
                     (self.nspt < NEHRP_NSPT_BOUNDARIES[key][1])
                 if in_group:
                     self.nehrp = key
                     return self.nehrp
         else:
-            print "Cannot determine NEHRP site class - no Vs30 or NSPT measures!"
+            print("Cannot determine NEHRP site class - no Vs30 or NSPT measures!")
         return None
 
 
@@ -546,7 +546,7 @@ class RecordSite(object):
         if self.ec8 == 'E':
             return 100
         else:
-            print "Cannot determine Vs30 from EC8 site class"
+            print("Cannot determine Vs30 from EC8 site class")
 
 Filter = {'Type': None,
           'Order': None,

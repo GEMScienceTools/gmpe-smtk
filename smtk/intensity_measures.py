@@ -186,7 +186,7 @@ def get_response_spectrum(acceleration, time_step, periods, damping=0.05,
                                         periods, 
                                         damping,
                                         units)
-    spectrum, time_series, accel, vel, disp = response_spec.evaluate()
+    spectrum, time_series, accel, vel, disp = response_spec()
     spectrum["PGA"] = time_series["PGA"]
     spectrum["PGV"] = time_series["PGV"]
     spectrum["PGD"] = time_series["PGD"]
@@ -231,7 +231,7 @@ def geometric_mean_spectrum(sax, say):
         Dictionary of response spectrum outputs from y-component
     """
     sa_gm = {}
-    for key in sax.keys():
+    for key in sax:
         if key == "Period":
             sa_gm[key] = sax[key]
         else:
@@ -243,7 +243,7 @@ def arithmetic_mean_spectrum(sax, say):
     Returns the arithmetic mean of the response spectrum
     """
     sa_am = {}
-    for key in sax.keys():
+    for key in sax:
         if key == "Period":
             sa_am[key] = sax[key]
         else:
@@ -255,7 +255,7 @@ def envelope_spectrum(sax, say):
     Returns the envelope of the response spectrum
     """
     sa_env = {}
-    for key in sax.keys():
+    for key in sax:
         if key == "Period":
             sa_env[key] = sax[key]
         else:
