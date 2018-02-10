@@ -288,8 +288,8 @@ class Residuals(object):
         self.gmpe_sa_limits = {}
         self.gmpe_scalars = {}
         for gmpe in self.gmpe_list:
-            gmpe_dict_1 = {}
-            gmpe_dict_2 = {}
+            gmpe_dict_1 = OrderedDict([])
+            gmpe_dict_2 = OrderedDict([])
             self.unique_indices[gmpe] = {}
             # Get the period range and the coefficient types
             gmpe_i = GSIM_LIST[gmpe]()
@@ -352,15 +352,21 @@ class Residuals(object):
                         if res_type == "Inter event":
                             inter_ev = \
                                 context["Residual"][gmpe][imtx][res_type]
-                            inter_ev, inter_idx = np.unique(
-                                inter_ev,
-                                return_index=True)
-                            self.residuals[gmpe][imtx][res_type].extend(
-                                inter_ev.tolist())
-                            #inter_mags = (context["Rupture"].mag *
-                            #              np.ones(len(inter_ev))).tolist()
-                            self.unique_indices[gmpe][imtx].append(
-                                inter_idx)
+                            if np.all(
+                                np.fabs(inter_ev - inter_ev[0]) < 1.0E-12):
+                                # Single inter-event residual
+                                self.residuals[gmpe][imtx][res_type].append(
+                                    inter_ev[0])
+                                # Append indices
+                                self.unique_indices[gmpe][imtx].append(
+                                    np.array([0]))
+                            else:
+                                # Inter event residuals per-site e.g. Chiou
+                                # & Youngs (2008; 2014) case
+                                self.residuals[gmpe][imtx][res_type].extend(
+                                    inter_ev.tolist())
+                                self.unique_indices[gmpe][imtx].append(
+                                    np.arange(len(inter_ev)))
                         else:
                             self.residuals[gmpe][imtx][res_type].extend(
                                 context["Residual"][gmpe][imtx][res_type].tolist())
@@ -383,8 +389,6 @@ class Residuals(object):
                         self.modelled[gmpe][imtx][res_type])
                 self.modelled[gmpe][imtx]["Mean"] = np.array(
                     self.modelled[gmpe][imtx]["Mean"])
-                #self.unique_magnitudes[gmpe][imtx] = np.array(
-                #    self.unique_magnitudes[gmpe][imtx])
 
     def get_observations(self, context, component="Geometric"):
         """
@@ -459,7 +463,7 @@ class Residuals(object):
         # Calculate residual
         residual = {}
         for gmpe in self.gmpe_list:
-            residual[gmpe] = {}
+            residual[gmpe] = OrderedDict([])
             for imtx in self.imts:
                 residual[gmpe][imtx] = {}
                 obs = np.log(context["Observations"][imtx])
@@ -500,29 +504,14 @@ class Residuals(object):
         """
         Retreives the mean and standard deviation values of the residuals
         """
-        statistics = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
+        statistics = OrderedDict([(gmpe, OrderedDict([]))
+                                  for gmpe in self.gmpe_list])
         for gmpe in self.gmpe_list:
             for imtx in self.imts:
                 if not self.residuals[gmpe][imtx]:
                     continue
                 statistics[gmpe][imtx] = {}
                 for res_type in self.types[gmpe][imtx]:
-#                    if res_type == "Inter event":
-#                        # As the inter-event term may be vectorial with
-#                        # repeated columns, get take only one value of inter-
-#                        # event residual if unique
-#                        delta_e = np.array([], dtype="float")
-#                        for ctxt in self.contexts:
-#                            iev_res = np.unique(
-#                                ctxt["Residual"][gmpe][imtx]["Inter event"])
-#                            delta_e = np.hstack([delta_e, iev_res])
-#                        #print delta_e
-#                        data = {
-#                            "Mean": np.mean(delta_e),
-#                                #self.residuals[gmpe][imtx][res_type]),
-#                            "Std Dev": np.std(delta_e)}
-#                                #self.residuals[gmpe][imtx][res_type])}
-#                    else:
                     data = {
                         "Mean": np.mean(
                             self.residuals[gmpe][imtx][res_type]),
@@ -540,7 +529,7 @@ class Residuals(object):
         else:
             fid = sys.stdout
         fid.write("Ground Motion Residuals\n")
-        # Prin headers
+        # Print headers
         event = self.contexts[0]
         header_set = []
         header_set.extend([key for key in event["Distances"].__dict__])
@@ -647,7 +636,8 @@ class Likelihood(Residuals):
         residuals according to Equation 9 of Scherbaum et al (2004)
         """
         statistics = self.get_residual_statistics()
-        lh_values = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
+        lh_values = OrderedDict([(gmpe, OrderedDict([]))
+                                 for gmpe in self.gmpe_list])
         for gmpe in self.gmpe_list:
             for imtx in self.imts:
                 if not self.residuals[gmpe][imtx]:
@@ -775,7 +765,6 @@ def bootstrap_llh(ij, contexts, gmpes, imts):
     """
     # Sample contexts
     timer_on = datetime.now()
-    print(ij)
     neqs = len(contexts)
     isamp = np.random.randint(0, neqs, neqs)
     new_contexts = [contexts[i] for i in isamp]
