@@ -553,16 +553,28 @@ class MagnitudeIMTTrellis(BaseTrellis):
         Parse the ground motion values to a dictionary
         """
         gmvs = self.get_ground_motion_values()
+        nrow, ncol = utils.best_subplot_dimensions(len(self.imts))
         gmv_dict = OrderedDict([
             ("xvalues", self.magnitudes.tolist()),
             ("xlabel", "Magnitude")])
         nvals = len(self.magnitudes)
-        gmv_dict["figures"] = OrderedDict([])
+        gmv_dict["figures"] = []
+        row_loc = 0
+        col_loc = 0
         for imt in self.imts:
-            gmv_dict["figures"][imt] = [("ylabel", self._get_ylabel(imt))]
+            if col_loc == ncol:
+                row_loc += 1
+                col_loc = 0
+            # Set the dictionary of y-values
+            ydict = {"ylabel": self._get_ylabel(imt),
+                     "row": row_loc,
+                     "column": col_loc,
+                     "yvalues": OrderedDict([])}
+                
             for gsim in gmvs:
                 if not len(gmvs[gsim][imt]):
-                    gmv_dict["figures"][imt] = [None for i in range(nvals)]
+                    # GSIM missing, set None
+                    ydict["yvalues"][gsim] = [None for i in range(nvals)]
                     continue
                 iml_to_list = []
                 for val in gmvs[gsim][imt].flatten().tolist():
@@ -570,8 +582,9 @@ class MagnitudeIMTTrellis(BaseTrellis):
                         iml_to_list.append(None)
                     else:
                         iml_to_list.append(val)
-                gmv_dict["figures"][imt].append((gsim, iml_to_list))
-            gmv_dict["figures"][imt] = OrderedDict(gmv_dict["figures"][imt])
+                    ydict["yvalues"][gsim] = iml_to_list
+            gmv_dict["figures"].append(ydict)
+            col_loc += 1
         return gmv_dict
 
     def to_json(self):
@@ -894,20 +907,29 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
         Parses the ground motion values to a dictionary
         """
         gmvs = self.get_ground_motion_values()
+        nrow, ncol = utils.best_subplot_dimensions(len(self.imts))
         dist_label = "{:s} (km)".format(DISTANCE_LABEL_MAP[self.distance_type])
         gmv_dict = OrderedDict([
             ("xvalues", self.distances[self.distance_type].tolist()),
             ("xlabel", dist_label)])
-        gmv_dict["figures"] = OrderedDict([])
+        gmv_dict["figures"] = []
+        row_loc = 0
+        col_loc = 0
         for imt in self.imts:
-            imt_dict = OrderedDict([("ylabel", self._get_ylabel(imt)),
-                                    ("yvalues", [])])
+            if col_loc == ncol:
+                row_loc += 1
+                col_loc = 0
+            # Set the dictionary of y-values
+            ydict = {"ylabel": self._get_ylabel(imt),
+                     "row": row_loc,
+                     "column": col_loc,
+                     "yvalues": OrderedDict([])}
             for gsim in gmvs:
                 data  = [None if np.isnan(val) else val
                          for val in gmvs[gsim][imt].flatten()]
-                imt_dict["yvalues"].append((gsim, data))
-            imt_dict["yvalues"] = OrderedDict(imt_dict["yvalues"])
-            gmv_dict["figures"][imt] = imt_dict
+                ydict["yvalues"][gsim] = data
+            gmv_dict["figures"].append(ydict)
+            col_loc += 1
         return gmv_dict
 
     def to_json(self):
@@ -1395,16 +1417,15 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         gmv_dict = OrderedDict([
             ("xlabel", "Period (s)"),
             ("xvalues", periods),
-            ("ylabel", self._get_ylabel(None)),
-            ("figures", OrderedDict([]))
+            ("figures", [])
             ])
 
         mags = [rup.mag for rup in self.magnitudes]
         dists = self.distances[0][self.distance_type]
         for i, mag in enumerate(mags):
             for j, dist in enumerate(dists):
-                pos_name = "{:g}-{:g}".format(i, j) 
-                gmv_dict["figures"][pos_name] = OrderedDict([
+                ydict = OrderedDict([
+                    ("ylabel", "Sa (g)"),
                     ("magnitude", mag),
                     ("distance", np.around(dist, 3)),
                     ("row", i),
@@ -1414,11 +1435,11 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                 for gsim in gmvs:
                     for imt in self.imts:
                         if len(gmvs[gsim][imt]):
-                            gmv_dict["figures"][pos_name]["yvalues"][gsim].\
+                            ydict["yvalues"][gsim].\
                                 append(gmvs[gsim][imt][i, j])
                         else:
-                            gmv_dict["figures"][pos_name]["yvalues"][gsim].\
-                                append(None)
+                            ydict["yvalues"][gsim].append(None)
+                gmv_dict["figures"].append(ydict)
         return gmv_dict
 
     def to_json(self):
