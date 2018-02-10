@@ -54,26 +54,35 @@ class BaseTrellisTest(unittest.TestCase):
                       "CampbellBozorgnia2014", "KothaEtAl2016Italy",
                       "KothaEtAl2016Other", "KothaEtAl2016Turkey",
                       "ZhaoEtAl2016Asc", "BindiEtAl2017Rjb"]
-
-
-class DistanceTrellisTest(BaseTrellisTest):
-    TEST_FILE = "test_distance_imt_trellis.json"
-
+    
     def compare_jsons(self, old, new):
         """
         Compares the json data from file with the new data from trellis plot
+
+        This version works with the magnitude IMT and distance IMT trellis
+        plots. Magnitude-distance Spectra has a slightly different means of
+        comparison, so this will be over-ridden in that test
         """
         # Check x-labels are the same
         self.assertEqual(old["xlabel"], new["xlabel"])
         # Check x-values are the same
         np.testing.assert_array_almost_equal(old["xvalues"], new["xvalues"], 7)
-        for imt in old["figures"]:
-            self.assertEqual(old["figures"][imt]["ylabel"],
-                             new["figures"][imt]["ylabel"])
-            for gsim in old["figures"][imt]["yvalues"]:
+        for i in range(len(old["figures"])):
+            self.assertEqual(old["figures"][i]["ylabel"],
+                             new["figures"][i]["ylabel"])
+            self.assertEqual(old["figures"][i]["column"],
+                             new["figures"][i]["column"])
+            self.assertEqual(old["figures"][i]["row"],
+                             new["figures"][i]["row"])
+
+            for gsim in old["figures"][i]["yvalues"]:
                 np.testing.assert_array_almost_equal(
-                    old["figures"][imt]["yvalues"][gsim],
-                    new["figures"][imt]["yvalues"][gsim], 7)
+                    old["figures"][i]["yvalues"][gsim],
+                    new["figures"][i]["yvalues"][gsim], 7)
+
+
+class DistanceTrellisTest(BaseTrellisTest):
+    TEST_FILE = "test_distance_imt_trellis.json"
 
     def _run_trellis(self, rupture):
         """
@@ -129,22 +138,6 @@ class MagnitudeTrellisTest(BaseTrellisTest):
                                                            self.gsims,
                                                            self.imts)
 
-    def compare_jsons(self, old, new):
-        """
-        Compares the json data from file with the new data from trellis plot
-        """
-        self.assertEqual(old["xlabel"], new["xlabel"])
-        np.testing.assert_array_almost_equal(old["xvalues"], new["xvalues"], 7)
-        for imt in old["figures"]:
-            for gsim in old["figures"][imt]:
-                if gsim == "ylabel":
-                    self.assertEqual(old["figures"][imt][gsim],
-                                     new["figures"][imt][gsim])
-                else:
-                    np.testing.assert_array_almost_equal(
-                        old["figures"][imt][gsim],
-                        new["figures"][imt][gsim], 7)
-
     def test_magnitude_imt_trellis(self):
         """
         Tests the MagnitudeIMT trellis data generation
@@ -183,20 +176,19 @@ class MagnitudeDistanceSpectraTrellisTest(BaseTrellisTest):
         Compares the MagnitudeDistanceSpectra jsons
         """
         self.assertEqual(old["xlabel"], new["xlabel"])
-        self.assertEqual(old["ylabel"], new["ylabel"])
         np.testing.assert_array_almost_equal(old["xvalues"], new["xvalues"], 7)
-        for key in old["figures"]:
-            self.assertAlmostEqual(old["figures"][key]["magnitude"],
-                                   new["figures"][key]["magnitude"], 7)
-            self.assertAlmostEqual(old["figures"][key]["distance"],
-                                   new["figures"][key]["distance"], 7)
-            self.assertEqual(old["figures"][key]["row"],
-                             new["figures"][key]["row"])
-            self.assertEqual(old["figures"][key]["column"],
-                             new["figures"][key]["column"])
-            for gsim in old["figures"][key]["yvalues"]:
-                old_vals = np.array(old["figures"][key]["yvalues"][gsim])
-                new_vals = np.array(new["figures"][key]["yvalues"][gsim])
+        for i in range(len(old["figures"])):
+            self.assertAlmostEqual(old["figures"][i]["magnitude"],
+                                   new["figures"][i]["magnitude"], 7)
+            self.assertAlmostEqual(old["figures"][i]["distance"],
+                                   new["figures"][i]["distance"], 7)
+            self.assertEqual(old["figures"][i]["row"],
+                             new["figures"][i]["row"])
+            self.assertEqual(old["figures"][i]["column"],
+                             new["figures"][i]["column"])
+            for gsim in old["figures"][i]["yvalues"]:
+                old_vals = np.array(old["figures"][i]["yvalues"][gsim])
+                new_vals = np.array(new["figures"][i]["yvalues"][gsim])
                 if old_vals.dtype == "O":
                     # Has None Values - compare element by element
                     for old_val, new_val in zip(old_vals, new_vals):
