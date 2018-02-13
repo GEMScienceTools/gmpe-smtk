@@ -1,5 +1,6 @@
 gmpe-smtk
 =========
+[![Build Status](https://travis-ci.org/GEMScienceTools/gmpe-smtk.svg?branch=master)](https://travis-ci.org/GEMScienceTools/gmpe-smtk)
 
 Python and OpenQuake-based Toolkit for Analysis of Strong Motions and Interpretation of GMPEs
 
