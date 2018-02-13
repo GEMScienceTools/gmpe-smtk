@@ -4,6 +4,8 @@ language: python
 
 python:
  - "2.7"
+ - "3.5"
+ - "3.6"
 
 addons:
   apt:
@@ -16,7 +18,10 @@ install:
   # Make sure pip is up-to-date and has support for wheels
   - pip -q install -U pip
   # Install oq-engine dependencies
-  - pip -q install -r oq-engine/requirements-py27-linux64.txt
+  - if [[ $TRAVIS_PYTHON_VERSION == 2.7 ]]; then pip -q install -r oq-engine/requirements-py27-linux64.txt;
+    elif [[ $TRAVIS_PYTHON_VERSION == 3.5 ]]; then pip -q install -r oq-engine/requirements-py35-linux64.txt; 
+    elif [[ $TRAVIS_PYTHON_VERSION == 3.6 ]]; then pip -q install -r oq-engine/requirements-py36-linux64.txt; 
+    else echo "Python not supported" && exit 1; fi
   - pip -q install -e oq-engine/
   - pip -q install -e .
 
