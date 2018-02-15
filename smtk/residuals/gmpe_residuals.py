@@ -295,13 +295,11 @@ class Residuals(object):
             gmpe_i = GSIM_LIST[gmpe]()
             for c in dir(gmpe_i):
                 if 'COEFFS' in c:
-                #if c == 'COEFFS':
                     pers = [sa.period for sa in getattr(gmpe_i,c).sa_coeffs]
             min_per, max_per = (min(pers), max(pers))
             self.gmpe_sa_limits[gmpe] = (min_per, max_per)
             for c in dir(gmpe_i):
                 if 'COEFFS' in c:
-                #if c == 'COEFFS':
                     self.gmpe_scalars[gmpe] = getattr(gmpe_i,c).non_sa_coeffs.keys()
             for imtx in self.imts:
                 if "SA(" in imtx:
