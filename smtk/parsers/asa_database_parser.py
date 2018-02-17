@@ -298,7 +298,7 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
                     # assume <5km = 5km
                     evtdepth = get_float(re.sub('[ <>]', '', metadata[i]))
         if evtdepth is None:
-            raise ValueError("Record %s has no depth" % file_str)
+            raise ValueError("Record %s is missing event depth" % file_str)
 
         # Build event
         eqk = Earthquake(
