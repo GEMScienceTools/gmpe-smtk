@@ -198,7 +198,7 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
                 get_int(metadata["FECHA DEL SISMO (GMT)"][:2]))
 
         # Get event time, naming is not consistent (e.g. 07.1, 00, 17,1)
-        for i in metadata.keys():
+        for i in metadata:
             if 'HORA EPICENTRO (GMT)' in i:
                 hour, minute, second = (get_int(metadata[i].split(":")[0]),
                                         get_int(metadata[i].split(":")[1]),
@@ -293,7 +293,7 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
                                   mechanism_type=None)
 
         # Get depths, naming is not consistent so allow for variation
-        for i in metadata.keys():
+        for i in metadata:
                 if 'PROFUNDIDAD ' in i:
                     # assume <5km = 5km
                     evtdepth = get_float(re.sub('[ <>]', '', metadata[i]))
@@ -422,7 +422,7 @@ class ASATimeSeriesParser(SMTimeSeriesReader):
             ("Y", {"Original": {}, "SDOF": {}}),
             ("V", {"Original": {}, "SDOF": {}})])
 
-        target_names = time_series.keys()
+        target_names = list(time_series.keys())
         for iloc, ifile in enumerate(self.input_files):
             if not os.path.exists(ifile):
                 continue
@@ -436,7 +436,7 @@ class ASATimeSeriesParser(SMTimeSeriesReader):
         """
         Parses the time history and returns the time history of the specified
         component. All 3 components are provided in every ASA file. Note that
-        components are defined with varios names, and are not always
+        components are defined with various names, and are not always
         given in the same order
         """
 
@@ -503,7 +503,7 @@ class ASATimeSeriesParser(SMTimeSeriesReader):
         units = units_provided[units_provided.find("(") + 1:units_provided.find(")")]
 
         # Get time step, naming is not consistent so allow for variation
-        for i in metadata.keys():
+        for i in metadata:
             if 'INTERVALO DE MUESTREO, C1' in i:
                 self.time_step = get_float(metadata[i].split("/")[1])
 
