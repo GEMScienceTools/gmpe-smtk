@@ -98,7 +98,7 @@ def _site_selection(db1, site_class, classifier):
     idx = []
     for iloc, rec in enumerate(db1.records):
         if classifier == "NEHRP":
-            if rec.site.nehrp and (rec.site.nerhp == site_class):
+            if rec.site.nehrp and (rec.site.nehrp == site_class):
                 idx.append(iloc)
                 continue
               
@@ -136,11 +136,12 @@ def db_magnitude_distance_by_site(db1, dist_type, classification="NEHRP",
     total_idx = []
     for site_class in site_bounds.keys():
         site_idx = _site_selection(db1, site_class, classification)
-        site_db = selector.select_records(site_idx, as_db=True)
-        mags, dists = get_magnitude_distances(site_db, dist_type)
-        plt.plot(np.array(dists), np.array(mags), "o",
-                 label="Site Class %s" % site_class)
-        total_idx.extend(site_idx)
+        if site_idx:
+            site_db = selector.select_records(site_idx, as_db=True)
+            mags, dists = get_magnitude_distances(site_db, dist_type)
+            plt.plot(np.array(dists), np.array(mags), "o",
+                     label="Site Class %s" % site_class)
+            total_idx.extend(site_idx)
     unc_idx = Set(range(db1.number_records())).difference(Set(total_idx))
     unc_db = selector.select_records(unc_idx, as_db=True)
     mag, dists = get_magnitude_distances(site_db, dist_type)
