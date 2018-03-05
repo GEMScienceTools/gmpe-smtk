@@ -20,14 +20,13 @@
 """
 Parser from the ESM Flatfile to SMTK
 """
-import os
+import os, sys
 import csv
 import numpy as np
 import copy
 import h5py
-import cPickle
 from math import sqrt
-from sets import Set
+#from sets import Set
 from linecache import getline
 from collections import OrderedDict
 from datetime import datetime
@@ -51,8 +50,14 @@ from smtk.parsers.base_database_parser import (get_float, get_int,
                                                SMSpectraReader)
 from smtk.trellis.configure import (vs30_to_z1pt0_cy14,
                                     vs30_to_z2pt5_cb14)
+
+if sys.version_info[0] >= 3:
+    import pickle
+else:
+    import cPickle as pickle
+
 # Import the ESM dictionaries
-from esm_dictionaries import *
+from .esm_dictionaries import *
 #from smtk.parsers.simple_flatfile_parser_sara import SimpleFlatfileParserV9
 
 SCALAR_LIST = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia", "D5-95"]
@@ -150,10 +155,9 @@ class ESMFlatfileParser(SMDatabaseReader):
         database.parse(location=output_location)
         # Save itself to file
         metadata_file = os.path.join(output_location, "metadatafile.pkl")
-        f = open(metadata_file, "w+")
         print("Storing metadata to file %s" % metadata_file)
-        cPickle.dump(database.database, f)
-        f.close()
+        with open(metadata_file, "wb+") as f:
+            pickle.dump(database.database, f)
         return database
     
     def _sanitise(self, row, reader):

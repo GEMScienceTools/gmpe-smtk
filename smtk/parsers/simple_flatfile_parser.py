@@ -105,7 +105,8 @@ class SimpleFlatfileParser(SMDatabaseReader):
         additional_headers = headers.difference(HEADER_LIST)
         if len(additional_headers) > 0:
             for header in additional_headers:
-                print "Header %s not recognised - ignoring this data!" % header
+                print("Header %s not recognised - ignoring this data!" %
+                      header)
         return
 
     def _parse_record(self, metadata):
@@ -384,7 +385,7 @@ class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
             ("Y", {"Original": {}, "SDOF": {}}),
             ("V", {"Original": {}, "SDOF": {}})])
              
-        target_names = time_series.keys()
+        target_names = list(time_series)
         for iloc, ifile in enumerate(self.input_files):
             if not os.path.exists(ifile):
                 if iloc < 2:
@@ -392,7 +393,7 @@ class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
                     raise ValueError("Horizontal record %s is expected but "
                         "not found!" % ifile)
                 else:
-                    print "Vertical record file %s not found" % ifile
+                    print("Vertical record file %s not found" % ifile)
                     del time_series["V"]
                     continue
             else:

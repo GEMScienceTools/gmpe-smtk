@@ -21,9 +21,13 @@ Tests for execution of Conditional Simulation tools
 """
 import unittest
 import os
-import cPickle
 import smtk.hazard.conditional_simulation as csim
+import smtk.sm_database_builder as sdb
+from smtk.sm_utils import load_pickle
 from smtk.residuals.gmpe_residuals import Residuals
+from smtk.parsers.sigma_database_parser import (SigmaDatabaseMetadataReader,
+                                                SigmaRecordParser,
+                                                SigmaSpectraParser)
 
 BASE_DATA_PATH = os.path.join(os.path.dirname(__file__), "data")
 
@@ -40,8 +44,18 @@ class ConditionalSimulationTestCase(unittest.TestCase):
         Import the database and the rupture before tests
         """
         input_db = os.path.join(BASE_DATA_PATH, "LAquila_Database")
-        with open(os.path.join(input_db, "metadatafile.pkl"), "r") as fid:
-            cls.db = cPickle.load(fid)
+        input_dir = os.path.join(BASE_DATA_PATH, "LAquila_Good_Records")
+        # Build the record database using the L'Aquila subset
+        builder = sdb.SMDatabaseBuilder(SigmaDatabaseMetadataReader,
+                                        input_db)
+        builder.build_database("001", "LAquila Mainshock", input_dir)
+        builder.parse_records(SigmaRecordParser, SigmaSpectraParser)
+        sdb.add_horizontal_im(builder.database, ["PGA", "PGV", "Geometric"])
+        
+        # Load in the data from the database
+        cls.db = load_pickle(os.path.join(input_db, "metadatafile.pkl"))
+        #with open(os.path.join(input_db, "metadatafile.pkl"), "rb") as fid:
+        #    cls.db = pickle.load(fid)
         input_rupture_file = os.path.join(BASE_DATA_PATH,
                                           "laquila_rupture.xml")
         cls.rupture = csim.build_rupture_from_file(input_rupture_file)
@@ -93,3 +107,12 @@ class ConditionalSimulationTestCase(unittest.TestCase):
                                          truncation_level=3.0)
         self.assertEqual(gmfs["AkkarEtAlRjb2014"]["PGA"].shape[1], 5)
         self.assertEqual(gmfs["AkkarEtAlRjb2014"]["SA(1.0)"].shape[1], 5)
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        Delete the temporary record database
+        """
+        os.system("rm -r %s" % os.path.join(BASE_DATA_PATH,
+                                            "LAquila_Database"))
+        cls.db = None
