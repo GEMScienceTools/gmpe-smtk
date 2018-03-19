@@ -35,7 +35,7 @@ from openquake.hazardlib import gsim, imt
 from openquake.hazardlib.gsim.base import (RuptureContext,
                                            DistancesContext,
                                            SitesContext)
-from openquake.hazardlib.gsim.gsim_table import GMPETable
+from openquake.hazardlib.gsim.gmpe_table import GMPETable
 from openquake.hazardlib.scalerel.wc1994 import WC1994
 from smtk.sm_utils import _save_image, _save_image_tight
 import smtk.trellis.trellis_utils as utils
