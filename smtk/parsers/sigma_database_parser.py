@@ -57,11 +57,10 @@ class SigmaDatabaseMetadataReader(SMDatabaseReader):
                                     file_str + "/" + file_str + ".metadata")
             if not os.path.exists(metafile):
                 continue
-            print metafile
             csv_data = csv.DictReader(open(metafile, 'r'),
                                       delimiter=",",
                                       quotechar='"')
-            metadata = csv_data.next()
+            metadata = next(csv_data)
             self.database.records.append(self.parse_metadata(metadata, 
                                                              file_str))
 
@@ -231,7 +230,7 @@ class SigmaDatabaseMetadataReader(SMDatabaseReader):
         proc_x = {}
         proc_y = {}
         proc_z = {}
-        for key in metadata.keys():
+        for key in metadata:
             if 'comp_ordered()/0' in key:
                 proc_x[key.replace("()/0", "")] = metadata[key]
             elif 'comp_ordered()/1' in key:
@@ -242,7 +241,7 @@ class SigmaDatabaseMetadataReader(SMDatabaseReader):
                 pass
         x_comp = self._parse_component_data(wfid, proc_x)
         y_comp = self._parse_component_data(wfid, proc_y)
-        if len(proc_z.keys()) > 0:
+        if len(proc_z) > 0:
             z_comp = self._parse_component_data(wfid, proc_z)
         else:
             z_comp = None
@@ -268,7 +267,7 @@ class SigmaDatabaseMetadataReader(SMDatabaseReader):
             'PGD': get_float(proc_data['comp_ordered.pgd'])
             }
 
-        for imkey in intensity_measures.keys():
+        for imkey in intensity_measures:
             if intensity_measures[imkey]:
                 intensity_measures[imkey] = 100.0 * intensity_measures[imkey]
             
@@ -296,7 +295,7 @@ class SigmaSpectraParser(SMSpectraReader):
             ("X", {"Scalar": {}, "Spectra": {"Response": {}}}), 
             ("Y", {"Scalar": {}, "Spectra": {"Response": {}}}), 
             ("V", {"Scalar": {}, "Spectra": {"Response": {}}})])
-        target_names = sm_record.keys()
+        target_names = list(sm_record)
         for iloc, ifile in enumerate(self.input_files):
             if not os.path.exists(ifile):
                 continue
@@ -336,7 +335,7 @@ class SigmaRecordParser(SMTimeSeriesReader):
             ("Y", {"Original": {}, "SDOF": {}}),
             ("V", {"Original": {}, "SDOF": {}})])
              
-        target_names = time_series.keys()
+        target_names = list(time_series)
         for iloc, ifile in enumerate(self.input_files):
             if not os.path.exists(ifile):
                 continue
@@ -364,7 +363,7 @@ class SigmaRecordParser(SMTimeSeriesReader):
                  9: self._get_units}
         
         for iloc, line in enumerate(f.readlines()):
-            if iloc in cases.keys():
+            if iloc in cases:
                 output = cases[iloc](output, line.rstrip("\n"))
             else:
                 acc_hist.extend(self._get_timehist_line(line.rstrip("\n")))
@@ -426,7 +425,7 @@ class SigmaRecordParser(SMTimeSeriesReader):
         """
         
         """
-        cofs = map(float, line[32:].split("-"))
+        cofs = list(map(float, line[32:].split("-")))
         output['Low Frequency Cutoff'] = cofs[0]
         output['High Frequency Cutoff'] = cofs[1]
         return output
@@ -466,4 +465,4 @@ class SigmaRecordParser(SMTimeSeriesReader):
 
         """
         idx = np.arange(0, len(line) + 14, 14)
-        return [float(line[idx[i]:idx[i + 1]]) for i in xrange(len(idx) - 1)]
+        return [float(line[idx[i]:idx[i + 1]]) for i in range(len(idx) - 1)]

@@ -77,7 +77,7 @@ def _get_filename_from_info(self, file_info):
     """
     Given a file info dictionary return the corresponding filename
     """
-    return ".".join([file_info[key] for key in file_info.keys()])
+    return ".".join([file_info[key] for key in file_info])
 
 
 def _get_metadata_from_file(file_str):
@@ -377,7 +377,8 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
             site.vs30=site.vs30_from_ec8()
             site.vs30_measured = False
         else:
-            print 'Station %s has no information about site class or Vs30' % metadata["STATION_CODE"]
+            print('Station %s has no information about site class or Vs30' %
+                  metadata["STATION_CODE"])
         return site   
             
     def _parse_processing_data(self, wfid, metadata):
@@ -386,7 +387,7 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
         """
         xcomp = self._parse_component_data(wfid, metadata["X"])
         ycomp = self._parse_component_data(wfid, metadata["Y"])
-        if "Z" in metadata.keys():
+        if "Z" in metadata:
             zcomp = self._parse_component_data(wfid, metadata["Z"])
         else:
             zcomp = None
@@ -444,7 +445,7 @@ class ESMTimeSeriesParser(SMTimeSeriesReader):
             ("Y", {"Original": {}, "SDOF": {}}),
             ("V", {"Original": {}, "SDOF": {}})])
              
-        target_names = time_series.keys()
+        target_names = list(time_series)
         for iloc, ifile in enumerate(self.input_files):
             if not os.path.exists(ifile):
                 continue
@@ -457,7 +458,6 @@ class ESMTimeSeriesParser(SMTimeSeriesReader):
         """
         Parses the time history
         """
-        print ifile
         # Build the metadata dictionary again
         metadata = _get_metadata_from_file(ifile)
         self.number_steps = _to_int(metadata["NDATA"])
@@ -501,7 +501,7 @@ class ESMSpectraParser(SMSpectraReader):
             ("X", {"Scalar": {}, "Spectra": {"Response": {}}}), 
             ("Y", {"Scalar": {}, "Spectra": {"Response": {}}}), 
             ("V", {"Scalar": {}, "Spectra": {"Response": {}}})])
-        target_names = sm_record.keys()
+        target_names = list(sm_record)
         for iloc, ifile in enumerate(self.input_files):
             if not os.path.exists(ifile):
                 continue

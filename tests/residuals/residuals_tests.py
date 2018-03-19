@@ -1,15 +1,19 @@
 """
 Core test suite for the database and residuals construction
 """
-import os
+import os, sys
 import subprocess
 import unittest
-import cPickle
 import numpy as np
 from smtk.parsers.esm_flatfile_parser import (ESMFlatfileParser,
                                               HEADERS,
                                               COUNTRY_CODES)
 import smtk.residuals.gmpe_residuals as res
+
+if sys.version_info[0] >= 3:
+    import pickle
+else:
+    import cPickle as pickle
 
 
 BASE_DATA_PATH = os.path.join(os.path.dirname(__file__), "data")
@@ -55,11 +59,12 @@ class ResidualsTestCase(unittest.TestCase):
             subprocess.call(["rm", "-r", cls.out_location])
         parser = ESMFlatfileParser.autobuild("000", "ESM ALL",
                                              cls.out_location, ifile)
+        del parser
         cls.database_file = os.path.join(cls.out_location,
                                          "metadatafile.pkl")
         cls.database = None
-        with open(cls.database_file, "r") as f:
-            cls.database = cPickle.load(f)
+        with open(cls.database_file, "rb") as f:
+            cls.database = pickle.load(f)
         cls.gsims = ["AkkarEtAlRjb2014",  "ChiouYoungs2014"]
         cls.imts = ["PGA", "SA(1.0)"]
 

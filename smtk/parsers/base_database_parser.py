@@ -22,6 +22,7 @@ Abstract base class for a strong motion database reader
 """
 import os
 import abc
+from openquake.baselib.python3compat import with_metaclass
 
 def get_float(xval):
     """
@@ -80,15 +81,14 @@ def get_positive_int(xval):
         return None
     
 
-class SMDatabaseReader(object):
+class SMDatabaseReader(with_metaclass(abc.ABCMeta)):
     """
     Abstract base class for strong motion database parser
     """
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, db_id, db_name, filename, record_folder=None):
         """
-
+        Instantiate and conduct folder checks
         """
         self.id = db_id
         self.name = db_name
@@ -102,18 +102,17 @@ class SMDatabaseReader(object):
     @abc.abstractmethod
     def parse(self):
         """
+        Parses the database
         """
 
-class SMTimeSeriesReader(object):
+class SMTimeSeriesReader(with_metaclass(abc.ABCMeta)):
     """
     Abstract base class for a reader of a ground motion time series
     """
-    __metaclass__ = abc.ABCMeta
     def __init__(self, input_files, folder_name=None, units="cm/s/s"):
         """
-
+        Instantiate and conduct folder checks
         """
-
         self.input_files = []
         for fname in input_files:
             if folder_name:
@@ -131,31 +130,16 @@ class SMTimeSeriesReader(object):
     @abc.abstractmethod
     def parse_records(self, record=None):
         """
+        Parse the strong motion record
         """
 
-
-#    def _build_fileset(self, input_file, folder_name):
-#        """
-#
-#        """
-#        self.input_files = []
-#        for fname in input_files:
-#            if folder_name:
-#                filename = os.path.join(folder_name, fname)
-#                if os.path.exists(filename):
-#                    self.input_files.append(filename)
-#            else:
-#                if os.path.exists(fname):
-#                    self.input_files.append(fname)
-#
-
-class SMSpectraReader(object):
+class SMSpectraReader(with_metaclass(abc.ABCMeta)):
     """
     Abstract Base Class for a reader of a ground motion spectra record
     """
     def __init__(self, input_files, folder_name=None):
         """
-
+        Intantiate with basic file checks
         """
         self.input_files = []
         for fname in input_files:
@@ -170,4 +154,5 @@ class SMSpectraReader(object):
     @abc.abstractmethod
     def parse_spectra(self):
         """
+        Parses the spectra
         """

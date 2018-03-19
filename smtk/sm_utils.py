@@ -21,9 +21,15 @@
 Strong motion utilities
 """
 import os
+import sys
 import numpy as np
 from scipy.integrate import cumtrapz
 import matplotlib.pyplot as plt
+
+if sys.version_info[0] >= 3:
+    import pickle
+else:
+    import cPickle as pickle
 
 def get_time_vector(time_step, number_steps):
     """
@@ -32,10 +38,12 @@ def get_time_vector(time_step, number_steps):
     return np.cumsum(time_step * np.ones(number_steps, dtype=float)) -\
         time_step
 
+
 def nextpow2(nval):
     m_f = np.log2(nval)
     m_i = np.ceil(m_f)
     return int(2.0 ** m_i)
+
 
 def convert_accel_units(acceleration, units):
     """
@@ -50,6 +58,7 @@ def convert_accel_units(acceleration, units):
     else:
         raise ValueError("Unrecognised time history units. "
                          "Should take either ''g'', ''m/s/s'' or ''cm/s/s''")
+
 
 def get_velocity_displacement(time_step, acceleration, units="cm/s/s",
                               velocity=None, displacement=None):
@@ -93,6 +102,7 @@ def build_filename(filename, filetype='png', resolution=300):
         resolution = 300
     return filename, filetype, resolution
 
+
 def _save_image(filename, filetype='png', resolution=300):
     """
     If filename is specified, saves the image
@@ -111,6 +121,7 @@ def _save_image(filename, filetype='png', resolution=300):
     else:
         pass
     return
+
 
 def _save_image_tight(fig, lgd, filename, filetype='png', resolution=300):
     """
@@ -132,3 +143,18 @@ def _save_image_tight(fig, lgd, filename, filetype='png', resolution=300):
         pass
     return
 
+
+def load_pickle(pickle_file):
+    """
+    Python 2 & 3 compatible way of loading a Python Pickle file
+    """
+    try:
+        with open(pickle_file, 'rb') as f:
+            pickle_data = pickle.load(f)
+    except UnicodeDecodeError as e:
+        with open(pickle_file, 'rb') as f:
+            pickle_data = pickle.load(f, encoding='latin1')
+    except Exception as e:
+        print('Unable to load data ', pickle_file, ':', e)
+        raise
+    return pickle_data
