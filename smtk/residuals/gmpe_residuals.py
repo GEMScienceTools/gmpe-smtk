@@ -38,7 +38,7 @@ from copy import deepcopy
 from collections import OrderedDict
 from openquake.baselib import parallel
 from openquake.hazardlib.gsim import get_available_gsims
-from openquake.hazardlib.gsim.gsim_table import GMPETable
+from openquake.hazardlib.gsim.gmpe_table import GMPETable
 import smtk.intensity_measures as ims
 from openquake.hazardlib import imt
 from smtk.strong_motion_selector import SMRecordSelector
