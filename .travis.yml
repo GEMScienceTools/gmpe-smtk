@@ -2,6 +2,11 @@ sudo: false
 
 language: python
 
+notifications:
+  email:
+    - michele@openquake.org
+    - gweather@gfz-potsdam.de
+
 python:
  - "2.7"
 # - "3.5"
