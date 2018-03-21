@@ -25,6 +25,7 @@ Module to get GMPE residuals - total, inter and intra
 
 
 """
+from __future__ import print_function
 import sys
 import re, os
 import h5py
@@ -1003,7 +1004,7 @@ class SingleStationAnalysis(object):
         """
         imt_dict = dict([(imtx, {}) for imtx in self.imts])
         for site_id in self.site_ids:
-            print site_id
+            print(site_id)
             selector = SMRecordSelector(database)
             site_db = selector.select_from_site_id(site_id, as_db=True)
             resid = Residuals(self.input_gmpe_list, self.imts)
@@ -1086,7 +1087,6 @@ class SingleStationAnalysis(object):
         """
         return (1. / float(n_events)) * np.sum(intra_event)
 
-
     def _get_single_station_phi(self, intra_event, delta_s2ss, n_events):
         """
         Returns the single-station phi for the specific station
@@ -1110,15 +1110,15 @@ class SingleStationAnalysis(object):
         n_sites = float(len(self.site_residuals))
         for gmpe in self.gmpe_list:
             if pretty_print:
-                print >> fid, "%s" % gmpe 
+                print("%s" % gmpe, file=fid) 
                 
             for imtx in self.imts:
                 if pretty_print:
-                    print >> fid, "%s" % imtx
+                    print("%s" % imtx, file=fid)
                 if not "Intra event" in self.site_residuals[0].site_analysis[
                     gmpe][imtx]:
-                    print "GMPE %s and IMT %s do not have defined "\
-                        "random effects residuals" % (str(gmpe), str(imtx))
+                    print("GMPE %s and IMT %s do not have defined "\
+                        "random effects residuals" % (str(gmpe), str(imtx)))
                     continue
                 n_events = []
                 numerator_sum = 0.0
@@ -1130,12 +1130,13 @@ class SingleStationAnalysis(object):
                         resid.site_analysis[gmpe][imtx]["Intra event"] -
                         resid.site_analysis[gmpe][imtx]["dS2ss"]) ** 2.)
                     if pretty_print:
-                        print >> fid, "Site ID, %s, dS2Ss, %12.8f, "\
+                        print("Site ID, %s, dS2Ss, %12.8f, "\
                             "phiss_s, %12.8f, Num Records, %s" % (
                             self.site_ids[iloc],
                             resid.site_analysis[gmpe][imtx]["dS2ss"],
                             resid.site_analysis[gmpe][imtx]["phi_ss,s"],
-                            resid.site_analysis[gmpe][imtx]["events"])
+                            resid.site_analysis[gmpe][imtx]["events"]),
+                            file=fid)
                 d2ss = np.array(d2ss)
                 phi_s2ss[gmpe][imtx] = {"Mean": np.mean(d2ss),
                                         "StdDev": np.std(d2ss)}
@@ -1143,15 +1144,15 @@ class SingleStationAnalysis(object):
                     numerator_sum / 
                     float(np.sum(np.array(n_events)) - 1))
         if pretty_print:
-            print >> fid, "TOTAL RESULTS FOR GMPE"
+            print("TOTAL RESULTS FOR GMPE", file=fid)
             for gmpe in self.gmpe_list:
-                print >> fid, "%s" % gmpe 
+                print("%s" % gmpe, file=fid) 
                 
                 for imtx in self.imts:
-                    print >> fid, "%s, phi_ss, %12.8f, phi_s2ss(Mean),"\
+                    print("%s, phi_ss, %12.8f, phi_s2ss(Mean),"\
                         " %12.8f, phi_s2ss(Std. Dev), %12.8f" % (imtx,
                         phi_ss[gmpe][imtx], phi_s2ss[gmpe][imtx]["Mean"],
-                        phi_s2ss[gmpe][imtx]["StdDev"])
+                        phi_s2ss[gmpe][imtx]["StdDev"]), file=fid)
             if filename:
                 fid.close()
         return phi_ss, phi_s2ss

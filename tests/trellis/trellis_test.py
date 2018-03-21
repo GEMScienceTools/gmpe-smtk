@@ -54,7 +54,7 @@ class BaseTrellisTest(unittest.TestCase):
                       "CampbellBozorgnia2014", "KothaEtAl2016Italy",
                       "KothaEtAl2016Other", "KothaEtAl2016Turkey",
                       "ZhaoEtAl2016Asc", "BindiEtAl2017Rjb"]
-    
+
     def compare_jsons(self, old, new):
         """
         Compares the json data from file with the new data from trellis plot
@@ -102,7 +102,7 @@ class DistanceTrellisTest(BaseTrellisTest):
         # Setup rupture
         rupture = rcfg.GSIMRupture(6.5, 60., 1.5,
                                    hypocentre_location=(0.5, 0.5))
-        _ = rupture.get_target_sites_line(250.0, 1.0, 800.0)
+        rupture.get_target_sites_line(250.0, 1.0, 800.0)
         # Get trellis calculations
         trl = self._run_trellis(rupture)
         # Parse the json formatted string to a dictionary string

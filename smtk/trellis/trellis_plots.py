@@ -27,7 +27,6 @@ from collections import Iterable, OrderedDict
 from itertools import cycle
 from cycler import cycler
 from math import floor, ceil
-from sets import Set
 import matplotlib
 from copy import deepcopy
 import matplotlib.pyplot as plt
@@ -546,7 +545,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
             units = PLOT_UNITS['SA']
         else:
             units = PLOT_UNITS[i_m]
-        return "Mean {:s} ({:s})".format(i_m, units)
+        return "Median {:s} ({:s})".format(i_m, units)
 
     def to_dict(self):
         """
@@ -790,7 +789,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
     Trellis class to generate a plot of the GMPE attenuation with distance
     """
     XLABEL = "%s (km)"
-    YLABEL = "Mean %s (%s)"
+    YLABEL = "Median %s (%s)"
     def __init__(self, magnitudes, distances, gsims, imts, params, 
             stddevs="Total", **kwargs):
         """
@@ -900,7 +899,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
             units = PLOT_UNITS['SA']
         else:
             units = PLOT_UNITS[i_m]
-        return "Mean {:s} ({:s})".format(i_m, units)
+        return "Median {:s} ({:s})".format(i_m, units)
 
     def to_dict(self):
         """

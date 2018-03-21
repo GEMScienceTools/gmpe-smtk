@@ -21,9 +21,14 @@ Tests for execution of Conditional Simulation tools
 """
 import unittest
 import os
-import cPickle
+import shutil
 import smtk.hazard.conditional_simulation as csim
+import smtk.sm_database_builder as sdb
+from smtk.sm_utils import load_pickle
 from smtk.residuals.gmpe_residuals import Residuals
+from smtk.parsers.sigma_database_parser import (SigmaDatabaseMetadataReader,
+                                                SigmaRecordParser,
+                                                SigmaSpectraParser)
 
 BASE_DATA_PATH = os.path.join(os.path.dirname(__file__), "data")
 
@@ -40,8 +45,16 @@ class ConditionalSimulationTestCase(unittest.TestCase):
         Import the database and the rupture before tests
         """
         input_db = os.path.join(BASE_DATA_PATH, "LAquila_Database")
-        with open(os.path.join(input_db, "metadatafile.pkl"), "r") as fid:
-            cls.db = cPickle.load(fid)
+        input_dir = os.path.join(BASE_DATA_PATH, "LAquila_Good_Records")
+        # Build the record database using the L'Aquila subset
+        builder = sdb.SMDatabaseBuilder(SigmaDatabaseMetadataReader,
+                                        input_db)
+        builder.build_database("001", "LAquila Mainshock", input_dir)
+        builder.parse_records(SigmaRecordParser, SigmaSpectraParser)
+        sdb.add_horizontal_im(builder.database, ["PGA", "PGV", "Geometric"])
+
+        # Load in the data from the database
+        cls.db = load_pickle(os.path.join(input_db, "metadatafile.pkl"))
         input_rupture_file = os.path.join(BASE_DATA_PATH,
                                           "laquila_rupture.xml")
         cls.rupture = csim.build_rupture_from_file(input_rupture_file)
@@ -56,9 +69,7 @@ class ConditionalSimulationTestCase(unittest.TestCase):
         cls.residuals.get_residuals(cls.db)
 
     def test_generation_residual_fields(self):
-        """
-        Executes the site collection
-        """
+        # Executes the site collection
         observed_sites = self.db.get_site_collection()
         self.assertEqual(len(observed_sites), 13)
         # Get the target sites
@@ -66,21 +77,19 @@ class ConditionalSimulationTestCase(unittest.TestCase):
         vs30 = 800.0
         unknown_sites = csim.get_regular_site_collection(limits, vs30)
         # Generate a conditional field of residuals
-        pga_residuals = self.residuals.residuals["AkkarEtAlRjb2014"]\
-            ["PGA"]["Intra event"]
-        sa1_residuals = self.residuals.residuals["AkkarEtAlRjb2014"]\
-            ["SA(1.0)"]["Intra event"]
-        pga_field1 = csim.conditional_simulation(observed_sites,
-                                                 pga_residuals,
-                                                 unknown_sites, "PGA", 1)
-        sa1_field1 = csim.conditional_simulation(observed_sites,
-                                                 sa1_residuals,
-                                                 unknown_sites, "SA(1.0)", 1)
+        pga_residuals = (self.residuals.residuals["AkkarEtAlRjb2014"]
+                         ["PGA"]["Intra event"])
+        sa1_residuals = (self.residuals.residuals["AkkarEtAlRjb2014"]
+                         ["SA(1.0)"]["Intra event"])
+        csim.conditional_simulation(observed_sites,
+                                    pga_residuals,
+                                    unknown_sites, "PGA", 1)
+        csim.conditional_simulation(observed_sites,
+                                    sa1_residuals,
+                                    unknown_sites, "SA(1.0)", 1)
 
     def tests_generation_gmfs(self):
-        """
-        Tests the generation of the full ground motion fields
-        """
+        # Tests the generation of the full ground motion fields
         limits = [12.5, 15.0, 0.05, 40.5, 43.0, 0.05]
         vs30 = 800.0
         unknown_sites = csim.get_regular_site_collection(limits, vs30)
@@ -93,3 +102,11 @@ class ConditionalSimulationTestCase(unittest.TestCase):
                                          truncation_level=3.0)
         self.assertEqual(gmfs["AkkarEtAlRjb2014"]["PGA"].shape[1], 5)
         self.assertEqual(gmfs["AkkarEtAlRjb2014"]["SA(1.0)"].shape[1], 5)
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        Delete the temporary record database
+        """
+        shutil.rmtree(os.path.join(BASE_DATA_PATH, "LAquila_Database"))
+        cls.db = None
