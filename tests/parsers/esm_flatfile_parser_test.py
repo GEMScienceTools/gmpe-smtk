@@ -19,7 +19,9 @@
 """
 Tests for execution of ESM Flatfile Parser
 """
-import os, sys
+import os
+import sys
+import shutil
 import unittest
 from smtk.parsers.esm_flatfile_parser import ESMFlatfileParser
 
@@ -75,6 +77,7 @@ TARGET_IDS = ["AM_1988_0001_A_GUK_0", "AM_1988_0002_A_GUK_0",
 
 BASE_DATA_PATH = os.path.join(os.path.dirname(__file__), "data")
 
+
 class ESMFlatfileParserTestCase(unittest.TestCase):
     """
     Tests the parsing of the ESM flatfile
@@ -94,7 +97,7 @@ class ESMFlatfileParserTestCase(unittest.TestCase):
         with open(os.path.join(self.db_file, "metadatafile.pkl"), "rb") as f:
             db = pickle.load(f)
         # Should contain 100 records
-        self.assertTrue(len(db), 100)
+        self.assertEqual(len(db), 100)
         # Record IDs should be equal to the specified target IDs
         for rec in db:
             print(rec.id)
@@ -106,4 +109,4 @@ class ESMFlatfileParserTestCase(unittest.TestCase):
         """
         Remove the database
         """
-        os.system("rm -r %s" % cls.db_file)
+        shutil.rmtree(cls.db_file)

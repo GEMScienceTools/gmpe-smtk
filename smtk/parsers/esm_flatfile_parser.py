@@ -95,6 +95,7 @@ COUNTRY_CODES = {"AL": "Albania", "AM": "Armenia", "AT": "Austria",
                  "SY": "Syria", "TM": "Turkmenistan", "TR": "Turkey",
                  "UA": "Ukraine", "UZ": "Uzbekistan", "XK": "Kosovo"}
 
+
 class ESMFlatfileParser(SMDatabaseReader):
     """
     Parses the ESM metadata from the flatfile to a set of metadata objects
@@ -108,7 +109,7 @@ class ESMFlatfileParser(SMDatabaseReader):
         """
         headers = getline(self.filename, 1).rstrip("\n").split(";")
         for hdr in HEADERS:
-            if not hdr in headers:
+            if hdr not in headers:
                 raise ValueError("Required header %s is missing in file"
                                  % hdr)
         # Read in csv
@@ -124,7 +125,7 @@ class ESMFlatfileParser(SMDatabaseReader):
                     # Parse the strong motion
                     record = self._parse_ground_motion(
                         os.path.join(location, "records"),
-                                     row, record, headers)
+                        row, record, headers)
                     self.database.records.append(record)
 
                 else:
@@ -148,10 +149,10 @@ class ESMFlatfileParser(SMDatabaseReader):
         os.mkdir(output_location)
         # Add on the records folder
         os.mkdir(os.path.join(output_location, "records"))
-        # Create an instance of the parser class 
+        # Create an instance of the parser class
         database = cls(dbid, dbname, flatfile_location)
         # Parse the records
-        print("Parsing Records ...") 
+        print("Parsing Records ...")
         database.parse(location=output_location)
         # Save itself to file
         metadata_file = os.path.join(output_location, "metadatafile.pkl")
@@ -159,7 +160,7 @@ class ESMFlatfileParser(SMDatabaseReader):
         with open(metadata_file, "wb+") as f:
             pickle.dump(database.database, f)
         return database
-    
+
     def _sanitise(self, row, reader):
         """
         TODO - Not implemented yet!
@@ -167,10 +168,6 @@ class ESMFlatfileParser(SMDatabaseReader):
         return True
 
     def _parse_record(self, metadata):
-        """
-
-        """
-        #print metadata
         # Waveform ID not provided in file so concatenate Event and Station ID
         wfid = "_".join([metadata["event_id"], metadata["network_code"],
                          metadata["station_code"], metadata["location_code"]])

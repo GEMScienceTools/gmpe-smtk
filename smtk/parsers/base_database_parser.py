@@ -24,6 +24,7 @@ import os
 import abc
 from openquake.baselib.python3compat import with_metaclass
 
+
 def get_float(xval):
     """
     Returns a float value, or none
@@ -36,6 +37,7 @@ def get_float(xval):
     else:
         return None
 
+
 def get_int(xval):
     """
     Returns an int value or none
@@ -47,6 +49,7 @@ def get_int(xval):
             return None
     else:
         return None
+
 
 def get_positive_float(xval):
     """
@@ -64,6 +67,7 @@ def get_positive_float(xval):
     else:
         return None
 
+
 def get_positive_int(xval):
     """
     Returns an int value or none
@@ -79,7 +83,7 @@ def get_positive_int(xval):
             return None
     else:
         return None
-    
+
 
 class SMDatabaseReader(with_metaclass(abc.ABCMeta)):
     """
@@ -104,6 +108,7 @@ class SMDatabaseReader(with_metaclass(abc.ABCMeta)):
         """
         Parses the database
         """
+
 
 class SMTimeSeriesReader(with_metaclass(abc.ABCMeta)):
     """
@@ -132,6 +137,7 @@ class SMTimeSeriesReader(with_metaclass(abc.ABCMeta)):
         """
         Parse the strong motion record
         """
+
 
 class SMSpectraReader(with_metaclass(abc.ABCMeta)):
     """

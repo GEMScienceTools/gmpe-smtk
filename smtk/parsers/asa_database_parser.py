@@ -38,8 +38,7 @@ from smtk.sm_utils import convert_accel_units, get_time_vector
 from smtk.parsers.base_database_parser import (get_float,
                                                get_int,
                                                SMDatabaseReader,
-                                               SMTimeSeriesReader,
-                                               SMSpectraReader)
+                                               SMTimeSeriesReader)
 
 
 def _get_info_from_archive_name(aname):
@@ -53,10 +52,12 @@ def _get_info_from_archive_name(aname):
 
     # CICESE
     if "dat" in aname[-3:] or "Dat" in aname[-3:]:
-        file_info = [aname[:3], aname[8:12], aname[6:8], aname[4:6], aname[12:-4]]
+        file_info = [aname[:3], aname[8:12], aname[6:8],
+                     aname[4:6], aname[12:-4]]
     # UNAM
     else:
-        file_info = [aname[:4], aname[4:6], aname[6:8], aname[9:11], aname[11:12]]
+        file_info = [aname[:4], aname[4:6], aname[6:8],
+                     aname[9:11], aname[11:12]]
 
     return OrderedDict([
         (FILE_INFO_KEY[i], file_info[i]) for i in range(len(file_info))
@@ -89,7 +90,8 @@ def _get_metadata_from_file(file_str):
                     recentkey = row[0].strip()
                 elif len(row[0].strip()) == 0:
                     # When values continue on a new line
-                    metadata[recentkey] = metadata[recentkey] + ' ' + row[1].strip()
+                    metadata[recentkey] = (
+                        metadata[recentkey] + ' ' + row[1].strip())
 
     return metadata
 
@@ -105,8 +107,6 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
         """
         Parses the record
         """
-        file_list = os.listdir(self.filename)
-        num_files = len(file_list)
         self.database = GroundMotionDatabase(self.id, self.name)
         self._sort_files()
         assert (len(self.ORGANIZER) > 0)
@@ -321,10 +321,14 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
         smtk.sm_database.RecordDistance
         """
 
-        epi_lon = get_float(metadata["COORDENADAS DEL EPICENTRO"].split(" ")[3])
-        epi_lat = get_float(metadata["COORDENADAS DEL EPICENTRO"].split(" ")[0])
-        sta_lon = get_float(metadata["COORDENADAS DE LA ESTACION"].split(" ")[3])
-        sta_lat = get_float(metadata["COORDENADAS DE LA ESTACION"].split(" ")[0])
+        epi_lon = get_float(
+            metadata["COORDENADAS DEL EPICENTRO"].split(" ")[3])
+        epi_lat = get_float(
+            metadata["COORDENADAS DEL EPICENTRO"].split(" ")[0])
+        sta_lon = get_float(
+            metadata["COORDENADAS DE LA ESTACION"].split(" ")[3])
+        sta_lat = get_float(
+            metadata["COORDENADAS DE LA ESTACION"].split(" ")[0])
 
         p = Point(longitude=epi_lon, latitude=epi_lat)
         repi = p.distance(Point(longitude=sta_lon, latitude=sta_lat))
@@ -332,7 +336,8 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
         # No hypocentral distance in file - calculate from event
         rhypo = sqrt(repi ** 2. + eqk.depth ** 2.)
 
-        azimuth = Point(epi_lon, epi_lat, eqk.depth).azimuth(Point(sta_lon, sta_lat))
+        azimuth = Point(epi_lon, epi_lat, eqk.depth).azimuth(
+            Point(sta_lon, sta_lat))
 
         dists = RecordDistance(repi, rhypo)
         dists.azimuth = azimuth
@@ -378,7 +383,8 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
         """
         units_provided = metadata["UNIDADES DE LOS DATOS"]
         # consider only units within parenthesis
-        units = units_provided[units_provided.find("(")+1:units_provided.find(")")]
+        units = units_provided[units_provided.find("(") + 1:
+                               units_provided.find(")")]
 
         xcomp = Component(
             wfid,
@@ -454,11 +460,13 @@ class ASATimeSeriesParser(SMTimeSeriesReader):
 
         # Check if any component names are repeated
         if any(components.count(x) > 1 for x in components):
-            raise ValueError("Some components %s in record %s have the same name"
+            raise ValueError(
+                "Some components %s in record %s have the same name"
                 % (components, ifile))
         # Check if more than 3 components are given
         if len(components) > 3:
-            raise ValueError("More than 3 components %s in record %s"
+            raise ValueError(
+                "More than 3 components %s in record %s"
                 % (components, ifile))
 
         # Get acceleration data from correct column
@@ -468,10 +476,11 @@ class ASATimeSeriesParser(SMTimeSeriesReader):
                 column = 0
                 try:
                     accel = np.genfromtxt(ifile, skip_header=109,
-                        usecols=column, delimiter='')
+                                          usecols=column, delimiter='')
                 except:
-                    raise ValueError("Check %s has 3 equal length time-series columns"
-                        % (ifile))
+                    raise ValueError(
+                        "Check %s has 3 equal length time-series columns"
+                        % ifile)
                 break
             elif i == components[1]:
                 column = 1
@@ -479,28 +488,33 @@ class ASATimeSeriesParser(SMTimeSeriesReader):
                     accel = np.genfromtxt(ifile, skip_header=109,
                         usecols=column, delimiter='')
                 except:
-                    raise ValueError("Check %s has 3 equal length time-series columns"
-                        % (ifile))
+                    raise ValueError(
+                        "Check %s has 3 equal length time-series columns"
+                        % ifile)
                 break
             elif i == components[2]:
                 column = 2
                 try:
                     accel = np.genfromtxt(ifile, skip_header=109,
-                        usecols=column, delimiter='')
+                                          usecols=column, delimiter='')
                 except:
-                    raise ValueError("Check %s has 3 equal length time-series columns"
-                        % (ifile))
+                    raise ValueError(
+                        "Check %s has 3 equal length time-series columns"
+                        % ifile)
                 break
         if column is None:
-                raise ValueError("None of the components %s were found to be \n\
-                    the %s component of file %s" % (components, component2parse, ifile))
+                raise ValueError(
+                    "None of the components %s were found to be \n\
+                    the %s component of file %s" %
+                    (components, component2parse, ifile))
 
         # Build the metadata dictionary again
         metadata = _get_metadata_from_file(ifile)
 
         # Get units
         units_provided = metadata["UNIDADES DE LOS DATOS"]
-        units = units_provided[units_provided.find("(") + 1:units_provided.find(")")]
+        units = units_provided[units_provided.find("(") + 1:
+                               units_provided.find(")")]
 
         # Get time step, naming is not consistent so allow for variation
         for i in metadata:

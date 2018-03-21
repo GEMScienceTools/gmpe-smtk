@@ -21,6 +21,7 @@ Tests for execution of Conditional Simulation tools
 """
 import unittest
 import os
+import shutil
 import smtk.hazard.conditional_simulation as csim
 import smtk.sm_database_builder as sdb
 from smtk.sm_utils import load_pickle
@@ -51,11 +52,9 @@ class ConditionalSimulationTestCase(unittest.TestCase):
         builder.build_database("001", "LAquila Mainshock", input_dir)
         builder.parse_records(SigmaRecordParser, SigmaSpectraParser)
         sdb.add_horizontal_im(builder.database, ["PGA", "PGV", "Geometric"])
-        
+
         # Load in the data from the database
         cls.db = load_pickle(os.path.join(input_db, "metadatafile.pkl"))
-        #with open(os.path.join(input_db, "metadatafile.pkl"), "rb") as fid:
-        #    cls.db = pickle.load(fid)
         input_rupture_file = os.path.join(BASE_DATA_PATH,
                                           "laquila_rupture.xml")
         cls.rupture = csim.build_rupture_from_file(input_rupture_file)
@@ -70,9 +69,7 @@ class ConditionalSimulationTestCase(unittest.TestCase):
         cls.residuals.get_residuals(cls.db)
 
     def test_generation_residual_fields(self):
-        """
-        Executes the site collection
-        """
+        # Executes the site collection
         observed_sites = self.db.get_site_collection()
         self.assertEqual(len(observed_sites), 13)
         # Get the target sites
@@ -80,21 +77,19 @@ class ConditionalSimulationTestCase(unittest.TestCase):
         vs30 = 800.0
         unknown_sites = csim.get_regular_site_collection(limits, vs30)
         # Generate a conditional field of residuals
-        pga_residuals = self.residuals.residuals["AkkarEtAlRjb2014"]\
-            ["PGA"]["Intra event"]
-        sa1_residuals = self.residuals.residuals["AkkarEtAlRjb2014"]\
-            ["SA(1.0)"]["Intra event"]
-        pga_field1 = csim.conditional_simulation(observed_sites,
-                                                 pga_residuals,
-                                                 unknown_sites, "PGA", 1)
-        sa1_field1 = csim.conditional_simulation(observed_sites,
-                                                 sa1_residuals,
-                                                 unknown_sites, "SA(1.0)", 1)
+        pga_residuals = (self.residuals.residuals["AkkarEtAlRjb2014"]
+                         ["PGA"]["Intra event"])
+        sa1_residuals = (self.residuals.residuals["AkkarEtAlRjb2014"]
+                         ["SA(1.0)"]["Intra event"])
+        csim.conditional_simulation(observed_sites,
+                                    pga_residuals,
+                                    unknown_sites, "PGA", 1)
+        csim.conditional_simulation(observed_sites,
+                                    sa1_residuals,
+                                    unknown_sites, "SA(1.0)", 1)
 
     def tests_generation_gmfs(self):
-        """
-        Tests the generation of the full ground motion fields
-        """
+        # Tests the generation of the full ground motion fields
         limits = [12.5, 15.0, 0.05, 40.5, 43.0, 0.05]
         vs30 = 800.0
         unknown_sites = csim.get_regular_site_collection(limits, vs30)
@@ -113,6 +108,5 @@ class ConditionalSimulationTestCase(unittest.TestCase):
         """
         Delete the temporary record database
         """
-        os.system("rm -r %s" % os.path.join(BASE_DATA_PATH,
-                                            "LAquila_Database"))
+        shutil.rmtree(os.path.join(BASE_DATA_PATH, "LAquila_Database"))
         cls.db = None

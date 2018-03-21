@@ -1,13 +1,11 @@
 """
 Core test suite for the database and residuals construction
 """
-import os, sys
-import subprocess
+import os
+import sys
+import shutil
 import unittest
-import numpy as np
-from smtk.parsers.esm_flatfile_parser import (ESMFlatfileParser,
-                                              HEADERS,
-                                              COUNTRY_CODES)
+from smtk.parsers.esm_flatfile_parser import ESMFlatfileParser
 import smtk.residuals.gmpe_residuals as res
 
 if sys.version_info[0] >= 3:
@@ -56,7 +54,7 @@ class ResidualsTestCase(unittest.TestCase):
         ifile = os.path.join(BASE_DATA_PATH, "residual_tests_esm_data.csv")
         cls.out_location = os.path.join(BASE_DATA_PATH, "residual_tests")
         if os.path.exists(cls.out_location):
-            subprocess.call(["rm", "-r", cls.out_location])
+            shutil.rmtree(cls.out_location)
         parser = ESMFlatfileParser.autobuild("000", "ESM ALL",
                                              cls.out_location, ifile)
         del parser
@@ -74,7 +72,7 @@ class ResidualsTestCase(unittest.TestCase):
         """
         self.assertEqual(len(self.database), 41)
         self.assertListEqual([rec.id for rec in self.database],
-                              EXPECTED_IDS)
+                             EXPECTED_IDS)
 
     def _check_residual_dictionary_correctness(self, res_dict):
         """
@@ -108,8 +106,8 @@ class ResidualsTestCase(unittest.TestCase):
         residuals = res.Residuals(self.gsims, self.imts)
         residuals.get_residuals(self.database, component="Geometric")
         self._check_residual_dictionary_correctness(residuals.residuals)
-        _ = residuals.get_residual_statistics()
-        
+        residuals.get_residual_statistics()
+
     def tests_likelihood_execution(self):
         """
         Tests basic execution of residuals - not correctness of values
@@ -117,7 +115,7 @@ class ResidualsTestCase(unittest.TestCase):
         lkh = res.Likelihood(self.gsims, self.imts)
         lkh.get_residuals(self.database, component="Geometric")
         self._check_residual_dictionary_correctness(lkh.residuals)
-        _ = lkh.get_likelihood_values()
+        lkh.get_likelihood_values()
 
     def tests_llh_execution(self):
         """
@@ -126,7 +124,7 @@ class ResidualsTestCase(unittest.TestCase):
         llh = res.LLH(self.gsims, self.imts)
         llh.get_residuals(self.database, component="Geometric")
         self._check_residual_dictionary_correctness(llh.residuals)
-        _ = llh.get_loglikelihood_values(self.imts)
+        llh.get_loglikelihood_values(self.imts)
 
     def tests_multivariate_llh_execution(self):
         """
@@ -135,7 +133,7 @@ class ResidualsTestCase(unittest.TestCase):
         multi_llh = res.MultivariateLLH(self.gsims, self.imts)
         multi_llh.get_residuals(self.database, component="Geometric")
         self._check_residual_dictionary_correctness(multi_llh.residuals)
-        _ = multi_llh.get_likelihood_values()
+        multi_llh.get_likelihood_values()
 
     def tests_edr_execution(self):
         """
@@ -144,11 +142,11 @@ class ResidualsTestCase(unittest.TestCase):
         edr = res.EDR(self.gsims, self.imts)
         edr.get_residuals(self.database, component="Geometric")
         self._check_residual_dictionary_correctness(edr.residuals)
-        _ = edr.get_edr_values()
+        edr.get_edr_values()
 
     @classmethod
     def tearDownClass(cls):
         """
         Deletes the database
         """
-        subprocess.call(["rm", "-r", cls.out_location])
+        shutil.rmtree(cls.out_location)
