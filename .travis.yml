@@ -16,8 +16,13 @@ addons:
     - git
 
 install:
-  # Clone oq-engine
-  - git clone -q --depth=1 https://github.com/gem/oq-engine.git
+  # Check if the same branch exists on 'oq-engine'
+  - if [ "$TRAVIS_PULL_REQUEST_BRANCH" != "" ]; then BRANCH=$TRAVIS_PULL_REQUEST_BRANCH; else BRANCH=$TRAVIS_BRANCH; fi
+  - if [ "$(git ls-remote --heads https://github.com/gem/oq-engine.git ${BRANCH})" == "" ]; then
+      BRANCH='master';
+    fi;
+  # Clone 'oq-engine'
+  - git clone -q -b $BRANCH --depth=1 https://github.com/gem/oq-engine.git && echo "Running against oq-engine/${BRANCH}"
   # Make sure pip is up-to-date and has support for wheels
   - pip -q install -U pip
   # Install oq-engine dependencies
