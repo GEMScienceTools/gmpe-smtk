@@ -27,7 +27,7 @@ from shapely import wkt
 from openquake.hazardlib.geo.point import Point
 from openquake.hazardlib.geo.surface import PlanarSurface
 from openquake.hazardlib.geo.geodetic import geodetic_distance
-from openquake.hazardlib.correlation import JB2009CorrelationModel
+from openquake.hazardlib.correlation import jbcorrelation
 from openquake.hazardlib.site import Site, SiteCollection
 from openquake.hazardlib.imt import from_string
 from openquake.hazardlib.gsim import get_available_gsims
@@ -37,7 +37,7 @@ from openquake.hazardlib import nrml
 from smtk.residuals.gmpe_residuals import Residuals
 
 
-DEFAULT_CORRELATION = JB2009CorrelationModel(False)
+DEFAULT_CORRELATION = jbcorrelation
 GSIM_LIST = get_available_gsims()
 
 
@@ -124,14 +124,14 @@ def conditional_simulation(known_sites, residuals, unknown_sites, imt, nsim,
     :param dict residuals:
         Dictionary of residuals for specifc GMPE and IMT
     :param unknown_sites:
-        Locations of unknown sites as instance of :class: 
-        openquake.hazardlib.sites.SiteCollection
+        Locations of unknown sites as instance of :class:
+        `openquake.hazardlib.sites.SiteCollection`
     :param imt:
         Intensity measure type
     :psram int nsim:
         Number of simulations
     :param correlation_model:
-        Chosen correlation model
+        Chosen correlation model, i.e. jbcorrelation
 
     """
     # Get site to site distances for known
@@ -139,20 +139,20 @@ def conditional_simulation(known_sites, residuals, unknown_sites, imt, nsim,
     # Make sure that sites are at the surface (to check!)
     known_sites.depths = np.zeros_like(known_sites.depths)
     unknown_sites.depths = np.zeros_like(unknown_sites.depths)
-    cov_kk = correlation_model._get_correlation_matrix(known_sites, imt).I
-    cov_uu = correlation_model._get_correlation_matrix(unknown_sites, imt)
+    cov_kk = correlation_model(known_sites, imt).I
+    cov_uu = correlation_model(unknown_sites, imt)
     d_k_uk = np.zeros([len(known_sites), len(unknown_sites)],
-                       dtype=float)
+                      dtype=float)
     for iloc in range(len(known_sites)):
         d_k_uk[iloc, :] = geodetic_distance(known_sites.array["lons"][iloc],
                                             known_sites.array["lats"][iloc],
                                             unknown_sites.array["lons"],
                                             unknown_sites.array["lats"])
-    cov_ku = correlation_model._get_correlation_model(d_k_uk, imt)
+    cov_ku = correlation_model(d_k_uk, imt)
     mu = cov_ku.T * cov_kk * np.matrix(residuals).T
     stddev = cov_uu - (cov_ku.T * cov_kk * cov_ku)
-    unknown_residuals = np.matrix(np.random.normal(0., 1., 
-                                                   [len(unknown_sites), nsim]))
+    unknown_residuals = np.matrix(np.random.normal(
+        0., 1., [len(unknown_sites), nsim]))
     lower_matrix = np.linalg.cholesky(stddev)
     output_residuals = np.zeros_like(unknown_residuals)
     for iloc in range(0, nsim):
