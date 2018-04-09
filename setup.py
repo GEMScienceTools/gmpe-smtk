@@ -28,7 +28,7 @@ Copyright (C) 2014-2017 GEM Foundation
 
 setup(
     name='smtk',
-    version='0.1.0',
+    version='3.0.0',
     description=README,
     url=url,
     packages=find_packages(exclude=['tests', 'tests.*']),
