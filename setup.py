@@ -15,8 +15,8 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
-
 from setuptools import setup, find_packages
+from openquake.hazardlib import __version__
 
 url = "https://github.com/GEMScienceTools/gmpe-smtk"
 
@@ -28,13 +28,13 @@ Copyright (C) 2014-2017 GEM Foundation
 
 setup(
     name='smtk',
-    version='0.1.0',
+    version=__version__,  # same version as hazardlib
     description=README,
     url=url,
     packages=find_packages(exclude=['tests', 'tests.*']),
     # Minimal requirements, for a complete list see requirements-*.txt
     install_requires=[
-        'openquake.engine',
+        'openquake.engine>3.0',
         'PyYAML',
         'matplotlib >=1.5',
     ],
