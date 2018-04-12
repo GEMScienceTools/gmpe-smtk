@@ -178,7 +178,8 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
     def _parse_event(self, metadata, file_str):
         """
         Parses the event metadata to return an instance of the :class:
-        smtk.sm_database.Earthquake
+        smtk.sm_database.Earthquake. Coordinates in western hemisphere
+        are returned as negative values.
         """
 
         months = {'ENERO': 1, 'FEBRERO': 2, 'MARZO': 3, 'ABRIL': 4, 'MAYO': 5,
@@ -305,7 +306,7 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
             eq_id,
             eq_name,
             eq_datetime,
-            get_float(metadata["COORDENADAS DEL EPICENTRO"].split(" ")[3]),
+            -1*get_float(metadata["COORDENADAS DEL EPICENTRO"].split(" ")[3]),
             get_float(metadata["COORDENADAS DEL EPICENTRO"].split(" ")[0]),
             evtdepth,
             pref_mag,
@@ -318,9 +319,8 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
     def _parse_distance_data(self, metadata, file_str, eqk):
         """
         Parses the event metadata to return an instance of the :class:
-        smtk.sm_database.RecordDistance. Coordinates are provided in
-        terms of N, S, E, W direction, and longitude values must be
-        made negative.
+        smtk.sm_database.RecordDistance. Coordinates in western hemisphere
+        are converted to negative values.
         """
 
         epi_lon = -1*get_float(
@@ -347,7 +347,8 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
 
     def _parse_site_data(self, metadata):
         """
-        Parses the site metadata
+        Parses the site metadata. Coordinates in western hemisphere
+        are returned as negative values.
         """
         try:
             altitude = get_float(metadata["ALTITUD (msnm)"])
@@ -359,7 +360,7 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
                     metadata["CLAVE DE LA ESTACION"]]),
             metadata["CLAVE DE LA ESTACION"],
             metadata["NOMBRE DE LA ESTACION"],
-            get_float(metadata["COORDENADAS DE LA ESTACION"].split(" ")[3]),
+            -1*get_float(metadata["COORDENADAS DE LA ESTACION"].split(" ")[3]),
             get_float(metadata["COORDENADAS DE LA ESTACION"].split(" ")[0]),
             altitude)
 
