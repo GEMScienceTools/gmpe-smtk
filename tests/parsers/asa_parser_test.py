@@ -36,7 +36,7 @@ class ASA_MetadataParsertest(unittest.TestCase):
         for i in self.database.records:
             parsed_lats.append(str(i.event.latitude))
         self.assertEqual(valid.longitudes(','.join(parsed_lons)),
-                         [101.089, 115.33])
+                         [-101.089, -115.33])
         self.assertEqual(valid.latitudes(','.join(parsed_lats)),
                          [17.446, 32.32])
 

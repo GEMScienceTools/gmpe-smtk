@@ -318,14 +318,16 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
     def _parse_distance_data(self, metadata, file_str, eqk):
         """
         Parses the event metadata to return an instance of the :class:
-        smtk.sm_database.RecordDistance
+        smtk.sm_database.RecordDistance. Coordinates are provided in
+        terms of N, S, E, W direction, and longitude values must be
+        made negative.
         """
 
-        epi_lon = get_float(
+        epi_lon = -1*get_float(
             metadata["COORDENADAS DEL EPICENTRO"].split(" ")[3])
         epi_lat = get_float(
             metadata["COORDENADAS DEL EPICENTRO"].split(" ")[0])
-        sta_lon = get_float(
+        sta_lon = -1*get_float(
             metadata["COORDENADAS DE LA ESTACION"].split(" ")[3])
         sta_lat = get_float(
             metadata["COORDENADAS DE LA ESTACION"].split(" ")[0])
