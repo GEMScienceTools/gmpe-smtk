@@ -306,7 +306,7 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
             eq_id,
             eq_name,
             eq_datetime,
-            -1*get_float(metadata["COORDENADAS DEL EPICENTRO"].split(" ")[3]),
+            -get_float(metadata["COORDENADAS DEL EPICENTRO"].split(" ")[3]),
             get_float(metadata["COORDENADAS DEL EPICENTRO"].split(" ")[0]),
             evtdepth,
             pref_mag,
@@ -323,11 +323,11 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
         are converted to negative values.
         """
 
-        epi_lon = -1*get_float(
+        epi_lon = -get_float(
             metadata["COORDENADAS DEL EPICENTRO"].split(" ")[3])
         epi_lat = get_float(
             metadata["COORDENADAS DEL EPICENTRO"].split(" ")[0])
-        sta_lon = -1*get_float(
+        sta_lon = -get_float(
             metadata["COORDENADAS DE LA ESTACION"].split(" ")[3])
         sta_lat = get_float(
             metadata["COORDENADAS DE LA ESTACION"].split(" ")[0])
@@ -360,7 +360,7 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
                     metadata["CLAVE DE LA ESTACION"]]),
             metadata["CLAVE DE LA ESTACION"],
             metadata["NOMBRE DE LA ESTACION"],
-            -1*get_float(metadata["COORDENADAS DE LA ESTACION"].split(" ")[3]),
+            -get_float(metadata["COORDENADAS DE LA ESTACION"].split(" ")[3]),
             get_float(metadata["COORDENADAS DE LA ESTACION"].split(" ")[0]),
             altitude)
 
