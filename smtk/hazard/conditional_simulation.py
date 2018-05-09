@@ -112,15 +112,15 @@ def get_regular_site_collection(limits, vs30, z1pt0=100.0, z2pt5=1.0):
         for i in range(0, ngp)])
 
 
-
-def conditional_simulation(known_sites, residuals, unknown_sites, imt, nsim,
-    correlation_model=DEFAULT_CORRELATION):
+def conditional_simulation(
+        known_sites, residuals, unknown_sites, imt, nsim,
+        correlation_model=DEFAULT_CORRELATION):
     """
     Generates the residuals for a set of sites, conditioned upon the
     known residuals at a set of observation locations
     :param known_sites:
-        Locations of known sites as instance of :class: 
-        openquake.hazardlib.sites.SiteCollection
+        Locations of known sites as instance of :class:
+        `openquake.hazardlib.sites.SiteCollection`
     :param dict residuals:
         Dictionary of residuals for specifc GMPE and IMT
     :param unknown_sites:
@@ -161,8 +161,8 @@ def conditional_simulation(known_sites, residuals, unknown_sites, imt, nsim,
     return output_residuals
 
 
-
-def get_conditional_gmfs(database, rupture, sites, gsims, imts,
+def get_conditional_gmfs(
+        database, rupture, sites, gsims, imts,
         number_simulations, truncation_level,
         correlation_model=DEFAULT_CORRELATION):
     """
@@ -198,15 +198,13 @@ def get_conditional_gmfs(database, rupture, sites, gsims, imts,
     gmfs = OrderedDict([(gmpe, imt_dict) for gmpe in gsims])
     gmpe_list = [GSIM_LIST[gmpe]() for gmpe in gsims]
     cmaker = ContextMaker(gmpe_list)
-    sctx, rctx, dctx = cmaker.make_contexts(sites, rupture)
+    sctx, dctx = cmaker.make_contexts(sites, rupture)
     for gsim in gmpe_list:
         gmpe = gsim.__class__.__name__
-        #gsim = GSIM_LIST[gmpe]()
-        #sctx, rctx, dctx = gsim.make_contexts(sites, rupture)
         for imtx in imts:
             if truncation_level == 0:
-                gmfs[gmpe][imtx], _ = gsim.get_mean_and_stddevs(sctx, rctx,
-                    dctx, from_string(imtx), stddev_types=[])
+                gmfs[gmpe][imtx], _ = gsim.get_mean_and_stddevs(
+                    sctx, rupture, dctx, from_string(imtx), stddev_types=[])
                 continue
             if "Intra event" in gsim.DEFINED_FOR_STANDARD_DEVIATION_TYPES:
                 epsilon = conditional_simulation(
@@ -218,17 +216,13 @@ def get_conditional_gmfs(database, rupture, sites, gsims, imts,
                     correlation_model)
                 tau = np.unique(residuals.residuals[gmpe][imtx]["Inter event"])
                 mean, [stddev_inter, stddev_intra] = gsim.get_mean_and_stddevs(
-                    sctx,
-                    rctx,
-                    dctx, 
-                    from_string(imtx), 
+                    sctx, rupture, dctx, from_string(imtx),
                     ["Inter event", "Intra event"])
                 for iloc in range(0, number_simulations):
                     gmfs[gmpe][imtx][:, iloc] = np.exp(
                         mean +
                         (tau * stddev_inter) +
                         (epsilon[:, iloc].A1 * stddev_intra))
-                        
             else:
                 epsilon = conditional_simulation(
                     known_sites,
@@ -239,13 +233,9 @@ def get_conditional_gmfs(database, rupture, sites, gsims, imts,
                     correlation_model)
                 tau = None
                 mean, [stddev_total] = gsim.get_mean_and_stddevs(
-                    sctx,
-                    rctx,
-                    dctx,
-                    from_string(imtx),
+                    sctx, rupture, dctx, from_string(imtx),
                     ["Total"])
                 for iloc in range(0, number_simulations):
                     gmfs[gmpe][imtx][:, iloc] = np.exp(
-                        mean +
-                        (epsilon[:, iloc].A1 * stddev_total.flatten()))
+                        mean + epsilon[:, iloc].A1 * stddev_total.flatten())
     return gmfs
