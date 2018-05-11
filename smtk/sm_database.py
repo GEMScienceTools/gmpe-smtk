@@ -21,8 +21,6 @@
 Basic Pseudo-database built on top of hdf5 for a set of processed strong
 motion records
 """
-import os
-import h5py
 import numpy as np
 from datetime import datetime
 from openquake.hazardlib.gsim.base import (SitesContext, DistancesContext,
@@ -34,6 +32,7 @@ from smtk.trellis.configure import vs30_to_z1pt0_as08, z1pt0_to_z2pt5
 from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 
 DEFAULT_MSR = PeerMSR()
+
 
 class Magnitude(object):
     """
@@ -768,7 +767,7 @@ class GroundMotionDatabase(object):
             self.site_ids.append(str_id)
         _id = np.argwhere(str_id == np.array(self.site_ids))[0]
         return _id[0]
-            
+
     def _get_sites_context_event(self, idx):
         """
         Returns the site context for a particular event
