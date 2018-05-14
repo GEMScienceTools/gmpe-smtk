@@ -23,25 +23,20 @@ site configuration for comparing the trellis plots
 """
 
 import numpy as np
-from math import sqrt, pi, sin, cos, fabs, exp, log
+from math import sqrt, pi, sin, cos, fabs
 from copy import deepcopy
-from scipy.optimize import minimize
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import axes3d
 from openquake.baselib.slots import with_slots
 from openquake.hazardlib.geo import (Point, Line, Polygon, Mesh,
                                      PlanarSurface, NodalPlane)
 from openquake.hazardlib.scalerel.wc1994 import WC1994
 from openquake.hazardlib.site import Site, SiteCollection
-#from openquake.hazardlib.source.rupture import Rupture
 from openquake.hazardlib.source.point import PointSource
 from openquake.hazardlib.gsim.base import (SitesContext,
                                            RuptureContext,
                                            DistancesContext)
 from smtk.sm_utils import _save_image
 
-
-MESH_SPACING = 1.0
 TO_RAD = pi / 180.
 FROM_RAD = 180. / pi
 # Default point - some random location on Earth
@@ -143,7 +138,7 @@ def create_planar_surface(top_centroid, strike, dip, area, aspect):
                                     dip_direction)
 
     # Create the rupture
-    return PlanarSurface(MESH_SPACING, strike, dip, top_left, top_right,
+    return PlanarSurface(strike, dip, top_left, top_right,
                          bottom_right, bottom_left)
 
 

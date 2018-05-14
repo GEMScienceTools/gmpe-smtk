@@ -27,7 +27,7 @@ from shapely import wkt
 from openquake.hazardlib.geo.point import Point
 from openquake.hazardlib.geo.surface import PlanarSurface
 from openquake.hazardlib.geo.geodetic import geodetic_distance
-from openquake.hazardlib.correlation import JB2009CorrelationModel
+from openquake.hazardlib.correlation import jbcorrelation
 from openquake.hazardlib.site import Site, SiteCollection
 from openquake.hazardlib.imt import from_string
 from openquake.hazardlib.gsim import get_available_gsims
@@ -37,7 +37,7 @@ from openquake.hazardlib import nrml
 from smtk.residuals.gmpe_residuals import Residuals
 
 
-DEFAULT_CORRELATION = JB2009CorrelationModel(False)
+DEFAULT_CORRELATION = jbcorrelation
 GSIM_LIST = get_available_gsims()
 
 
@@ -112,26 +112,26 @@ def get_regular_site_collection(limits, vs30, z1pt0=100.0, z2pt5=1.0):
         for i in range(0, ngp)])
 
 
-
-def conditional_simulation(known_sites, residuals, unknown_sites, imt, nsim,
-    correlation_model=DEFAULT_CORRELATION):
+def conditional_simulation(
+        known_sites, residuals, unknown_sites, imt, nsim,
+        correlation_model=DEFAULT_CORRELATION):
     """
     Generates the residuals for a set of sites, conditioned upon the
     known residuals at a set of observation locations
     :param known_sites:
-        Locations of known sites as instance of :class: 
-        openquake.hazardlib.sites.SiteCollection
+        Locations of known sites as instance of :class:
+        `openquake.hazardlib.sites.SiteCollection`
     :param dict residuals:
         Dictionary of residuals for specifc GMPE and IMT
     :param unknown_sites:
-        Locations of unknown sites as instance of :class: 
-        openquake.hazardlib.sites.SiteCollection
+        Locations of unknown sites as instance of :class:
+        `openquake.hazardlib.sites.SiteCollection`
     :param imt:
         Intensity measure type
     :psram int nsim:
         Number of simulations
     :param correlation_model:
-        Chosen correlation model
+        Chosen correlation model, i.e. jbcorrelation
 
     """
     # Get site to site distances for known
@@ -139,20 +139,20 @@ def conditional_simulation(known_sites, residuals, unknown_sites, imt, nsim,
     # Make sure that sites are at the surface (to check!)
     known_sites.depths = np.zeros_like(known_sites.depths)
     unknown_sites.depths = np.zeros_like(unknown_sites.depths)
-    cov_kk = correlation_model._get_correlation_matrix(known_sites, imt).I
-    cov_uu = correlation_model._get_correlation_matrix(unknown_sites, imt)
+    cov_kk = correlation_model(known_sites, imt).I
+    cov_uu = correlation_model(unknown_sites, imt)
     d_k_uk = np.zeros([len(known_sites), len(unknown_sites)],
-                       dtype=float)
+                      dtype=float)
     for iloc in range(len(known_sites)):
         d_k_uk[iloc, :] = geodetic_distance(known_sites.array["lons"][iloc],
                                             known_sites.array["lats"][iloc],
                                             unknown_sites.array["lons"],
                                             unknown_sites.array["lats"])
-    cov_ku = correlation_model._get_correlation_model(d_k_uk, imt)
+    cov_ku = correlation_model(d_k_uk, imt)
     mu = cov_ku.T * cov_kk * np.matrix(residuals).T
     stddev = cov_uu - (cov_ku.T * cov_kk * cov_ku)
-    unknown_residuals = np.matrix(np.random.normal(0., 1., 
-                                                   [len(unknown_sites), nsim]))
+    unknown_residuals = np.matrix(np.random.normal(
+        0., 1., [len(unknown_sites), nsim]))
     lower_matrix = np.linalg.cholesky(stddev)
     output_residuals = np.zeros_like(unknown_residuals)
     for iloc in range(0, nsim):
@@ -161,8 +161,8 @@ def conditional_simulation(known_sites, residuals, unknown_sites, imt, nsim,
     return output_residuals
 
 
-
-def get_conditional_gmfs(database, rupture, sites, gsims, imts,
+def get_conditional_gmfs(
+        database, rupture, sites, gsims, imts,
         number_simulations, truncation_level,
         correlation_model=DEFAULT_CORRELATION):
     """
@@ -198,15 +198,13 @@ def get_conditional_gmfs(database, rupture, sites, gsims, imts,
     gmfs = OrderedDict([(gmpe, imt_dict) for gmpe in gsims])
     gmpe_list = [GSIM_LIST[gmpe]() for gmpe in gsims]
     cmaker = ContextMaker(gmpe_list)
-    sctx, rctx, dctx = cmaker.make_contexts(sites, rupture)
+    sctx, dctx = cmaker.make_contexts(sites, rupture)
     for gsim in gmpe_list:
         gmpe = gsim.__class__.__name__
-        #gsim = GSIM_LIST[gmpe]()
-        #sctx, rctx, dctx = gsim.make_contexts(sites, rupture)
         for imtx in imts:
             if truncation_level == 0:
-                gmfs[gmpe][imtx], _ = gsim.get_mean_and_stddevs(sctx, rctx,
-                    dctx, from_string(imtx), stddev_types=[])
+                gmfs[gmpe][imtx], _ = gsim.get_mean_and_stddevs(
+                    sctx, rupture, dctx, from_string(imtx), stddev_types=[])
                 continue
             if "Intra event" in gsim.DEFINED_FOR_STANDARD_DEVIATION_TYPES:
                 epsilon = conditional_simulation(
@@ -218,17 +216,13 @@ def get_conditional_gmfs(database, rupture, sites, gsims, imts,
                     correlation_model)
                 tau = np.unique(residuals.residuals[gmpe][imtx]["Inter event"])
                 mean, [stddev_inter, stddev_intra] = gsim.get_mean_and_stddevs(
-                    sctx,
-                    rctx,
-                    dctx, 
-                    from_string(imtx), 
+                    sctx, rupture, dctx, from_string(imtx),
                     ["Inter event", "Intra event"])
                 for iloc in range(0, number_simulations):
                     gmfs[gmpe][imtx][:, iloc] = np.exp(
                         mean +
                         (tau * stddev_inter) +
                         (epsilon[:, iloc].A1 * stddev_intra))
-                        
             else:
                 epsilon = conditional_simulation(
                     known_sites,
@@ -239,13 +233,9 @@ def get_conditional_gmfs(database, rupture, sites, gsims, imts,
                     correlation_model)
                 tau = None
                 mean, [stddev_total] = gsim.get_mean_and_stddevs(
-                    sctx,
-                    rctx,
-                    dctx,
-                    from_string(imtx),
+                    sctx, rupture, dctx, from_string(imtx),
                     ["Total"])
                 for iloc in range(0, number_simulations):
                     gmfs[gmpe][imtx][:, iloc] = np.exp(
-                        mean +
-                        (epsilon[:, iloc].A1 * stddev_total.flatten()))
+                        mean + epsilon[:, iloc].A1 * stddev_total.flatten())
     return gmfs
