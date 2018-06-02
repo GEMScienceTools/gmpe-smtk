@@ -20,7 +20,6 @@
 """
 Tool for creating visualisation of database information
 """
-from sets import Set
 import numpy as np
 import matplotlib.pyplot as plt
 from smtk.sm_utils import _save_image
@@ -141,7 +140,7 @@ def db_magnitude_distance_by_site(db1, dist_type, classification="NEHRP",
         plt.plot(np.array(dists), np.array(mags), "o",
                  label="Site Class %s" % site_class)
         total_idx.extend(site_idx)
-    unc_idx = Set(range(db1.number_records())).difference(Set(total_idx))
+    unc_idx = set(range(db1.number_records())).difference(set(total_idx))
     unc_db = selector.select_records(unc_idx, as_db=True)
     mag, dists = get_magnitude_distances(site_db, dist_type)
     plt.semilogx(np.array(dists), np.array(mags), "o", mfc="None",
