@@ -186,16 +186,25 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
                  'JUNIO': 6, 'JULIO': 7, 'AGOSTO': 8, 'SEPTIEMBRE': 9,
                  'OCTUBURE': 10, 'NOVIEMBRE': 11, 'DICIEMBRE': 12}
 
+        months_abrev = {'ENE': 1, 'FEB': 2, 'MAR': 3, 'ABR': 4, 'MAY': 5,
+                 'JUN': 6, 'JUL': 7, 'AGO': 8, 'SEP': 9,
+                 'OCT': 10, 'NOV': 11, 'DIC': 12}
+
         # Date and time
-        try:  # UNAM DATES
+        if 'UNAM' in metadata["INSTITUCION RESPONSABLE"]:
             year, month, day = (
-                get_int(metadata["FECHA DEL SISMO [GMT]"].split("/")[0]),
-                get_int(metadata["FECHA DEL SISMO [GMT]"].split("/")[1]),
-                get_int(metadata["FECHA DEL SISMO [GMT]"].split("/")[2]))
-        except:  # CICESE DATES
+               get_int(metadata["FECHA DEL SISMO [GMT]"].split("/")[0]),
+               get_int(metadata["FECHA DEL SISMO [GMT]"].split("/")[1]),
+               get_int(metadata["FECHA DEL SISMO [GMT]"].split("/")[2]))
+        if 'CICESE' in metadata["INSTITUCION RESPONSABLE"]:
             year, month, day = (
                 get_int(metadata["FECHA DEL SISMO (GMT)"][-4:]),
                 months[metadata["FECHA DEL SISMO (GMT)"].split()[2]],
+                get_int(metadata["FECHA DEL SISMO (GMT)"][:2]))
+        if 'CIRES' in metadata["INSTITUCION RESPONSABLE"]:
+            year, month, day = (
+                get_int('20'+metadata["FECHA DEL SISMO (GMT)"][-2:]),
+                months_abrev[metadata["FECHA DEL SISMO (GMT)"].split('/')[1]],
                 get_int(metadata["FECHA DEL SISMO (GMT)"][:2]))
 
         # Get event time, naming is not consistent (e.g. 07.1, 00, 17,1)
@@ -450,11 +459,11 @@ class ASATimeSeriesParser(SMTimeSeriesReader):
         """
 
         # The components are definied using the following names
-        comp_names = {'X': ['N90E', 'N90E;', 'N90W', 'N90W;',
+        comp_names = {'X': ['ENE', 'N90E', 'N90E;', 'N90W', 'N90W;',
                             'S90E', 'S90W', 'E--W', 'S9OE'],
-                      'Y': ['N00E', 'N00E;', 'N00W', 'N00W;',
+                      'Y': ['ENN', 'N00E', 'NOOE;', 'N00W', 'NOOW;',
                             'S00E', 'S00W', 'N--S', 'NOOE'],
-                      'V': ['V', 'V;+', '+V', 'Z', 'VERT']}
+                      'V': ['ENZ', 'V', 'V;+', '+V', 'Z', 'VERT']}
 
         # Read component names, which are given on line 107
         o = open(ifile, "r")
