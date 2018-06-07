@@ -822,12 +822,12 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
 
         :param distances: a numeric array of chosen distances
         '''
-        params = {k: properties[k] for k in ['dip', 'rake', 'initial_point',
-                                             'hypocentre_location', 'aspect',
-                                             'ztor', 'strike', 'msr',
-                                             'tectonic_region']
+        params = {k: properties[k] for k in ['rake', 'initial_point', 'ztor',
+                                             'hypocentre_location', 'strike',
+                                             'msr', 'tectonic_region']
                   if k in properties}
-        rupture = GSIMRupture(magnitude, **params)
+        rupture = GSIMRupture(magnitude, properties['dip'],
+                              properties['aspect'], **params)
 
         params = {k: properties[k] for k in ['line_azimuth', 'as_log',
                                              'vs30measured', 'z1pt0', 'z2pt5',
