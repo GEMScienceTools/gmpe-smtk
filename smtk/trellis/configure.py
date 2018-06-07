@@ -624,59 +624,32 @@ class GSIMRupture(object):
             "BACKARC": backarc}
         return self.target_sites
 
-
     def get_target_sites_line(self, maximum_distance, spacing, vs30,
             line_azimuth=90., origin_point=(0.5, 0.5), as_log=False, 
             vs30measured=True, z1pt0=None, z2pt5=None, backarc=False):
         """
         Defines the target sites along a line with respect to the rupture
         """
-        #input_origin_point = deepcopy(origin_point)
-        azimuth, origin_location, z1pt0, z2pt5 = _setup_site_peripherals(
-            line_azimuth,
-            origin_point,
-            vs30,
-            z1pt0,
-            z2pt5,
-            self.strike,
-            self.surface)
+        azimuth, origin_location, z1pt0, z2pt5 = \
+            self._define_origin_target_site(vs30, line_azimuth, origin_point,
+                                            vs30measured, z1pt0, z2pt5,
+                                            backarc)
 
-        self.target_sites = [Site(origin_location,
-                                  vs30,
-                                  vs30measured,
-                                  z1pt0,
-                                  z2pt5,
-                                  backarc=backarc)]
         spacings = self._define_line_spacing(maximum_distance,
                                              spacing,
                                              as_log)
-        for offset in spacings:
-            target_loc= origin_location.point_at(offset, 0., azimuth)
-            # Get Rupture distance
-            temp_mesh = Mesh(np.array(target_loc.longitude),
-                             np.array(target_loc.latitude),
-                             np.array(target_loc.depth))
-            distance = self.surface.get_min_distance(temp_mesh)
-            self.target_sites.append(Site(target_loc, 
-                                          vs30, 
-                                          vs30measured, 
-                                          z1pt0,
-                                          z2pt5,
-                                          backarc=backarc))
-        self.target_sites_config = {
-            "TYPE": "Line",
-            "RMAX": maximum_distance,
-            "SPACING": spacing,
-            "AZIMUTH": line_azimuth,
-            "ORIGIN": origin_point,
-            "AS_LOG": as_log,
-            "VS30": vs30,
-            "VS30MEASURED": vs30measured,
-            "Z1.0": z1pt0,
-            "Z2.5": z2pt5,
-            "BACKARC": backarc}
-        self.target_sites = SiteCollection(self.target_sites)
-        return self.target_sites
+
+        target_sites = \
+            self._append_target_sites(spacings, azimuth, origin_location,
+                                      vs30, line_azimuth, origin_point,
+                                      as_log, vs30measured, z1pt0, z2pt5,
+                                      backarc)
+        # let's be picky and replace inferred values of
+        # self.target_sites_config with the values provided here:
+        self.target_sites_config.update({"RMAX": maximum_distance,
+                                         "SPACING": spacing})
+
+        return target_sites
 
     def _define_line_spacing(self, maximum_distance, spacing, as_log=False):
         """
@@ -695,6 +668,85 @@ class GSIMRupture(object):
 
         return spacings
 
+    def get_target_sites_line_from_given_distances(self, distances, vs30,
+            line_azimuth=90., origin_point=(0.5, 0.5), as_log=False,
+            vs30measured=True, z1pt0=None, z2pt5=None, backarc=False):
+        """
+        Defines the target sites along a line with respect to the rupture from
+        a given numeric array of distances
+        """
+        azimuth, origin_location, z1pt0, z2pt5 = \
+            self._define_origin_target_site(vs30, line_azimuth, origin_point,
+                                            vs30measured, z1pt0, z2pt5,
+                                            backarc)
+
+        distances = np.asarray(distances) if not as_log \
+            else np.log10(distances)
+
+        return self._append_target_sites(distances, azimuth, origin_location,
+                                         vs30, line_azimuth, origin_point,
+                                         as_log, vs30measured, z1pt0, z2pt5,
+                                         backarc)
+
+    def _define_origin_target_site(self, vs30, line_azimuth=90.,
+                                   origin_point=(0.5, 0.5), vs30measured=True,
+                                   z1pt0=None, z2pt5=None, backarc=False):
+        """
+        Defines the target site from an origin point
+        """
+        azimuth, origin_location, z1pt0, z2pt5 = _setup_site_peripherals(
+            line_azimuth,
+            origin_point,
+            vs30,
+            z1pt0,
+            z2pt5,
+            self.strike,
+            self.surface)
+
+        self.target_sites = [Site(origin_location,
+                                  vs30,
+                                  vs30measured,
+                                  z1pt0,
+                                  z2pt5,
+                                  backarc=backarc)]
+        return azimuth, origin_location, z1pt0, z2pt5
+
+    def _append_target_sites(self, distances, azimuth, origin_location, vs30,
+                             line_azimuth=90., origin_point=(0.5, 0.5),
+                             as_log=False,  vs30measured=True, z1pt0=None,
+                             z2pt5=None, backarc=False):
+        """
+        Appends the target sites along a line with respect to the rupture,
+        given an already set origin target site
+        """
+        for offset in distances:
+            target_loc = origin_location.point_at(offset, 0., azimuth)
+            # Get Rupture distance
+            temp_mesh = Mesh(np.array(target_loc.longitude),
+                             np.array(target_loc.latitude),
+                             np.array(target_loc.depth))
+            distance = self.surface.get_min_distance(temp_mesh)
+            self.target_sites.append(Site(target_loc, 
+                                          vs30, 
+                                          vs30measured, 
+                                          z1pt0,
+                                          z2pt5,
+                                          backarc=backarc))
+        self.target_sites_config = {
+            "TYPE": "Line",
+            "RMAX": distances[-1],
+            "SPACING": np.nan if len(distances) < 2 else \
+            distances[1] - distances[0],  # FIXME does it make sense?
+            "AZIMUTH": line_azimuth,
+            "ORIGIN": origin_point,
+            "AS_LOG": as_log,
+            "VS30": vs30,
+            "VS30MEASURED": vs30measured,
+            "Z1.0": z1pt0,
+            "Z2.5": z2pt5,
+            "BACKARC": backarc}
+        self.target_sites = SiteCollection(self.target_sites)
+        return self.target_sites
 
     def get_target_sites_point(self, distance, distance_type, vs30, 
             line_azimuth=90, origin_point=(0.5, 0.5), vs30measured=True, 
