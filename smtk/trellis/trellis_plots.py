@@ -829,11 +829,12 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
                   if k in properties}
         rupture = GSIMRupture(magnitude, **params)
 
-        params = {k: properties[k] for k in ['vs30', 'line_azimuth', 'as_log',
+        params = {k: properties[k] for k in ['line_azimuth', 'as_log',
                                              'vs30measured', 'z1pt0', 'z2pt5',
                                              'origin_point', 'backarc']
                   if k in properties}
         rupture.get_target_sites_line_from_given_distances(distances,
+                                                           properties['vs30'],
                                                            **params)
 
         return cls.from_rupture_model(rupture, gsims, imts,

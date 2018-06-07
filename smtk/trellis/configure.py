@@ -680,13 +680,27 @@ class GSIMRupture(object):
                                             vs30measured, z1pt0, z2pt5,
                                             backarc)
 
-        distances = np.asarray(distances) if not as_log \
-            else np.log10(distances)
+        distances = self._convert_distances(distances, as_log)
 
         return self._append_target_sites(distances, azimuth, origin_location,
                                          vs30, line_azimuth, origin_point,
                                          as_log, vs30measured, z1pt0, z2pt5,
                                          backarc)
+
+    @staticmethod
+    def _convert_distances(distances, as_log=False):
+        '''assures distances is a numpy numeric array, sorts it
+        and converts its value to a logaritmic scale preserving the array
+        bounds (min and max)'''
+        dist = np.asarray(distances)
+        dist.sort()
+        if as_log:
+            oldmin, oldmax = dist[0], dist[-1]
+            dist = np.log1p(dist)  # avoid -inf @ zero in case
+            newmin, newmax = dist[0], dist[-1]
+            # re-map the space to be logarithmic between oldmin and oldmax:
+            dist = oldmin + (oldmax-oldmin)*(dist - newmin)/(newmax - newmin)
+        return dist
 
     def _define_origin_target_site(self, vs30, line_azimuth=90.,
                                    origin_point=(0.5, 0.5), vs30measured=True,
