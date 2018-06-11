@@ -410,6 +410,17 @@ class MagnitudeIMTTrellis(BaseTrellis):
             imts, params, stddevs, **kwargs)
 
     @classmethod
+    def from_rupture_properties(cls, properties, magnitudes, distance,
+                                gsims, imts, stddevs='Total', **kwargs):
+        '''Constructs the Base Trellis Class from a dictionary of
+        properties. In this class, this method is simply an alias of
+        `from_rupture_model`
+        '''
+        return cls.from_rupture_model(properties, magnitudes, distance,
+                                      gsims, imts, stddevs=stddevs,
+                                      **kwargs)
+
+    @classmethod
     def from_rupture_model(cls, properties, magnitudes, distance, gsims, imts,
                            stddevs='Total', **kwargs):
         """
@@ -800,7 +811,35 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
 
         super(DistanceIMTTrellis, self).__init__(magnitudes, distances, gsims,
             imts, params, stddevs, **kwargs)
-    
+
+    @classmethod
+    def from_rupture_properties(cls, properties, magnitude, distances,
+                                gsims, imts, stddevs='Total', **kwargs):
+        '''Constructs the Base Trellis Class from a rupture properties.
+        It internally creates a Rupture object and calls
+        `from_rupture_model`. When not listed, arguments take the same
+        values as `from_rupture_model`
+
+        :param distances: a numeric array of chosen distances
+        '''
+        params = {k: properties[k] for k in ['rake', 'initial_point', 'ztor',
+                                             'hypocentre_location', 'strike',
+                                             'msr', 'tectonic_region']
+                  if k in properties}
+        rupture = GSIMRupture(magnitude, properties['dip'],
+                              properties['aspect'], **params)
+
+        params = {k: properties[k] for k in ['line_azimuth', 'as_log',
+                                             'vs30measured', 'z1pt0', 'z2pt5',
+                                             'origin_point', 'backarc']
+                  if k in properties}
+        rupture.get_target_sites_line_from_given_distances(distances,
+                                                           properties['vs30'],
+                                                           **params)
+
+        return cls.from_rupture_model(rupture, gsims, imts,
+                                      stddevs=stddevs, **kwargs)
+
     @classmethod
     def from_rupture_model(cls, rupture, gsims, imts, stddevs='Total',
             **kwargs):
@@ -1202,6 +1241,17 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                     dist_check = True
                 setattr(dctx, dist, distance[dist])
             self.dctx.append(dctx)
+
+    @classmethod
+    def from_rupture_properties(cls, properties, magnitudes, distance,
+                                gsims, imts, stddevs='Total', **kwargs):
+        '''Constructs the Base Trellis Class from a dictionary of
+        properties. In this class, this method is simply an alias of
+        `from_rupture_model`
+        '''
+        return cls.from_rupture_model(properties, magnitudes, distance,
+                                      gsims, imts, stddevs=stddevs,
+                                      **kwargs)
 
     @classmethod
     def from_rupture_model(cls, properties, magnitudes, distances,
