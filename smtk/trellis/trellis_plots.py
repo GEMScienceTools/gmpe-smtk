@@ -21,8 +21,10 @@
 Sets up a simple rupture-site configuration to allow for physical comparison
 of GMPEs
 '''
-
-import re, json
+import os
+import sys
+import re
+import json
 import numpy as np
 from collections import Iterable, OrderedDict
 from cycler import cycler
@@ -616,11 +618,11 @@ class MagnitudeIMTTrellis(BaseTrellis):
                             self.dctx,
                             imt.from_string(i_m),
                             [self.stddevs])
-                       
+
                         gmvs[gmpe_name][i_m][iloc, :] = \
                             np.exp(means)
                     except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
 
@@ -731,11 +733,11 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
                              [self.stddevs])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except KeyError:
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
 
         return gmvs
-    
+
     def get_ground_motion_values_from_rupture(self):
         """
         """
@@ -758,7 +760,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
 
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
 
@@ -1043,7 +1045,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
                              [self.stddevs])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
                         
                         
@@ -1071,7 +1073,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
 
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except KeyError:
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
 
@@ -1376,7 +1378,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                         gmvs[gmpe_name][i_m][iloc, :] = \
                             np.exp(means)
                     except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
 
@@ -1649,7 +1651,7 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
                              [self.stddevs])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
 
