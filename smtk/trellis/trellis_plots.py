@@ -1161,6 +1161,10 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
 
         In this case the class is instantiated with a set of magnitudes
         and a dictionary indicating the different distance types.
+
+        :param imts: (numeric list or numpy array)
+            the Spectral Acceleration's
+            natural period(s) to be used
         """
         imts = ["SA(%s)" % i_m for i_m in imts]
 
@@ -1241,13 +1245,19 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
 
     @classmethod
     def from_rupture_properties(cls, properties, magnitudes, distance,
-                                gsims, imts, stddevs='Total', **kwargs):
+                                gsims, periods, stddevs='Total', **kwargs):
         '''Constructs the Base Trellis Class from a dictionary of
         properties. In this class, this method is simply an alias of
         `from_rupture_model`
+
+        :param periods: (numeric list or numpy array)
+            the Spectral Acceleration's
+            natural period(s) to be used. Note that this parameter
+            is called `imt` in `from_rupture_model` where the name
+            `imt` has been kept for legacy code compatibility
         '''
         return cls.from_rupture_model(properties, magnitudes, distance,
-                                      gsims, imts, stddevs=stddevs,
+                                      gsims, periods, stddevs=stddevs,
                                       **kwargs)
 
     @classmethod
