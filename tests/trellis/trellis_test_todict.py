@@ -17,7 +17,17 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 """
-Tests for generation of data for trellis plots
+Tests for bugfixes in to_dict Trellis methods:
+
+1. the to_dict method of Distance Trellis plots
+   failed to "dictionarize" empty yvalues arrays:
+   The method(s) `get_ground_motion_values*`
+   were returning different types: numpy arrays or empty
+   lists. The fix was to return empty numpy arrays instead.
+2. The MagnitudeDistance* trellis classes where returning NaNs
+   instead of Nones. Whereas NaN are correctly parsable by
+   Javascript, they are not JSON standard and need to
+   be encoded as None
 """
 import unittest
 import os
@@ -31,13 +41,7 @@ from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 
 class BaseTrellisTest(unittest.TestCase):
     """
-    Rationale: the to_dict method of Distance Trellis plots
-    failed to "dictionarize" empty yvalues arrays:
-    The method(s) `get_ground_motion_values*`
-    were returning different types: numpy arrays or empty
-    lists. The fix was to return empty numpy arrays instead.
-    This test assures the fix did work properly and it does
-    not raises, returning the empty expected list
+    Base test class
     """
 
     # TEST_FILE = None
@@ -110,8 +114,7 @@ class DistanceTrellisTest(BaseTrellisTest):
 
 
 class DistanceSigmaTrellisTest(DistanceTrellisTest):
-    TEST_FILE = "test_distance_sigma_imt_trellis.json"
- 
+
     def _run_trellis(self, magnitude, distances, properties):
         """
         Executes the trellis plotting - for standard deviation
@@ -125,7 +128,7 @@ class DistanceSigmaTrellisTest(DistanceTrellisTest):
             distance_type="rrup")
 
 # We did not spot a set of parameters for which we have empty
-# yvalues in case of MagnitudeTrellis and MagnitudeDistanceSpectra Trellis
+# yvalues in case of MagnitudeTrellis...
 # thus the set of classes below is commented (for the moment?)
 
 # class MagnitudeTrellisTest(BaseTrellisTest):
@@ -169,41 +172,50 @@ class DistanceSigmaTrellisTest(DistanceTrellisTest):
 #             self.gsims,
 #             self.imts)
 # 
-# 
-# class MagnitudeDistanceSpectraTrellisTest(BaseTrellisTest):
 #
-#     def _run_trellis(self, magnitudes, distances, properties):
-#         """
-#         Executes the trellis plotting - for mean
-#         """
-#         return trpl.MagnitudeDistanceSpectraTrellis.from_rupture_properties(
-#             properties, magnitudes, distances, self.gsims, self.periods,
-#             distance_type="rrup")
-# 
-#     def test_magnitude_distance_spectra_trellis(self):
-#         """
-#         Tests the MagnitudeDistanceSpectra Trellis data generation
-#         """
-#         properties = {k: self.params[k] for k in
-#                       ["dip", "rake", "aspect", "ztor",
-#                        "vs30", "backarc", "z1pt0",
-#                        "z2pt5"]}
-#         magnitudes = self.params['magnitude']
-#         distances = self.params['distance']
-#         trl = self._run_trellis(magnitudes, distances, properties)
-#         dic = trl.to_dict()
-# 
-# 
-# class MagnitudeDistanceSpectraSigmaTrellisTest(
-#         MagnitudeDistanceSpectraTrellisTest):
-# 
-#     def _run_trellis(self, magnitudes, distances, properties):
-#         """
-#         Executes the trellis plotting - for standard deviation
-#         """
-#         return trpl.MagnitudeDistanceSpectraSigmaTrellis.from_rupture_properties(
-#             properties, magnitudes, distances, self.gsims, self.periods,
-#             distance_type="rrup")
+
+# MagnitudeDistanceSpectraTrellisTest tests a different thing, i.e.
+# that nan's are not in the returned yvalues. For performance reasons,
+# we test a single GSIM (which contained nans before the fix)
+# and assert it has Nones now:
+
+class MagnitudeDistanceSpectraTrellisTest(BaseTrellisTest):
+
+    def _run_trellis(self, magnitudes, distances, properties):
+        """
+        Executes the trellis plotting - for mean
+        """
+        return trpl.MagnitudeDistanceSpectraTrellis.from_rupture_properties(
+            properties, magnitudes, distances, self.gsims, self.periods,
+            distance_type="rrup")
+ 
+    def test_magnitude_distance_spectra_trellis(self):
+        """
+        Tests the MagnitudeDistanceSpectra Trellis data generation
+        """
+        properties = {k: self.params[k] for k in
+                      ["dip", "rake", "aspect", "ztor",
+                       "vs30", "backarc", "z1pt0",
+                       "z2pt5"]}
+        magnitudes = self.params['magnitude']
+        distances = self.params['distance']
+        trl = self._run_trellis(magnitudes, distances, properties)
+        dic = trl.to_dict()
+        # test that a Gsim having nan's has nones now:
+        yvalues = dic['figures'][0]['yvalues']["AkkarBommer2010SWISS01"]
+        self.assertTrue(any(_ is None for _ in yvalues))
+ 
+ 
+class MagnitudeDistanceSpectraSigmaTrellisTest(
+        MagnitudeDistanceSpectraTrellisTest):
+ 
+    def _run_trellis(self, magnitudes, distances, properties):
+        """
+        Executes the trellis plotting - for standard deviation
+        """
+        return trpl.MagnitudeDistanceSpectraSigmaTrellis.from_rupture_properties(
+            properties, magnitudes, distances, self.gsims, self.periods,
+            distance_type="rrup")
 
 
 if __name__ == "__main__":

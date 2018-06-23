@@ -1491,8 +1491,10 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                 for gsim in gmvs:
                     for imt in self.imts:
                         if len(gmvs[gsim][imt]):
-                            ydict["yvalues"][gsim].\
-                                append(gmvs[gsim][imt][i, j])
+                            value = gmvs[gsim][imt][i, j]
+                            if np.isnan(value):
+                                value = None
+                            ydict["yvalues"][gsim].append(value)
                         else:
                             ydict["yvalues"][gsim].append(None)
                 gmv_dict["figures"].append(ydict)
