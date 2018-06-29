@@ -154,3 +154,38 @@ def db_magnitude_distance_by_site(db1, dist_type, classification="NEHRP",
               fontsize=18)
     _save_image(filename, filetype, dpi)
     plt.show()
+
+def db_magnitude_distance_by_trt(db1, dist_type,
+        figure_size=(7, 5), filename=None, filetype="png", dpi=300):
+    """
+    Plot magnitude-distance comparison by tectonic region
+    """
+    trts=[]
+    for i in db1.records:
+        trts.append(i.event.tectonic_region)
+    trt_types=list(set(trts))
+    selector = SMRecordSelector(db1)
+    plt.figure(figsize=figure_size)
+    for trt in trt_types:
+        subdb = selector.select_trt_type(trt, as_db=True)
+        mag, dists = get_magnitude_distances(subdb, dist_type)
+        if trt == None or any(x in trt.lower() for x in ['un']):
+            color = 'white'
+        elif any(x in trt.lower() for x in ['asc', 'active']):
+            color = 'green'
+        elif any(x in trt for x in ['INT', 'face']):
+            color = 'red'
+        elif any(x in trt.lower() for x in ['slb', 'slab']):
+            color = 'yellow'
+        else:
+            color = 'blue'
+        plt.semilogx(dists, mag, "o", c=color, label=trt)
+    plt.xlabel(DISTANCE_LABEL[dist_type], fontsize=14)
+    plt.ylabel("Magnitude", fontsize=14)
+    plt.title("Magnitude vs Distance by Tectonic Region", fontsize=18)
+    plt.legend(loc='lower right', numpoints=1)
+    plt.ylim(ymax = 9, ymin = 3.5)
+    plt.xlim(xmax = 10000, xmin = 1)
+    plt.grid()
+    _save_image(filename, filetype, dpi)
+    plt.show()
