@@ -254,6 +254,21 @@ class SMRecordSelector(object):
                 idx.append(iloc)
         return self.select_records(idx, as_db)
 
+    def select_by_excluding_site_attribute(self, attribute, value, as_db=False):
+        """
+        Select records that do not correspond to a particular site attribute.
+        An example would be excluding a certain instrument type
+        :param str attribute:
+            Attribute name
+        :param value:
+            Value of the specific attribute
+        """
+        idx = []
+        for iloc, record in enumerate(self.database.records):
+            if getattr(record.site, attribute) != value:
+                idx.append(iloc)
+        return self.select_records(idx, as_db)
+
     def select_within_vs30_range(self, lower_vs30, upper_vs30, as_db=False):
         """
         Select records within a given Vs30 range
