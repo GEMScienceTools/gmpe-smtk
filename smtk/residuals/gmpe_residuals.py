@@ -371,7 +371,7 @@ class Residuals(object):
                         else:
                             self.residuals[gmpe][imtx][res_type].extend(
                                 context["Residual"][gmpe][imtx][res_type].tolist())
-                        self.modelled[gmpe][imtx][res_type].extend(
+                        self.modelled[gmpe][imtx][res_type].append(
                             context["Expected"][gmpe][imtx][res_type].tolist())
 
                     self.modelled[gmpe][imtx]["Mean"].extend(
