@@ -169,23 +169,19 @@ def db_magnitude_distance_by_trt(db1, dist_type,
     for trt in trt_types:
         subdb = selector.select_trt_type(trt, as_db=True)
         mag, dists = get_magnitude_distances(subdb, dist_type)
-        if trt == None or any(x in trt.lower() for x in ['un']):
-            color = 'white'
-        elif any(x in trt.lower() for x in ['asc', 'active']):
+        if any(x in trt.lower() for x in ['asc', 'active', 'crustal']):
             color = 'green'
-        elif any(x in trt for x in ['INT', 'face']):
+        elif any(x in trt for x in ['INT', 'int_', 'int' 'face']):
             color = 'red'
         elif any(x in trt.lower() for x in ['slb', 'slab']):
             color = 'yellow'
         else:
-            color = 'blue'
+            color = 'white'
         plt.semilogx(dists, mag, "o", c=color, mec='k', mew=0.5, label=trt)
     plt.xlabel(DISTANCE_LABEL[dist_type], fontsize=14)
     plt.ylabel("Magnitude", fontsize=14)
     plt.title("Magnitude vs Distance by Tectonic Region", fontsize=18)
     plt.legend(loc='lower right', numpoints=1)
-    plt.ylim(ymax = 9, ymin = 3.5)
-    plt.xlim(xmax = 10000, xmin = 1)
     plt.grid()
     _save_image(filename, filetype, dpi)
     plt.show()
