@@ -254,9 +254,9 @@ class SMRecordSelector(object):
                 idx.append(iloc)
         return self.select_records(idx, as_db)
 
-    def select_by_excluding_site_attribute(self, attribute, value, as_db=False):
+    def exclude_site_attribute(self, attribute, value, as_db=False):
         """
-        Select records that do not correspond to a particular site attribute.
+        Remove records that do not correspond to a particular site attribute.
         An example would be excluding a certain instrument type
         :param str attribute:
             Attribute name
@@ -296,7 +296,7 @@ class SMRecordSelector(object):
         :param location:
             Location as instance of :class: openquake.hazardlib.geo.point.Point
         :param float distance:
-            Distance (kme
+            Distance (km)
         """
         assert isinstance(location, Point)
         idx = []
@@ -307,6 +307,27 @@ class SMRecordSelector(object):
                      None),
                 distance)
             if is_close[0]:
+                idx.append(iloc)
+        return self.select_records(idx, as_db)
+
+    def exclude_stations_within_distance(self, location, distance, as_db=False):
+        """
+        Excludes stations within a distance of a specified location. For example
+        stations in a basin that may be subject to site effects
+        :param location:
+            Location as instance of :class: openquake.hazardlib.geo.point.Point
+        :param float distance:
+            Distance (km)
+        """
+        assert isinstance(location, Point)
+        idx = []
+        for iloc, record in enumerate(self.database.records):
+            is_close = location.closer_than(
+                Mesh(np.array([record.site.longitude]),
+                     np.array([record.site.latitude]),
+                     None),
+                distance)
+            if not is_close[0]:
                 idx.append(iloc)
         return self.select_records(idx, as_db)
 
