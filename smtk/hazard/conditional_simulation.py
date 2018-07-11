@@ -106,9 +106,8 @@ def get_regular_site_collection(limits, vs30, z1pt0=100.0, z2pt5=1.0):
     ngp = nx * ny
     gx = np.reshape(gx, [ngp, 1]).flatten()
     gy = np.reshape(gy, [ngp, 1]).flatten()
-    depths = np.zeros(ngp, dtype=float)
     return SiteCollection([
-        Site(Point(gx[i], gy[i]), vs30, True, z1pt0, z2pt5, i)
+        Site(Point(gx[i], gy[i]), vs30, True, z1pt0, z2pt5)
         for i in range(0, ngp)])
 
 

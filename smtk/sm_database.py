@@ -569,6 +569,7 @@ NEHRP_NSPT_BOUNDARIES = {
     "D": (15.0, 50.0),
     "E": (-np.inf, 15.0)}
 
+
 class RecordSite(object):
     """
     Class to hold attributes belonging to the site
