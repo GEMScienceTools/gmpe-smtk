@@ -542,9 +542,9 @@ class GSIMRupture(object):
         # Rvolc
         setattr(dctx, "rvolc", np.zeros_like(self.target_sites.mesh.lons))
         # Sites
-        sctx = SitesContext()
         key_list = ["lons", "lats", "vs30", "vs30measured", "z1pt0", "z2pt5",
                     "backarc"]
+        sctx = SitesContext(slots=key_list)
         for key in key_list:
             setattr(sctx, key, self.target_sites.array[key])
 
