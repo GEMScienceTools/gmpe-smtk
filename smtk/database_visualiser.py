@@ -150,8 +150,6 @@ def db_magnitude_distance_by_site(db1, dist_type, classification="NEHRP",
     plt.ylabel("Magnitude", fontsize=14)
     plt.grid()
     plt.legend(ncol=2,loc="lower right", numpoints=1)
-    plt.ylim(ymax = 8.5, ymin = 3)
-    plt.xlim(xmax = 10000, xmin = 1)
     plt.title("Magnitude vs Distance (by %s Site Class)" % classification,
               fontsize=18)
     _save_image(filename, filetype, dpi)
@@ -171,31 +169,11 @@ def db_magnitude_distance_by_trt(db1, dist_type,
     for trt in trt_types:
         subdb = selector.select_trt_type(trt, as_db=True)
         mag, dists = get_magnitude_distances(subdb, dist_type)
-        if any(x in trt for x in ['Active Shallow Crust']):
-            color = 'green'
-        elif any(x in trt for x in ['Subduction Interface']):
-            color = 'red'
-        elif any(x in trt for x in ['Subduction IntraSlab']):
-            color = 'yellow'
-        else:
-            color = 'white'
-            
-        if color == 'white':
-            plt.semilogx(dists, mag, "o", c=color, mec='k', mew=0.5, label=trt)
-        if color == 'red':
-            plt.semilogx(dists, mag, "o", c=color, mec='k', mew=0.5, label=trt, zorder=2)
-        if color == 'yellow':
-            plt.semilogx(dists, mag, "o", c=color, mec='k', mew=0.5, label=trt, zorder=5)
-        if color == 'green':
-            plt.semilogx(dists, mag, "o", c=color, mec='k', mew=0.5, label=trt, zorder=10)
-
-            
+        plt.semilogx(dists, mag, "o", mec='k', mew=0.5, label=trt)
     plt.xlabel(DISTANCE_LABEL[dist_type], fontsize=14)
     plt.ylabel("Magnitude", fontsize=14)
     plt.title("Magnitude vs Distance by Tectonic Region", fontsize=18)
     plt.legend(loc='lower right', numpoints=1)
-    plt.ylim(ymax = 8.5, ymin = 3)
-    plt.xlim(xmax = 10000, xmin = 1)
     plt.grid()
     _save_image(filename, filetype, dpi)
     plt.show()
