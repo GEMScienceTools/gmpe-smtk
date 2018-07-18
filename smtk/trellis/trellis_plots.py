@@ -22,7 +22,8 @@ Sets up a simple rupture-site configuration to allow for physical comparison
 of GMPEs
 '''
 
-import re, json
+import re
+import json
 import numpy as np
 from collections import Iterable, OrderedDict
 from cycler import cycler
@@ -121,29 +122,29 @@ def _get_gmpe_name(gsim):
 
 def _check_gsim_list(gsim_list):
     """
-    Checks the list of GSIM models and returns an instance of the 
+    Checks the list of GSIM models and returns an instance of the
     openquake.hazardlib.gsim class. Raises error if GSIM is not supported in
     OpenQuake
     :param list gsim_list:
         List of GSIM names (str)
     """
     output_gsims = []
-    for gsim in gsim_list:
-        if gsim.startswith("GMPETable"):
+    for gs in gsim_list:
+        if gs.startswith("GMPETable"):
             # Get filename
-            match = re.match(r'^GMPETable\(([^)]+?)\)$', gsim)
+            match = re.match(r'^GMPETable\(([^)]+?)\)$', gs)
             filepath = match.group(1).split("=")[1]
             output_gsims.append(GMPETable(gmpe_table=filepath))
-        elif not gsim in AVAILABLE_GSIMS:
-            raise ValueError('%s Not supported by OpenQuake' % gsim)
+        elif gs not in AVAILABLE_GSIMS:
+            raise ValueError('%s Not supported by OpenQuake' % gs)
         else:
-            output_gsims.append(AVAILABLE_GSIMS[gsim]())
+            output_gsims.append(AVAILABLE_GSIMS[gs]())
     return output_gsims
 
 
 def _get_imts(imts):
     """
-    Reads a list of IMT strings and returns the corresponding 
+    Reads a list of IMT strings and returns the corresponding
     openquake.hazardlib.imt class
     :param list imts:
         List of IMTs(str)
@@ -306,16 +307,18 @@ class BaseTrellis(object):
         Preprocesses site parameters to ensure all the necessary rupture
         information for the GSIMS is found in the input parameters
         """
-        self.sctx = gsim.base.SitesContext()
+        slots = set()
+        for gmpe in self.gsims:
+            slots.update(gmpe.REQUIRES_SITES_PARAMETERS)
+        self.sctx = gsim.base.SitesContext(slots=slots)
         required_attributes = []
         for gmpe in self.gsims:
             site_params = [param for param in gmpe.REQUIRES_SITES_PARAMETERS]
             for param in site_params:
-                if not param in self.params:
+                if param not in self.params:
                     raise ValueError("GMPE %s requires site parameter %s"
                                      % (_get_gmpe_name(gmpe), param))
-                                     #% (gmpe.__class__.__name__, param))
-                elif not param in required_attributes:
+                elif param not in required_attributes:
                     required_attributes.append(param)
                 else:
                     pass
@@ -399,8 +402,8 @@ class MagnitudeIMTTrellis(BaseTrellis):
         for key in distances:
             if isinstance(distances[key], float):
                 distances[key] = np.array([distances[key]])
-        super(MagnitudeIMTTrellis, self).__init__(magnitudes, distances, gsims,
-            imts, params, stddevs, **kwargs)
+        super(MagnitudeIMTTrellis, self).__init__(
+            magnitudes, distances, gsims, imts, params, stddevs, **kwargs)
 
     @classmethod
     def from_rupture_properties(cls, properties, magnitudes, distance,
@@ -570,7 +573,6 @@ class MagnitudeIMTTrellis(BaseTrellis):
                      "row": row_loc,
                      "column": col_loc,
                      "yvalues": OrderedDict([])}
-                
             for gsim in gmvs:
                 if not len(gmvs[gsim][imt]):
                     # GSIM missing, set None
@@ -690,12 +692,10 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
             self.labels.append(gmpe_name)
             line, = ax.plot(self.magnitudes,
                             gmvs[gmpe_name][i_m][:, 0],
-                            #'-',
                             linewidth=2.0,
                             label=gmpe_name)
             self.lines.append(line)
             ax.grid(True)
-            #ax.set_title(i_m, fontsize=12)
             if isinstance(self.xlim, tuple):
                 ax.set_xlim(self.xlim[0], self.xlim[1])
             else:
@@ -735,12 +735,12 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
                         break
 
         return gmvs
-    
+
     def get_ground_motion_values_from_rupture(self):
         """
         """
         gmvs = OrderedDict()
-        rctx, dctx, sctx = self._get_context_sets()                           
+        rctx, dctx, sctx = self._get_context_sets()
         for gmpe in self.gsims:
             gmpe_name = _get_gmpe_name(gmpe)
             gmvs.update([(gmpe_name, {})])
@@ -1045,15 +1045,13 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
                     except (KeyError, ValueError):
                         gmvs[gmpe_name][i_m] = []
                         break
-                        
-                        
         return gmvs
 
     def get_ground_motion_values_from_rupture(self):
         """
         """
         gmvs = OrderedDict()
-        rctx, dctx, sctx = self._get_context_sets()                           
+        rctx, dctx, sctx = self._get_context_sets()
         for gmpe in self.gsims:
             gmpe_name = _get_gmpe_name(gmpe)
             gmvs.update([(gmpe_name, {})])
