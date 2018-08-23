@@ -33,7 +33,8 @@ BASE_DATA_PATH = os.path.join(os.path.dirname(__file__), "data")
 class BaseTrellisTest(unittest.TestCase):
     """
     This core test is designed to run a series of trellis plot calculations
-    and ensure compatibility with previously generated results
+    and ensure compatibility with previously generated results by using
+    the `from_rupture_properties` methods of each Trellis class
     """
 
     TEST_FILE = None
@@ -84,14 +85,17 @@ class BaseTrellisTest(unittest.TestCase):
 class DistanceTrellisTest(BaseTrellisTest):
     TEST_FILE = "test_distance_imt_trellis.json"
 
-    def _run_trellis(self, rupture):
+    def _run_trellis(self, magnitude, distances, properties):
         """
         Executes the trellis plotting - for mean
         """
-        return trpl.DistanceIMTTrellis.from_rupture_model(rupture,
-                                                          self.gsims,
-                                                          self.imts,
-                                                          distance_type="rrup")
+        return trpl.DistanceIMTTrellis.from_rupture_properties(
+            properties,
+            magnitude,
+            distances,
+            self.gsims,
+            self.imts,
+            distance_type="rrup")
 
     def test_distance_imt_trellis(self):
         """
@@ -100,11 +104,12 @@ class DistanceTrellisTest(BaseTrellisTest):
         reference = json.load(open(
             os.path.join(BASE_DATA_PATH, self.TEST_FILE), "r"))
         # Setup rupture
-        rupture = rcfg.GSIMRupture(6.5, 60., 1.5,
-                                   hypocentre_location=(0.5, 0.5))
-        rupture.get_target_sites_line(250.0, 1.0, 800.0)
+        properties = dict(dip=60.0, aspect=1.5, hypocentre_location=(0.5, 0.5),
+                          vs30=800)
+        distances = np.arange(0, 250.5, 1)
+        magnitude = 6.5
         # Get trellis calculations
-        trl = self._run_trellis(rupture)
+        trl = self._run_trellis(magnitude, distances, properties)
         # Parse the json formatted string to a dictionary string
         results = json.loads(trl.to_json())
         # Compare the two dictionaries
@@ -114,12 +119,14 @@ class DistanceTrellisTest(BaseTrellisTest):
 class DistanceSigmaTrellisTest(DistanceTrellisTest):
     TEST_FILE = "test_distance_sigma_imt_trellis.json"
 
-    def _run_trellis(self, rupture):
+    def _run_trellis(self, magnitude, distances, properties):
         """
         Executes the trellis plotting - for standard deviation
         """
-        return trpl.DistanceSigmaIMTTrellis.from_rupture_model(
-            rupture,
+        return trpl.DistanceSigmaIMTTrellis.from_rupture_properties(
+            properties,
+            magnitude,
+            distances,
             self.gsims,
             self.imts,
             distance_type="rrup")
@@ -132,11 +139,12 @@ class MagnitudeTrellisTest(BaseTrellisTest):
         """
         Executes the trellis plotting - for mean
         """
-        return trpl.MagnitudeIMTTrellis.from_rupture_model(properties,
-                                                           magnitudes,
-                                                           distance,
-                                                           self.gsims,
-                                                           self.imts)
+        return trpl.MagnitudeIMTTrellis.from_rupture_properties(
+            properties,
+            magnitudes,
+            distance,
+            self.gsims,
+            self.imts)
 
     def test_magnitude_imt_trellis(self):
         """
@@ -161,11 +169,12 @@ class MagnitudeSigmaTrellisTest(MagnitudeTrellisTest):
         """
         Executes the trellis plotting - for standard deviation
         """
-        return trpl.MagnitudeSigmaIMTTrellis.from_rupture_model(properties,
-                                                                magnitudes,
-                                                                distance,
-                                                                self.gsims,
-                                                                self.imts)
+        return trpl.MagnitudeSigmaIMTTrellis.from_rupture_properties(
+            properties,
+            magnitudes,
+            distance,
+            self.gsims,
+            self.imts)
 
 
 class MagnitudeDistanceSpectraTrellisTest(BaseTrellisTest):
@@ -203,7 +212,7 @@ class MagnitudeDistanceSpectraTrellisTest(BaseTrellisTest):
         """
         Executes the trellis plotting - for mean
         """
-        return trpl.MagnitudeDistanceSpectraTrellis.from_rupture_model(
+        return trpl.MagnitudeDistanceSpectraTrellis.from_rupture_properties(
             properties, magnitudes, distances, self.gsims, self.periods,
             distance_type="rrup")
 
@@ -231,7 +240,7 @@ class MagnitudeDistanceSpectraSigmaTrellisTest(
         """
         Executes the trellis plotting - for standard deviation
         """
-        return trpl.MagnitudeDistanceSpectraSigmaTrellis.from_rupture_model(
+        return trpl.MagnitudeDistanceSpectraSigmaTrellis.from_rupture_properties(
             properties, magnitudes, distances, self.gsims, self.periods,
             distance_type="rrup")
 

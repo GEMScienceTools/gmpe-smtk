@@ -36,6 +36,7 @@ from openquake.hazardlib.gsim.base import (SitesContext,
                                            RuptureContext,
                                            DistancesContext)
 from smtk.sm_utils import _save_image
+from openquake.hazardlib.contexts import get_distances
 
 TO_RAD = pi / 180.
 FROM_RAD = 180. / pi
@@ -273,9 +274,7 @@ def _setup_site_peripherals(azimuth, origin_point, vs30, z1pt0, z2pt5, strike,
     """
     if not z1pt0:
         z1pt0 = vs30_to_z1pt0_cy14(vs30)
-    #    z1pt0 = vs30_to_z1pt0_as08(vs30)
     if not z2pt5:
-        #z2pt5 = z1pt0_to_z2pt5(z1pt0)
         z2pt5 = vs30_to_z2pt5_cb14(vs30)
     azimuth = (strike + azimuth) % 360.
     origin_location = get_hypocentre_on_planar_surface(surface,
@@ -285,26 +284,24 @@ def _setup_site_peripherals(azimuth, origin_point, vs30, z1pt0, z2pt5, strike,
 
 
 def _rup_to_point(distance, surface, origin, azimuth, distance_type='rjb',
-        iter_stop=1E-3, maxiter=1000):
+                  iter_stop=1E-3, maxiter=1000):
     """
     Place a point at a given distance from a rupture along a specified azimuth
     """
     pt0 = origin
     pt1 = origin.point_at(distance, 0., azimuth)
-    #print pt0, pt1
     r_diff = np.inf
     dip = surface.dip
     sin_dip = np.sin(np.radians(dip))
     dist_sin_dip = distance / sin_dip
-    #max_surf_dist = surface.width / np.cos(np.radians(dip))
     iterval = 0
     while (np.fabs(r_diff) >= iter_stop) and (iterval <= maxiter):
         pt1mesh = Mesh(np.array([pt1.longitude]),
                        np.array([pt1.latitude]),
                        None)
         if distance_type == 'rjb' or np.fabs(dip - 90.0) < 1.0E-3:
-            r_diff =  (distance -
-                       surface.get_joyner_boore_distance(pt1mesh)).flatten()
+            r_diff = (distance -
+                      surface.get_joyner_boore_distance(pt1mesh)).flatten()
             pt0 = Point(pt1.longitude, pt1.latitude)
             if r_diff > 0.:
                 pt1 = pt0.point_at(r_diff, 0., azimuth)
@@ -315,20 +312,16 @@ def _rup_to_point(distance, surface, origin, azimuth, distance_type='rjb',
             rrup = surface.get_min_distance(pt1mesh).flatten()
             if azimuth >= 0.0 and azimuth <= 180.0:
                 # On hanging wall
-                r_diff = dist_sin_dip - (rrup / sin_dip)   
-
+                r_diff = dist_sin_dip - (rrup / sin_dip)
             else:
                 # On foot wall
-                r_diff = distance - rrup 
+                r_diff = distance - rrup
             pt0 = Point(pt1.longitude, pt1.latitude)
-            
-            #print azimuth, (azimuth + 180.0) % 360,  rrup, r_diff, np.fabs(r_diff)
             if r_diff > 0.:
                 pt1 = pt0.point_at(r_diff, 0., azimuth)
             else:
                 pt1 = pt0.point_at(np.fabs(r_diff), 0.,
                                    (azimuth + 180.) % 360.)
-            
         else:
             raise ValueError('Distance type must be rrup or rjb!')
         iterval += 1
@@ -341,12 +334,12 @@ class PointAtDistance(object):
     a given distance from the rupture
     """
     def point_at_distance(self, model, distance, vs30, line_azimuth=90.,
-            origin_point=(0.5, 0.), vs30measured=True, z1pt0=None, z2pt5=None,
-            backarc=False):
+                          origin_point=(0.5, 0.), vs30measured=True,
+                          z1pt0=None, z2pt5=None, backarc=False):
         """
         """
         raise NotImplementedError
- 
+
 
 class PointAtRuptureDistance(PointAtDistance):
     """
@@ -381,12 +374,11 @@ class PointAtJoynerBooreDistance(PointAtDistance):
     """
     Locate a point at a given Joyner-Boore distance
     """
-    
     def point_at_distance(self, model, distance, vs30, line_azimuth=90.,
-             origin_point=(0.5, 0.),  vs30measured=True, z1pt0=None,
-             z2pt5=None, backarc=False):
+                          origin_point=(0.5, 0.),  vs30measured=True,
+                          z1pt0=None, z2pt5=None, backarc=False):
         """
-        Generates a site given a specified rupture distance from the 
+        Generates a site given a specified rupture distance from the
         rupture surface
         """
         azimuth, origin_location, z1pt0, z2pt5 = _setup_site_peripherals(
@@ -411,9 +403,9 @@ class PointAtEpicentralDistance(PointAtDistance):
     Locate at point at a given epicentral distance from a source
     """
 
-    def point_at_distance(self, model, distance, vs30, line_azimuth=90., 
-            origin_point=(0.5, 0.), vs30measured=True, z1pt0=None, z2pt5=None,
-            backarc=False):
+    def point_at_distance(self, model, distance, vs30, line_azimuth=90.,
+                          origin_point=(0.5, 0.), vs30measured=True,
+                          z1pt0=None, z2pt5=None, backarc=False):
         """
         Generates a point at a given epicentral distance
         """
@@ -433,9 +425,9 @@ class PointAtHypocentralDistance(PointAtDistance):
     """
     Locate a point at a given hypocentral distance from a source
     """
-    def point_at_distance(self, model, distance, vs30, line_azimuth=90., 
-            origin_point=(0.5, 0.), vs30measured=True, z1pt0=None, z2pt5=None,
-            backarc=False):
+    def point_at_distance(self, model, distance, vs30, line_azimuth=90.,
+                          origin_point=(0.5, 0.), vs30measured=True,
+                          z1pt0=None, z2pt5=None, backarc=False):
         """
         Generates a point at a given hypocentral distance
         """
@@ -465,8 +457,8 @@ class GSIMRupture(object):
     the trellis plotting. Also contains methods for configuring the site
     locations
     """
-    def __init__(self, magnitude, dip, aspect, 
-                 tectonic_region='Active Shallow Crust' , rake=0., ztor=0., 
+    def __init__(self, magnitude, dip, aspect,
+                 tectonic_region='Active Shallow Crust', rake=0., ztor=0.,
                  strike=0., msr=WC1994(), initial_point=DEFAULT_POINT,
                  hypocentre_location=None):
         """
@@ -503,9 +495,9 @@ class GSIMRupture(object):
         Returns the rupture as an instance of the
         openquake.hazardlib.source.rupture.Rupture class
         """
-        return Rupture(self.magnitude, 
+        return Rupture(self.magnitude,
                        self.rake,
-                       self.trt, 
+                       self.trt,
                        self.hypocentre,
                        self.surface,
                        PointSource)
@@ -519,17 +511,13 @@ class GSIMRupture(object):
         # Distances
         dctx = DistancesContext()
         # Rupture distance
-        setattr(dctx, 
-                'rrup',
+        setattr(dctx, 'rrup',
                 self.rupture.surface.get_min_distance(self.target_sites.mesh))
         # Rx
-        setattr(dctx, 
-                'rx',
+        setattr(dctx, 'rx',
                 self.rupture.surface.get_rx_distance(self.target_sites.mesh))
         # Rjb
-        setattr(dctx, 
-                'rjb',
-                self.rupture.surface.get_joyner_boore_distance(
+        setattr(dctx, 'rjb', self.rupture.surface.get_joyner_boore_distance(
                     self.target_sites.mesh))
         # Rhypo
         setattr(dctx,
@@ -539,22 +527,22 @@ class GSIMRupture(object):
         # Repi
         setattr(dctx, 'repi',
                 self.rupture.hypocenter.distance_to_mesh(
-                    self.target_sites.mesh, 
+                    self.target_sites.mesh,
                     with_depths=False))
         # Ry0
         setattr(dctx, 'ry0',
                 self.rupture.surface.get_ry0_distance(self.target_sites.mesh))
         # Rcdpp - ignored at present
         setattr(dctx, 'rcdpp', None)
-        # Azimuth - ignored at present
-        setattr(dctx, 'azimuth', None)
+        # Azimuth
+        setattr(dctx, 'azimuth', get_distances(self.rupture,
+                                               self.target_sites.mesh,
+                                               'azimuth'))
         setattr(dctx, 'hanging_wall', None)
         # Rvolc
         setattr(dctx, "rvolc", np.zeros_like(self.target_sites.mesh.lons))
         # Sites
         sctx = SitesContext(slots=self.target_sites.array.dtype.names)
-        #key_list = ["lons", "lats", "vs30", "vs30measured", "z1pt0", "z2pt5",
-        #            "backarc"]
         for key in sctx._slots_:
             setattr(sctx, key, self.target_sites.array[key])
 
@@ -624,59 +612,55 @@ class GSIMRupture(object):
             "BACKARC": backarc}
         return self.target_sites
 
-
     def get_target_sites_line(self, maximum_distance, spacing, vs30,
-            line_azimuth=90., origin_point=(0.5, 0.5), as_log=False, 
-            vs30measured=True, z1pt0=None, z2pt5=None, backarc=False):
+                              line_azimuth=90., origin_point=(0.5, 0.5),
+                              as_log=False, vs30measured=True, z1pt0=None,
+                              z2pt5=None, backarc=False):
         """
         Defines the target sites along a line with respect to the rupture
-        """
-        #input_origin_point = deepcopy(origin_point)
-        azimuth, origin_location, z1pt0, z2pt5 = _setup_site_peripherals(
-            line_azimuth,
-            origin_point,
-            vs30,
-            z1pt0,
-            z2pt5,
-            self.strike,
-            self.surface)
 
-        self.target_sites = [Site(origin_location,
-                                  vs30,
-                                  vs30measured,
-                                  z1pt0,
-                                  z2pt5,
-                                  backarc=backarc)]
+
+         :param maximum_distance:
+             Maximum distance to be considered [km]
+         :param spacing:
+             Sampling distance for the reference line [km]
+         :param vs30:
+             Time averaged shear wave velocity within the uppermost 30m [m/s]
+         :param line_azimuth:
+             Azimuth of the reference line [degrees]
+         :param origin_point:
+             Coordinates of the origin point of the reference line
+         :param bool as_log:
+             When True scales the distances logarithmically
+         :param bool vs30measured:
+             A boolean defining the method used to determine the vs30 value
+         :param z1pt0:
+             Depth to the 1km/s interface [km]
+         :param z2pt5:
+             Depth to the 2.5km/s interface [km]
+         :param bool backarc:
+             When True the sites are considered in the backarc region
+        """
+        azimuth, origin_location, z1pt0, z2pt5 = \
+            self._define_origin_target_site(vs30, line_azimuth, origin_point,
+                                            vs30measured, z1pt0, z2pt5,
+                                            backarc)
+
         spacings = self._define_line_spacing(maximum_distance,
                                              spacing,
                                              as_log)
-        for offset in spacings:
-            target_loc= origin_location.point_at(offset, 0., azimuth)
-            # Get Rupture distance
-            temp_mesh = Mesh(np.array(target_loc.longitude),
-                             np.array(target_loc.latitude),
-                             np.array(target_loc.depth))
-            distance = self.surface.get_min_distance(temp_mesh)
-            self.target_sites.append(Site(target_loc, 
-                                          vs30, 
-                                          vs30measured, 
-                                          z1pt0,
-                                          z2pt5,
-                                          backarc=backarc))
-        self.target_sites_config = {
-            "TYPE": "Line",
-            "RMAX": maximum_distance,
-            "SPACING": spacing,
-            "AZIMUTH": line_azimuth,
-            "ORIGIN": origin_point,
-            "AS_LOG": as_log,
-            "VS30": vs30,
-            "VS30MEASURED": vs30measured,
-            "Z1.0": z1pt0,
-            "Z2.5": z2pt5,
-            "BACKARC": backarc}
-        self.target_sites = SiteCollection(self.target_sites)
-        return self.target_sites
+
+        target_sites = \
+            self._append_target_sites(spacings, azimuth, origin_location,
+                                      vs30, line_azimuth, origin_point,
+                                      as_log, vs30measured, z1pt0, z2pt5,
+                                      backarc)
+        # let's be picky and replace inferred values of
+        # self.target_sites_config with the values provided here:
+        self.target_sites_config.update({"RMAX": maximum_distance,
+                                         "SPACING": spacing})
+
+        return target_sites
 
     def _define_line_spacing(self, maximum_distance, spacing, as_log=False):
         """
@@ -695,6 +679,99 @@ class GSIMRupture(object):
 
         return spacings
 
+    def get_target_sites_line_from_given_distances(self, distances, vs30,
+            line_azimuth=90., origin_point=(0.5, 0.5), as_log=False,
+            vs30measured=True, z1pt0=None, z2pt5=None, backarc=False):
+        """
+        Defines the target sites along a line with respect to the rupture from
+        a given numeric array of distances
+        """
+        azimuth, origin_location, z1pt0, z2pt5 = \
+            self._define_origin_target_site(vs30, line_azimuth, origin_point,
+                                            vs30measured, z1pt0, z2pt5,
+                                            backarc)
+
+        distances = self._convert_distances(distances, as_log)
+
+        return self._append_target_sites(distances, azimuth, origin_location,
+                                         vs30, line_azimuth, origin_point,
+                                         as_log, vs30measured, z1pt0, z2pt5,
+                                         backarc)
+
+    @staticmethod
+    def _convert_distances(distances, as_log=False):
+        '''assures distances is a numpy numeric array, sorts it
+        and converts its value to a logaritmic scale preserving the array
+        bounds (min and max)'''
+        dist = np.asarray(distances)
+        dist.sort()
+        if as_log:
+            oldmin, oldmax = dist[0], dist[-1]
+            dist = np.log1p(dist)  # avoid -inf @ zero in case
+            newmin, newmax = dist[0], dist[-1]
+            # re-map the space to be logarithmic between oldmin and oldmax:
+            dist = oldmin + (oldmax-oldmin)*(dist - newmin)/(newmax - newmin)
+        return dist
+
+    def _define_origin_target_site(self, vs30, line_azimuth=90.,
+                                   origin_point=(0.5, 0.5), vs30measured=True,
+                                   z1pt0=None, z2pt5=None, backarc=False):
+        """
+        Defines the target site from an origin point
+        """
+        azimuth, origin_location, z1pt0, z2pt5 = _setup_site_peripherals(
+            line_azimuth,
+            origin_point,
+            vs30,
+            z1pt0,
+            z2pt5,
+            self.strike,
+            self.surface)
+
+        self.target_sites = [Site(origin_location,
+                                  vs30,
+                                  vs30measured,
+                                  z1pt0,
+                                  z2pt5,
+                                  backarc=backarc)]
+        return azimuth, origin_location, z1pt0, z2pt5
+
+    def _append_target_sites(self, distances, azimuth, origin_location, vs30,
+                             line_azimuth=90., origin_point=(0.5, 0.5),
+                             as_log=False,  vs30measured=True, z1pt0=None,
+                             z2pt5=None, backarc=False):
+        """
+        Appends the target sites along a line with respect to the rupture,
+        given an already set origin target site
+        """
+        for offset in distances:
+            target_loc = origin_location.point_at(offset, 0., azimuth)
+            # Get Rupture distance
+            temp_mesh = Mesh(np.array(target_loc.longitude),
+                             np.array(target_loc.latitude),
+                             np.array(target_loc.depth))
+            distance = self.surface.get_min_distance(temp_mesh)
+            self.target_sites.append(Site(target_loc, 
+                                          vs30, 
+                                          vs30measured, 
+                                          z1pt0,
+                                          z2pt5,
+                                          backarc=backarc))
+        self.target_sites_config = {
+            "TYPE": "Line",
+            "RMAX": distances[-1],
+            "SPACING": np.nan if len(distances) < 2 else \
+            distances[1] - distances[0],  # FIXME does it make sense?
+            "AZIMUTH": line_azimuth,
+            "ORIGIN": origin_point,
+            "AS_LOG": as_log,
+            "VS30": vs30,
+            "VS30MEASURED": vs30measured,
+            "Z1.0": z1pt0,
+            "Z2.5": z2pt5,
+            "BACKARC": backarc}
+        self.target_sites = SiteCollection(self.target_sites)
+        return self.target_sites
 
     def get_target_sites_point(self, distance, distance_type, vs30, 
             line_azimuth=90, origin_point=(0.5, 0.5), vs30measured=True, 

@@ -272,8 +272,8 @@ class GeneralFlatfileParser(SimpleFlatfileParserV9):
                     or ("PGD" in header):
                     continue
                 else:
-                    print "Header %s not recognised - ignoring this data!" %\
-                        header
+                    print("Header %s not recognised - ignoring this data!" %\
+                        header)
 
 #    @staticmethod
 #    def _validate_datetime(metadata):

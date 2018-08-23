@@ -20,7 +20,6 @@
 """
 Tool for creating visualisation of database information
 """
-#from sets import Set
 import numpy as np
 import matplotlib.pyplot as plt
 from smtk.sm_utils import _save_image
@@ -71,7 +70,7 @@ def db_magnitude_distance(db1, dist_type, figure_size=(7, 5),
     """
     plt.figure(figsize=figure_size)
     mags, dists = get_magnitude_distances(db1, dist_type)
-    plt.semilogx(np.array(dists), np.array(mags), "o")
+    plt.semilogx(np.array(dists), np.array(mags), "o", mec='k', mew=0.5)
     plt.xlabel(DISTANCE_LABEL[dist_type], fontsize=14)
     plt.ylabel("Magnitude", fontsize=14)
     if figure_title:
@@ -136,21 +135,45 @@ def db_magnitude_distance_by_site(db1, dist_type, classification="NEHRP",
     total_idx = []
     for site_class in site_bounds.keys():
         site_idx = _site_selection(db1, site_class, classification)
-        site_db = selector.select_records(site_idx, as_db=True)
-        mags, dists = get_magnitude_distances(site_db, dist_type)
-        plt.plot(np.array(dists), np.array(mags), "o",
-                 label="Site Class %s" % site_class)
-        total_idx.extend(site_idx)
-    unc_idx = set(range(db1.number_records())).difference(Set(total_idx))
+        if site_idx:
+            site_db = selector.select_records(site_idx, as_db=True)
+            mags, dists = get_magnitude_distances(site_db, dist_type)
+            plt.plot(np.array(dists), np.array(mags), "o", mec='k',
+                     mew=0.5, label="Site Class %s" % site_class)
+            total_idx.extend(site_idx)
+    unc_idx = set(range(db1.number_records())).difference(set(total_idx))
     unc_db = selector.select_records(unc_idx, as_db=True)
     mag, dists = get_magnitude_distances(site_db, dist_type)
-    plt.semilogx(np.array(dists), np.array(mags), "o", mfc="None",
-                 label="Unclassified", zorder=0)
+    plt.semilogx(np.array(dists), np.array(mags), "o", mfc="None", mec='k',
+                 mew=0.5, label="Unclassified", zorder=0)
     plt.xlabel(DISTANCE_LABEL[dist_type], fontsize=14)
     plt.ylabel("Magnitude", fontsize=14)
     plt.grid()
     plt.legend(ncol=2,loc="lower right", numpoints=1)
     plt.title("Magnitude vs Distance (by %s Site Class)" % classification,
               fontsize=18)
+    _save_image(filename, filetype, dpi)
+    plt.show()
+
+def db_magnitude_distance_by_trt(db1, dist_type,
+        figure_size=(7, 5), filename=None, filetype="png", dpi=300):
+    """
+    Plot magnitude-distance comparison by tectonic region
+    """
+    trts=[]
+    for i in db1.records:
+        trts.append(i.event.tectonic_region)
+    trt_types=list(set(trts))
+    selector = SMRecordSelector(db1)
+    plt.figure(figsize=figure_size)
+    for trt in trt_types:
+        subdb = selector.select_trt_type(trt, as_db=True)
+        mag, dists = get_magnitude_distances(subdb, dist_type)
+        plt.semilogx(dists, mag, "o", mec='k', mew=0.5, label=trt)
+    plt.xlabel(DISTANCE_LABEL[dist_type], fontsize=14)
+    plt.ylabel("Magnitude", fontsize=14)
+    plt.title("Magnitude vs Distance by Tectonic Region", fontsize=18)
+    plt.legend(loc='lower right', numpoints=1)
+    plt.grid()
     _save_image(filename, filetype, dpi)
     plt.show()

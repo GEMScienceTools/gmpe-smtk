@@ -569,6 +569,7 @@ NEHRP_NSPT_BOUNDARIES = {
     "D": (15.0, 50.0),
     "E": (-np.inf, 15.0)}
 
+
 class RecordSite(object):
     """
     Class to hold attributes belonging to the site
@@ -1108,6 +1109,8 @@ class GroundMotionDatabase(object):
             vs30.append(rup.site.vs30)
             if rup.site.vs30_measured is not None:
                 vs30_measured.append(rup.site.vs30_measured)
+            else:
+                vs30_measured.append(0)
             if rup.site.z1pt0 is not None:
                 z1pt0.append(rup.site.z1pt0)
             else:
