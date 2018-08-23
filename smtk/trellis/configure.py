@@ -30,7 +30,7 @@ from openquake.baselib.slots import with_slots
 from openquake.hazardlib.geo import (Point, Line, Polygon, Mesh,
                                      PlanarSurface, NodalPlane)
 from openquake.hazardlib.scalerel.wc1994 import WC1994
-from openquake.hazardlib.site import Site, SiteCollection
+from openquake.hazardlib.site import Site, SiteCollection, site_param_dt
 from openquake.hazardlib.source.point import PointSource
 from openquake.hazardlib.gsim.base import (SitesContext,
                                            RuptureContext,
@@ -552,10 +552,10 @@ class GSIMRupture(object):
         # Rvolc
         setattr(dctx, "rvolc", np.zeros_like(self.target_sites.mesh.lons))
         # Sites
-        sctx = SitesContext()
-        key_list = ["lons", "lats", "vs30", "vs30measured", "z1pt0", "z2pt5",
-                    "backarc"]
-        for key in key_list:
+        sctx = SitesContext(slots=self.target_sites.array.dtype.names)
+        #key_list = ["lons", "lats", "vs30", "vs30measured", "z1pt0", "z2pt5",
+        #            "backarc"]
+        for key in sctx._slots_:
             setattr(sctx, key, self.target_sites.array[key])
 
         # Rupture
@@ -879,12 +879,16 @@ class GSIMRupture(object):
         fig = plt.figure(figsize=figure_size)
         ax = fig.add_subplot(111, projection='3d')
         # Wireframe rupture surface mesh
-        rupture_mesh = self.surface.get_mesh()
-        ax.plot_wireframe(rupture_mesh.lons,
-                          rupture_mesh.lats, 
-                          -rupture_mesh.depths,
-                          rstride=1,
-                          cstride=1)
+        lons = []
+        lats = []
+        depths = []
+        for pnt in [self.surface.top_left, self.surface.top_right,
+                    self.surface.bottom_right, self.surface.bottom_left,
+                    self.surface.top_left]:
+            lons.append(pnt.longitude)
+            lats.append(pnt.latitude)
+            depths.append(-pnt.depth)
+        ax.plot(lons, lats, depths, "k-", lw=2)
 
         # Scatter the target sites
         ax.scatter(self.target_sites.mesh.lons,
@@ -895,7 +899,7 @@ class GSIMRupture(object):
         ax.set_xlabel('Longitude')
         ax.set_ylabel('Latitude')
         ax.set_zlabel('Depth (km)')
-        ax.set_zlim(-np.ceil(np.max(rupture_mesh.depths)), 0.0)
+        ax.set_zlim(np.floor(min(depths)), 0.0)
         _save_image(filename, filetype, dpi)
         plt.show()
         

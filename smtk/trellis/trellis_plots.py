@@ -371,9 +371,7 @@ class BaseTrellis(object):
         params = {}
         for key in rctx._slots_:
             params[key] = getattr(rctx, key)
-        #for key in sctx.__slots__:
         for key in sctx._slots_:
-        #for key in ['vs30', 'vs30measured', 'z1pt0', 'z2pt5']:
             params[key] = getattr(sctx, key)
         return cls(magnitudes, distances, gsims, imts, params, stddevs,
                    rupture=rupture, **kwargs)
