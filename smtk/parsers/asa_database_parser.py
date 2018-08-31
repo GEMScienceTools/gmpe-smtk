@@ -75,24 +75,25 @@ def _get_metadata_from_file(file_str):
     for i in range(7, 81):
         # Exclude lines with "==", websites, and with lenghts < 42
         exclude = ["==", "www"]
-        if not any(x in getline(file_str, i) for x in exclude) and\
-                len(getline(file_str, i)) > 41:
-            # Delete newlines at end and split on ":"
-            row = (getline(file_str, i).rstrip("\n")).split(":")
-            if len(row) > 2:
-                # The character ":" occurs somewhere in the datastring
-                if len(row[0].strip()) != 0:
-                    metadata[row[0].strip()] = ":".join(row[1:]).strip()
-            else:
-                # Parse as normal
-                if len(row[0].strip()) != 0:
-                    metadata[row[0].strip()] = row[1].strip()
-                    recentkey = row[0].strip()
-                elif len(row[0].strip()) == 0:
-                    # When values continue on a new line
-                    metadata[recentkey] = (
-                        metadata[recentkey] + ' ' + row[1].strip())
-
+        with open(file_str, encoding='iso-8859-1') as f:
+            lines = f.readlines()
+            if not any(x in lines[i] for x in exclude) and\
+                len(lines[i]) > 41:
+                # Delete newlines at end and split on ":"
+                row = ((lines[i]).rstrip("\n")).split(":")
+                if len(row) > 2:
+                    # The character ":" occurs somewhere in the datastring
+                    if len(row[0].strip()) != 0:
+                        metadata[row[0].strip()] = ":".join(row[1:]).strip()
+                else:
+                    # Parse as normal
+                    if len(row[0].strip()) != 0:
+                        metadata[row[0].strip()] = row[1].strip()
+                        recentkey = row[0].strip()
+                    elif len(row[0].strip()) == 0:
+                        # When values continue on a new line
+                        metadata[recentkey] = (
+                            metadata[recentkey] + ' ' + row[1].strip())
     return metadata
 
 
@@ -186,17 +187,27 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
                  'JUNIO': 6, 'JULIO': 7, 'AGOSTO': 8, 'SEPTIEMBRE': 9,
                  'OCTUBURE': 10, 'NOVIEMBRE': 11, 'DICIEMBRE': 12}
 
+        months_abrev = {'ENE': 1, 'FEB': 2, 'MAR': 3, 'ABR': 4, 'MAY': 5,
+                 'JUN': 6, 'JUL': 7, 'AGO': 8, 'SEP': 9,
+                 'OCT': 10, 'NOV': 11, 'DIC': 12}
+
         # Date and time
-        try:  # UNAM DATES
-            year, month, day = (
-                get_int(metadata["FECHA DEL SISMO [GMT]"].split("/")[0]),
-                get_int(metadata["FECHA DEL SISMO [GMT]"].split("/")[1]),
-                get_int(metadata["FECHA DEL SISMO [GMT]"].split("/")[2]))
-        except:  # CICESE DATES
+        if 'CICESE' in metadata["INSTITUCION RESPONSABLE"]:
             year, month, day = (
                 get_int(metadata["FECHA DEL SISMO (GMT)"][-4:]),
                 months[metadata["FECHA DEL SISMO (GMT)"].split()[2]],
                 get_int(metadata["FECHA DEL SISMO (GMT)"][:2]))
+        elif 'CIRES' in metadata["INSTITUCION RESPONSABLE"]:
+            year, month, day = (
+                get_int('20'+metadata["FECHA DEL SISMO (GMT)"][-2:]),
+                months_abrev[metadata["FECHA DEL SISMO (GMT)"].split('/')[1]],
+                get_int(metadata["FECHA DEL SISMO (GMT)"][:2]))
+        # UNAM data, which is not always indicated in "INSTITUCION RESPONSABLE"
+        else:
+            year, month, day = (
+                get_int(metadata["FECHA DEL SISMO [GMT]"].split("/")[0]),
+                get_int(metadata["FECHA DEL SISMO [GMT]"].split("/")[1]),
+                get_int(metadata["FECHA DEL SISMO [GMT]"].split("/")[2]))
 
         # Get event time, naming is not consistent (e.g. 07.1, 00, 17,1)
         for i in metadata:
@@ -206,7 +217,6 @@ class ASADatabaseMetadataReader(SMDatabaseReader):
                                         int(float(metadata[i].split(":")[2].
                                             replace("0", "", 1).
                                             replace(",", "."))))
-
         try:
             eq_datetime = datetime(year, month, day, hour, minute, second)
         except:
@@ -450,14 +460,14 @@ class ASATimeSeriesParser(SMTimeSeriesReader):
         """
 
         # The components are definied using the following names
-        comp_names = {'X': ['N90E', 'N90E;', 'N90W', 'N90W;',
+        comp_names = {'X': ['ENE', 'N90E', 'N90E;', 'N90W', 'N90W;',
                             'S90E', 'S90W', 'E--W', 'S9OE'],
-                      'Y': ['N00E', 'N00E;', 'N00W', 'N00W;',
-                            'S00E', 'S00W', 'N--S', 'NOOE'],
-                      'V': ['V', 'V;+', '+V', 'Z', 'VERT']}
+                      'Y': ['ENN', 'N00E', 'N00E;', 'NOOE;', 'N00W',
+                            'NOOW;', 'S00E', 'S00W', 'N--S', 'NOOE'],
+                      'V': ['ENZ', 'V', 'V;+', '+V', 'Z', 'VERT']}
 
         # Read component names, which are given on line 107
-        o = open(ifile, "r")
+        o = open(ifile, "r", encoding='iso-8859-1')
         r = o.readlines()
         components = list(r[107].split())
 
@@ -479,7 +489,7 @@ class ASATimeSeriesParser(SMTimeSeriesReader):
                 column = 0
                 try:
                     accel = np.genfromtxt(ifile, skip_header=109,
-                                          usecols=column, delimiter='')
+                        usecols=column, delimiter='', encoding='iso-8859-1')
                 except:
                     raise ValueError(
                         "Check %s has 3 equal length time-series columns"
@@ -489,7 +499,7 @@ class ASATimeSeriesParser(SMTimeSeriesReader):
                 column = 1
                 try:
                     accel = np.genfromtxt(ifile, skip_header=109,
-                        usecols=column, delimiter='')
+                        usecols=column, delimiter='', encoding='iso-8859-1')
                 except:
                     raise ValueError(
                         "Check %s has 3 equal length time-series columns"
@@ -499,7 +509,7 @@ class ASATimeSeriesParser(SMTimeSeriesReader):
                 column = 2
                 try:
                     accel = np.genfromtxt(ifile, skip_header=109,
-                                          usecols=column, delimiter='')
+                        usecols=column, delimiter='', encoding='iso-8859-1')
                 except:
                     raise ValueError(
                         "Check %s has 3 equal length time-series columns"
