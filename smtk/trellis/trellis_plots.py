@@ -21,7 +21,8 @@
 Sets up a simple rupture-site configuration to allow for physical comparison
 of GMPEs
 '''
-
+import os
+import sys
 import re
 import json
 import numpy as np
@@ -618,11 +619,11 @@ class MagnitudeIMTTrellis(BaseTrellis):
                             self.dctx,
                             imt.from_string(i_m),
                             [self.stddevs])
-                       
+
                         gmvs[gmpe_name][i_m][iloc, :] = \
                             np.exp(means)
                     except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
 
@@ -731,7 +732,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
                              [self.stddevs])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except KeyError:
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
 
         return gmvs
@@ -758,7 +759,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
 
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
 
@@ -1043,7 +1044,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
                              [self.stddevs])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
 
@@ -1069,7 +1070,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
 
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except KeyError:
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
 
@@ -1157,6 +1158,10 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
 
         In this case the class is instantiated with a set of magnitudes
         and a dictionary indicating the different distance types.
+
+        :param imts: (numeric list or numpy array)
+            the Spectral Acceleration's
+            natural period(s) to be used
         """
         imts = ["SA(%s)" % i_m for i_m in imts]
 
@@ -1237,13 +1242,19 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
 
     @classmethod
     def from_rupture_properties(cls, properties, magnitudes, distance,
-                                gsims, imts, stddevs='Total', **kwargs):
+                                gsims, periods, stddevs='Total', **kwargs):
         '''Constructs the Base Trellis Class from a dictionary of
         properties. In this class, this method is simply an alias of
         `from_rupture_model`
+
+        :param periods: (numeric list or numpy array)
+            the Spectral Acceleration's
+            natural period(s) to be used. Note that this parameter
+            is called `imt` in `from_rupture_model` where the name
+            `imt` has been kept for legacy code compatibility
         '''
         return cls.from_rupture_model(properties, magnitudes, distance,
-                                      gsims, imts, stddevs=stddevs,
+                                      gsims, periods, stddevs=stddevs,
                                       **kwargs)
 
     @classmethod
@@ -1374,7 +1385,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                         gmvs[gmpe_name][i_m][iloc, :] = \
                             np.exp(means)
                     except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
 
@@ -1477,8 +1488,10 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                 for gsim in gmvs:
                     for imt in self.imts:
                         if len(gmvs[gsim][imt]):
-                            ydict["yvalues"][gsim].\
-                                append(gmvs[gsim][imt][i, j])
+                            value = gmvs[gsim][imt][i, j]
+                            if np.isnan(value):
+                                value = None
+                            ydict["yvalues"][gsim].append(value)
                         else:
                             ydict["yvalues"][gsim].append(None)
                 gmv_dict["figures"].append(ydict)
@@ -1647,7 +1660,7 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
                              [self.stddevs])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = []
+                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
 
