@@ -71,7 +71,7 @@ class BaseResidualPlot(object):
             raise ValueError("No residual data found for GMPE %s" % gmpe)
         if imt not in residuals.imts:
             raise ValueError("No residual data found for IMT %s" % imt)
-        if not residuals.residuals[self.gmpe][self.imt]:
+        if not residuals.residuals[gmpe][imt]:
             raise ValueError("No residuals found for %s (%s)" % (gmpe, imt))
         self.gmpe = gmpe
         self.imt = imt
@@ -250,11 +250,11 @@ class ResidualHistogramPlot(BaseResidualPlot):
         :param bin_width: float denoting the bin width of the histogram.
             defaults to 0.5
         """
-        super(ResidualPlot, self).__init__(residuals, gmpe, imt,
-                                           filename=filename,
-                                           filetype=filetype,
-                                           dpi=dpi, **kwargs)
         self.bin_width = bin_width
+        super(ResidualHistogramPlot, self).__init__(residuals, gmpe, imt,
+                                                    filename=filename,
+                                                    filetype=filetype,
+                                                    dpi=dpi, **kwargs)
 
     def get_subplots_rowcols(self):
         if self.num_plots > 1:
@@ -493,11 +493,11 @@ class ResidualScatterPlot(BaseResidualPlot):
         :param plot_type: string denoting if the plot x axis should be
             logarithmic (provide 'log' in case). Default: '' (no log x axis)
         """
+        self.plot_type = plot_type
         super(ResidualScatterPlot, self).__init__(residuals, gmpe, imt,
                                                   filename=filename,
                                                   filetype=filetype,
                                                   dpi=dpi, **kwargs)
-        self.plot_type = plot_type
 #     def create_linreg(self, res_data, res_type):
 #         x, slope, intercept = \
 #             res_data['x'], res_data['slope'], res_data['intercept']
@@ -623,13 +623,13 @@ class ResidualWithDistance(ResidualScatterPlot):
         :param distance_type: string denoting the distance type to be
             used. Defaults to 'rjb'
         """
+        self.distance_type = distance_type
         super(ResidualWithDistance, self).__init__(residuals, gmpe, imt,
                                                    filename=filename,
                                                    filetype=filetype,
                                                    dpi=dpi,
                                                    plot_type=plot_type,
                                                    **kwargs)
-        self.distance_type = distance_type
 
     def get_plot_data(self):
         return residuals_vs_dist(self.residuals, self.gmpe, self.imt,

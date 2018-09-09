@@ -62,8 +62,8 @@ def residuals_density_distribution(residuals, gmpe, imt, bin_width=0.5,
 
         vals, bins = _get_histogram_data(data[res_type], bin_width=bin_width)
 
-        mean = statistics[res_type]["mean"]
-        stddev = statistics[res_type]["stddev"]
+        mean = statistics[res_type]["Mean"]
+        stddev = statistics[res_type]["Std Dev"]
         x = bins[:-1]
         y = vals
 
@@ -213,7 +213,7 @@ def residuals_vs_vs30(residuals, gmpe, imt, as_json=False):
 
     for res_type in data.keys():
 
-        x = _get_vs30(gmpe, imt, res_type)
+        x = _get_vs30(residuals, gmpe, imt, res_type)
         slope, intercept, _, pval, _ = linregress(x, data[res_type])
         y = data[res_type]
 
@@ -222,7 +222,7 @@ def residuals_vs_vs30(residuals, gmpe, imt, as_json=False):
                 _tojson(x, y, slope, intercept, pval)
 
         plot_data[res_type] = \
-            {'x': x, 'y': data[res_type].tolist(),
+            {'x': x, 'y': y,
              'slope': slope, 'intercept': intercept, 'pvalue': pval,
              'xlabel': "Vs30 (m/s)", 'ylabel': "Z (%s)" % imt}
 
@@ -265,7 +265,7 @@ def residuals_vs_dist(residuals, gmpe, imt, distance_type="rjb",
 
     for res_type in data.keys():
 
-        x = _get_distances(gmpe, imt, res_type)
+        x = _get_distances(residuals, gmpe, imt, res_type, distance_type)
         slope, intercept, _, pval, _ = linregress(x, data[res_type])
         y = data[res_type]
 
@@ -274,7 +274,7 @@ def residuals_vs_dist(residuals, gmpe, imt, distance_type="rjb",
                 _tojson(x, y, slope, intercept, pval)
 
         plot_data[res_type] = \
-            {'x': x, 'y': data[res_type].tolist(),
+            {'x': x, 'y': y,
              'slope': slope, 'intercept': intercept, 'pvalue': pval,
              'xlabel': "%s Distance (km)" % distance_type,
              'ylabel': "Z (%s)" % imt}
@@ -322,7 +322,7 @@ def residuals_vs_depth(residuals, gmpe, imt, as_json=False):
 
     for res_type in data.keys():
 
-        x = _get_depths(gmpe, imt, res_type)
+        x = _get_depths(residuals, gmpe, imt, res_type)
         slope, intercept, _, pval, _ = linregress(x, data[res_type])
         y = data[res_type]
 
@@ -331,7 +331,7 @@ def residuals_vs_depth(residuals, gmpe, imt, as_json=False):
                 _tojson(x, y, slope, intercept, pval)
 
         plot_data[res_type] = \
-            {'x': x, 'y': data[res_type].tolist(),
+            {'x': x, 'y': y,
              'slope': slope, 'intercept': intercept, 'pvalue': pval,
              'xlabel': "Hypocentral Depth (km)",
              'ylabel': "Z (%s)" % imt}
@@ -357,3 +357,4 @@ def _get_depths(residuals, gmpe, imt, res_type):
         else:
             depths = np.hstack([depths,
                                 ctxt["Rupture"].hypo_depth * nvals])
+    return depths

@@ -655,7 +655,7 @@ class Likelihood(Residuals):
                           % (imtx, gmpe))
                     continue
                 lh_values[gmpe][imtx] = {}
-                values = self.get_likelihood_values_for(gmpe, imt)
+                values = self.get_likelihood_values_for(gmpe, imtx)
                 for res_type, data in values.items():
                     l_h, median_lh = data
                     lh_values[gmpe][imtx][res_type] = l_h
