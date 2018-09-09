@@ -511,15 +511,24 @@ class Residuals(object):
             for imtx in self.imts:
                 if not self.residuals[gmpe][imtx]:
                     continue
-                statistics[gmpe][imtx] = {}
-                for res_type in self.types[gmpe][imtx]:
-                    data = {
-                        "Mean": np.mean(
-                            self.residuals[gmpe][imtx][res_type]),
-                        "Std Dev": np.std(
-                            self.residuals[gmpe][imtx][res_type])}
-                    statistics[gmpe][imtx][res_type] = data
+                statistics[gmpe][imtx] = \
+                    self.get_residual_statistics_for(gmpe, imtx)
         return statistics
+
+    def get_residual_statistics_for(self, gmpe, imt):
+        """
+        Retreives the mean and standard deviation values of the residuals for
+        a given gmpe and imt
+
+        :param gmpe: (string) the gmpe. It must be in the list of this
+            object's gmpes
+        :param imt: (string) the imt. It must be in the imts defined for
+            the given `gmpe`
+        """
+        residuals = self.residuals[gmpe][imt]
+        return {res_type: {"Mean": np.mean(residuals[res_type]),
+                           "Std Dev": np.std(residuals[res_type])}
+                for res_type in self.types[gmpe][imt]}
 
     def pretty_print(self, filename=None, sep=","):
         """
@@ -630,7 +639,7 @@ class Likelihood(Residuals):
     """
     Implements the likelihood function of Scherbaum et al. (2004)
     """
-        
+
     def get_likelihood_values(self):
         """
         Returns the likelihood values for Total, plus inter- and intra-event
@@ -646,13 +655,41 @@ class Likelihood(Residuals):
                           % (imtx, gmpe))
                     continue
                 lh_values[gmpe][imtx] = {}
-                for res_type in self.types[gmpe][imtx]:
-                    zvals = np.fabs(self.residuals[gmpe][imtx][res_type])
-                    l_h = 1.0 - erf(zvals / sqrt(2.))
+                values = self.get_likelihood_values_for(gmpe, imt)
+                for res_type, data in values.items():
+                    l_h, median_lh = data
                     lh_values[gmpe][imtx][res_type] = l_h
                     statistics[gmpe][imtx][res_type]["Median LH"] =\
-                        scoreatpercentile(l_h, 50.0)
+                        median_lh
+
+#                 for res_type in self.types[gmpe][imtx]:
+#                     zvals = np.fabs(self.residuals[gmpe][imtx][res_type])
+#                     l_h = 1.0 - erf(zvals / sqrt(2.))
+#                     lh_values[gmpe][imtx][res_type] = l_h
+#                     statistics[gmpe][imtx][res_type]["Median LH"] =\
+#                         scoreatpercentile(l_h, 50.0)
         return lh_values, statistics
+
+    def get_likelihood_values_for(self, gmpe, imt):
+        """
+        Returns the likelihood values for Total, plus inter- and intra-event
+        residuals according to Equation 9 of Scherbaum et al (2004) for the
+        given gmpe and the given intensity measure type.
+        `gmpe` must be in this object gmpe(s) list and imt must be defined
+        for the given gmpe: this two conditions are not checked for here.
+
+        :return: a dict mapping the residual type(s) (string) to the tuple
+        lh, median_lh where the first is the array of likelihood values and
+        the latter is the median of those values
+        """
+
+        ret = {}
+        for res_type in self.types[gmpe][imt]:
+            zvals = np.fabs(self.residuals[gmpe][imt][res_type])
+            l_h = 1.0 - erf(zvals / sqrt(2.))
+            median_lh = scoreatpercentile(l_h, 50.0)
+            ret[res_type] = l_h, median_lh
+        return ret
 
 
 class LLH(Residuals):
