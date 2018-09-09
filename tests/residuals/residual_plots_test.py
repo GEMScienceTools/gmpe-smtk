@@ -12,7 +12,7 @@ from smtk.parsers.esm_flatfile_parser import ESMFlatfileParser
 import smtk.residuals.gmpe_residuals as res
 from smtk.database_visualiser import DISTANCES
 from smtk.residuals.residual_plots import residuals_density_distribution,\
-    residuals_lh_density_distribution, residuals_vs_depth, residuals_vs_mag,\
+    likelihood_density_distribution, residuals_vs_depth, residuals_vs_mag,\
     residuals_vs_vs30, residuals_vs_dist
 
 
@@ -153,16 +153,16 @@ class ResidualsTestCase(unittest.TestCase):
             for imt in self.imts:
                 for as_json in (True, False):
                     bin_w1, bin_w2 = 0.1, 0.2
-                    data1 = residuals_lh_density_distribution(residuals, gsim,
-                                                              imt,
-                                                              bin_width=bin_w1,
-                                                              as_json=as_json)
+                    data1 = likelihood_density_distribution(residuals, gsim,
+                                                            imt,
+                                                            bin_width=bin_w1,
+                                                            as_json=as_json)
                     self._plot_data_check(data1, as_json, "LH (%s)" % imt,
                                           "Frequency", additional_keys)
-                    data2 = residuals_lh_density_distribution(residuals, gsim,
-                                                              imt,
-                                                              bin_width=bin_w2,
-                                                              as_json=as_json)
+                    data2 = likelihood_density_distribution(residuals, gsim,
+                                                            imt,
+                                                            bin_width=bin_w2,
+                                                            as_json=as_json)
                     self._plot_data_check(data2, as_json, "LH (%s)" % imt,
                                           "Frequency", additional_keys)
 

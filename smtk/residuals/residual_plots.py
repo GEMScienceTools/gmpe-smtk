@@ -21,12 +21,11 @@ import numpy as np
 from scipy.stats import linregress
 
 """
-Module holding functions returning GMPE residual plot data.
-All residual plot functions should return the same kind of object (dicts)
-with mandatory keys 'x', 'y', 'xlabel' , 'ylabel'. See their documentation
-for details.
+Module managing GMPE+IMT residual plot data.
 This module avoids the use of classes and inhertances as simple functions
 accomplish the task without unnecessary overhead.
+All non-private functions should return the same dicts (see docstrings
+for details)
 """
 
 
@@ -88,8 +87,8 @@ def _get_histogram_data(data, bin_width=0.5):
     return vals.astype(float), bins
 
 
-def residuals_lh_density_distribution(residuals, gmpe, imt, bin_width=0.1,
-                                      as_json=False):
+def likelihood_density_distribution(residuals, gmpe, imt, bin_width=0.1,
+                                    as_json=False):
     '''Returns the density distribution of the given gmpe and imt
 
     :param residuals:
@@ -102,8 +101,8 @@ def residuals_lh_density_distribution(residuals, gmpe, imt, bin_width=0.1,
     :return: a dict mapping each residual type (string, e.g. 'Intra event') to
     a dict with (at least) the mandatory keys 'x', 'y', 'xlabel', 'ylabel'
     representing the plot data.
-    Additional keys: 'mean' (float) and 'Std Dev' (float) representing
-    the mean and standard deviation of the data
+    Additional keys: 'median' (float) representing
+    the median of the data
     '''
     plot_data = {}
     data = residuals.get_likelihood_values_for(gmpe, imt)
@@ -347,8 +346,7 @@ def _get_depths(residuals, gmpe, imt, res_type):
     depths = np.array([])
     for i, ctxt in enumerate(residuals.contexts):
         if res_type == "Inter event":
-            nvals = np.ones(
-                len(residuals.unique_indices[gmpe][imt][i]))
+            nvals = np.ones(len(residuals.unique_indices[gmpe][imt][i]))
         else:
             nvals = np.ones(len(ctxt["Distances"].repi))
         # TODO This hack needs to be fixed!!!

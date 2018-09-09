@@ -32,7 +32,7 @@ from smtk.residuals.gmpe_residuals import (Residuals,
                                            SingleStationAnalysis)
 
 from smtk.residuals.residual_plots import residuals_density_distribution, \
-    residuals_lh_density_distribution,\
+    likelihood_density_distribution,\
     residuals_vs_mag, residuals_vs_vs30, \
     residuals_vs_dist, residuals_vs_depth
 
@@ -403,8 +403,8 @@ class LikelihoodPlot(ResidualHistogramPlot):
         assert isinstance(residuals, Likelihood)
 
     def get_plot_data(self):
-        return residuals_lh_density_distribution(self.residuals, self.gmpe,
-                                                 self.imt, self.bin_width)
+        return likelihood_density_distribution(self.residuals, self.gmpe,
+                                               self.imt, self.bin_width)
 
 #     def draw(self, ax, res_data, res_type):
 #         x, y = res_data['x'], res_data['y']
