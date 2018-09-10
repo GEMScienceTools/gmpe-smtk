@@ -1,18 +1,18 @@
 """
-Core test suite for the database and residuals construction
+Test suite for the `residual_plotter` module responsible for plotting the
+plot data defined in `residual_plots`
 """
 import os
 import sys
 import shutil
 import unittest
-from unittest.mock import patch
-import numpy as np
+from unittest.mock import patch, MagicMock
 
 from smtk.parsers.esm_flatfile_parser import ESMFlatfileParser
 import smtk.residuals.gmpe_residuals as res
-from smtk.residuals.residual_plots import residuals_density_distribution
 from smtk.residuals.residual_plotter import ResidualPlot, LikelihoodPlot,\
-    ResidualWithMagnitude, ResidualWithDepth, ResidualWithVs30, ResidualWithDistance
+    ResidualWithMagnitude, ResidualWithDepth, ResidualWithVs30, \
+    ResidualWithDistance
 from smtk.database_visualiser import DISTANCES
 
 
@@ -74,110 +74,132 @@ class ResidualsTestCase(unittest.TestCase):
         cls.gsims = ["AkkarEtAlRjb2014",  "ChiouYoungs2014"]
         cls.imts = ["PGA", "SA(1.0)"]
 
-    def _plot_data_check(self, plot_data, plot_data_is_json,
-                         additional_keys=None):
-        allkeys = ['x', 'y', 'xlabel', 'ylabel'] + \
-            ([] if not additional_keys else list(additional_keys))
-
-        for res_type in plot_data:
-            res_data = plot_data[res_type]
-            # assert we have the specified keys:
-            assert sorted(res_data.keys()) == sorted(allkeys)
-            assert len(res_data['x']) == len(res_data['y'])
-            assert isinstance(res_data['xlabel'], str)
-            assert isinstance(res_data['ylabel'], str)
-            array_type = list if plot_data_is_json else np.ndarray
-            assert isinstance(res_data['x'], array_type)
-            assert isinstance(res_data['y'], array_type)
-
-    def _hist_data_check(self, residuals, gsim, imt, plot_data):
-        for res_type, res_data in plot_data.items():
-            assert len(residuals.residuals[gsim][imt][res_type]) > \
-                len(res_data['x'])
-
-    def _scatter_data_check(self, residuals, gsim, imt, plot_data):
-        for res_type, res_data in plot_data.items():
-            assert len(residuals.residuals[gsim][imt][res_type]) == \
-                len(res_data['x'])
-
+    @patch('smtk.residuals.residual_plotter.plt.subplot')
     @patch('smtk.residuals.residual_plotter.plt')
-    def tests_residual_plotter(self, mock_plt):
+    def tests_residual_plotter(self, mock_pyplot, mock_pyplot_subplot):
         """
         Tests basic execution of residual plot.
         Simply tests pyplot show is called by mocking its `show` method
         """
+        # setup a mock which will handle all calls to matplotlib Axes calls
+        # (e.g., bar, plot or semilogx) so we can test what has been called:
+        mocked_axes_obj = MagicMock()
+        mock_pyplot_subplot.side_effect = lambda *a, **v: mocked_axes_obj
+
         residuals = res.Residuals(self.gsims, self.imts)
         residuals.get_residuals(self.database, component="Geometric")
 
-        plt_show_call_count = 0
         for gsim in self.gsims:
             for imt in self.imts:
                 ResidualPlot(residuals, gsim, imt, bin_width=0.1)
                 # assert we called pyplot show:
-                assert mock_plt.show.call_count == plt_show_call_count+1
-                ResidualPlot(residuals, gsim, imt, bin_width=0.1, show=False)
-                # assert we did NOT call pyplot show:
-                assert mock_plt.show.call_count == plt_show_call_count+1
-                # increment counter:
-                plt_show_call_count += 1
+                self.assertTrue(mock_pyplot.show.call_count == 1)
+                ResidualPlot(residuals, gsim, imt, bin_width=0.1,
+                             show=False)
+                # assert we did NOT call pyplot show (call count still 1):
+                self.assertTrue(mock_pyplot.show.call_count == 1)
+                # reset mock:
+                mock_pyplot.show.reset_mock()
 
+                # assert we called the right matplotlib plotting functions:
+                self.assertTrue(mocked_axes_obj.bar.called)
+                self.assertTrue(mocked_axes_obj.plot.called)
+                self.assertFalse(mocked_axes_obj.semilogx.called)
+                # reset mock:
+                mocked_axes_obj.reset_mock()
+
+    @patch('smtk.residuals.residual_plotter.plt.subplot')
     @patch('smtk.residuals.residual_plotter.plt')
-    def tests_likelihood_plotter(self, mock_plt):
+    def tests_likelihood_plotter(self, mock_pyplot, mock_pyplot_subplot):
         """
         Tests basic execution of Likelihood plotD.
         Simply tests pyplot show is called by mocking its `show` method
         """
+        # setup a mock which will handle all calls to matplotlib Axes calls
+        # (e.g., bar, plot or semilogx) so we can test what has been called:
+        mocked_axes_obj = MagicMock()
+        mock_pyplot_subplot.side_effect = lambda *a, **v: mocked_axes_obj
+
         residuals = res.Likelihood(self.gsims, self.imts)
         residuals.get_residuals(self.database, component="Geometric")
 
-        plt_show_call_count = 0
         for gsim in self.gsims:
             for imt in self.imts:
                 LikelihoodPlot(residuals, gsim, imt, bin_width=0.1)
                 # assert we called pyplot show:
-                assert mock_plt.show.call_count == plt_show_call_count+1
-                LikelihoodPlot(residuals, gsim, imt, bin_width=0.1, show=False)
-                # assert we did NOT call pyplot show:
-                assert mock_plt.show.call_count == plt_show_call_count+1
-                # increment counter:
-                plt_show_call_count += 1
+                self.assertTrue(mock_pyplot.show.call_count == 1)
+                LikelihoodPlot(residuals, gsim, imt, bin_width=0.1,
+                               show=False)
+                # assert we did NOT call pyplot show (call count still 1):
+                self.assertTrue(mock_pyplot.show.call_count == 1)
+                # reset mock:
+                mock_pyplot.show.reset_mock()
 
+                # assert we called the right matplotlib plotting functions:
+                self.assertTrue(mocked_axes_obj.bar.called)
+                self.assertFalse(mocked_axes_obj.plot.called)
+                self.assertFalse(mocked_axes_obj.semilogx.called)
+                # reset mock:
+                mocked_axes_obj.reset_mock()
+
+    @patch('smtk.residuals.residual_plotter.plt.subplot')
     @patch('smtk.residuals.residual_plotter.plt')
-    def tests_with_mag_vs30_depth_plotter(self, mock_plt):
+    def tests_with_mag_vs30_depth_plotter(self, mock_pyplot,
+                                          mock_pyplot_subplot):
         """
         Tests basic execution of residual with (magnitude, vs30, depth) plots.
         Simply tests pyplot show is called by mocking its `show` method
         """
+        # setup a mock which will handle all calls to matplotlib Axes calls
+        # (e.g., bar, plot or semilogx) so we can test what has been called:
+        mocked_axes_obj = MagicMock()
+        mock_pyplot_subplot.side_effect = lambda *a, **v: mocked_axes_obj
+
         residuals = res.Likelihood(self.gsims, self.imts)
         residuals.get_residuals(self.database, component="Geometric")
 
-        plt_show_call_count = 0
         for gsim in self.gsims:
             for imt in self.imts:
                 for plotClass in [ResidualWithMagnitude,
                                   ResidualWithDepth,
                                   ResidualWithVs30]:
-                    # FIXME: we should mock Axes plot and semilogx
-                    # to test the input parameter 'plot_type'
-                    plotClass(residuals, gsim, imt, show=True)
+                    plotClass(residuals, gsim, imt, bin_width=0.1)
                     # assert we called pyplot show:
-                    assert mock_plt.show.call_count == plt_show_call_count+1
-                    plotClass(residuals, gsim, imt, show=False)
-                    # assert we did NOT call pyplot show:
-                    assert mock_plt.show.call_count == plt_show_call_count+1
-                    # increment counter:
-                    plt_show_call_count += 1
+                    self.assertTrue(mock_pyplot.show.call_count == 1)
+                    plotClass(residuals, gsim, imt, bin_width=0.1, show=False)
+                    # assert we did NOT call pyplot show (call count still 1):
+                    self.assertTrue(mock_pyplot.show.call_count == 1)
+                    # reset mock:
+                    mock_pyplot.show.reset_mock()
 
+                    # assert we called the right matplotlib plotting functions:
+                    self.assertFalse(mocked_axes_obj.bar.called)
+                    self.assertTrue(mocked_axes_obj.plot.called)
+                    self.assertFalse(mocked_axes_obj.semilogx.called)
+
+                    # check plot type:
+                    plotClass(residuals, gsim, imt, plot_type='log',
+                              bin_width=0.1, show=False)
+                    self.assertTrue(mocked_axes_obj.semilogx.called)
+
+                    # reset mock:
+                    mocked_axes_obj.reset_mock()
+
+    @patch('smtk.residuals.residual_plotter.plt.subplot')
     @patch('smtk.residuals.residual_plotter.plt')
-    def tests_with_distance(self, mock_plt):
+    def tests_with_distance(self, mock_pyplot, mock_pyplot_subplot):
         """
         Tests basic execution of residual with distance plots.
         Simply tests pyplot show is called by mocking its `show` method
         """
+        # setup a mock which will handle all calls to matplotlib Axes calls
+        # (e.g., bar, plot or semilogx) so we can test what has been called:
+        mocked_axes_obj = MagicMock()
+        mock_pyplot_subplot.side_effect = lambda *a, **v: mocked_axes_obj
+
         residuals = res.Likelihood(self.gsims, self.imts)
         residuals.get_residuals(self.database, component="Geometric")
 
-        plt_show_call_count = 0
         for gsim in self.gsims:
             for imt in self.imts:
                 for dist in DISTANCES.keys():
@@ -187,59 +209,33 @@ class ResidualsTestCase(unittest.TestCase):
                         # with scientific expertise that this is the case:
                         with self.assertRaises(AttributeError):
                             ResidualWithDistance(residuals, gsim, imt,
-                                         distance_type=dist, show=True)
+                                                 distance_type=dist,
+                                                 show=True)
                         continue
 
-                    ResidualWithDistance(residuals, gsim, imt,
-                                         distance_type=dist, show=True)
+                    ResidualWithDistance(residuals, gsim, imt, bin_width=0.1)
                     # assert we called pyplot show:
-                    assert mock_plt.show.call_count == plt_show_call_count+1
+                    self.assertTrue(mock_pyplot.show.call_count == 1)
+                    ResidualWithDistance(residuals, gsim, imt, bin_width=0.1,
+                                         show=False)
+                    # assert we did NOT call pyplot show (call count still 1):
+                    self.assertTrue(mock_pyplot.show.call_count == 1)
+                    # reset mock:
+                    mock_pyplot.show.reset_mock()
+
+                    # assert we called the right matplotlib plotting functions:
+                    self.assertFalse(mocked_axes_obj.bar.called)
+                    self.assertFalse(mocked_axes_obj.plot.called)
+                    self.assertTrue(mocked_axes_obj.semilogx.called)
+
+                    # check plot type:
                     ResidualWithDistance(residuals, gsim, imt,
-                                         distance_type=dist, show=False)
-                    # assert we did NOT call pyplot show:
-                    assert mock_plt.show.call_count == plt_show_call_count+1
-                    # increment counter:
-                    plt_show_call_count += 1
+                                         plot_type='', bin_width=0.1,
+                                         show=False)
+                    self.assertTrue(mocked_axes_obj.plot.called)
 
-
-#         self._check_residual_dictionary_correctness(residuals.residuals)
-#         residuals.get_residual_statistics()
-
-#     def tests_likelihood_execution(self):
-#         """
-#         Tests basic execution of residuals - not correctness of values
-#         """
-#         lkh = res.Likelihood(self.gsims, self.imts)
-#         lkh.get_residuals(self.database, component="Geometric")
-#         self._check_residual_dictionary_correctness(lkh.residuals)
-#         lkh.get_likelihood_values()
-# 
-#     def tests_llh_execution(self):
-#         """
-#         Tests execution of LLH - not correctness of values
-#         """
-#         llh = res.LLH(self.gsims, self.imts)
-#         llh.get_residuals(self.database, component="Geometric")
-#         self._check_residual_dictionary_correctness(llh.residuals)
-#         llh.get_loglikelihood_values(self.imts)
-# 
-#     def tests_multivariate_llh_execution(self):
-#         """
-#         Tests execution of multivariate llh - not correctness of values
-#         """
-#         multi_llh = res.MultivariateLLH(self.gsims, self.imts)
-#         multi_llh.get_residuals(self.database, component="Geometric")
-#         self._check_residual_dictionary_correctness(multi_llh.residuals)
-#         multi_llh.get_likelihood_values()
-# 
-#     def tests_edr_execution(self):
-#         """
-#         Tests execution of EDR - not correctness of values
-#         """
-#         edr = res.EDR(self.gsims, self.imts)
-#         edr.get_residuals(self.database, component="Geometric")
-#         self._check_residual_dictionary_correctness(edr.residuals)
-#         edr.get_edr_values()
+                    # reset mock:
+                    mocked_axes_obj.reset_mock()
 
     @classmethod
     def tearDownClass(cls):
@@ -247,6 +243,7 @@ class ResidualsTestCase(unittest.TestCase):
         Deletes the database
         """
         shutil.rmtree(cls.out_location)
+
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

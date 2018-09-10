@@ -16,10 +16,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
-
-import numpy as np
-from scipy.stats import linregress
-
 """
 Module managing GMPE+IMT residual plot data.
 This module avoids the use of classes and inhertances as simple functions
@@ -27,6 +23,9 @@ accomplish the task without unnecessary overhead.
 All non-private functions should return the same dicts (see docstrings
 for details)
 """
+
+import numpy as np
+from scipy.stats import linregress
 
 
 def _tojson(*numpy_objs):
@@ -87,9 +86,8 @@ def _get_histogram_data(data, bin_width=0.5):
     return vals.astype(float), bins
 
 
-def likelihood_density_distribution(residuals, gmpe, imt, bin_width=0.1,
-                                    as_json=False):
-    '''Returns the density distribution of the given gmpe and imt
+def likelihood(residuals, gmpe, imt, bin_width=0.1, as_json=False):
+    '''Returns the likelihood of the given gmpe and imt
 
     :param residuals:
             Residuals as instance of :class: smtk.gmpe_residuals.Likelihood
@@ -133,7 +131,7 @@ def _get_lh_histogram_data(lh_values, bin_width=0.1):
     return vals.astype(float), bins
 
 
-def residuals_vs_mag(residuals, gmpe, imt, as_json=False):
+def residuals_with_magnitude(residuals, gmpe, imt, as_json=False):
     '''Returns the residuals of the given gmpe and imt vs. magnitude
 
     :param residuals:
@@ -190,7 +188,7 @@ def _get_magnitudes(residuals, gmpe, imt, res_type):
     return magnitudes
 
 
-def residuals_vs_vs30(residuals, gmpe, imt, as_json=False):
+def residuals_with_vs30(residuals, gmpe, imt, as_json=False):
     '''Returns the residuals of the given gmpe and imt vs. vs30
 
     :param residuals:
@@ -242,8 +240,8 @@ def _get_vs30(residuals, gmpe, imt, res_type):
     return vs30
 
 
-def residuals_vs_dist(residuals, gmpe, imt, distance_type="rjb",
-                      as_json=False):
+def residuals_with_distance(residuals, gmpe, imt, distance_type="rjb",
+                            as_json=False):
     '''Returns the residuals of the given gmpe and imt vs. distance
 
     :param residuals:
@@ -300,7 +298,7 @@ def _get_distances(residuals, gmpe, imt, res_type, distance_type):
     return distances
 
 
-def residuals_vs_depth(residuals, gmpe, imt, as_json=False):
+def residuals_with_depth(residuals, gmpe, imt, as_json=False):
     '''Returns the residuals of the given gmpe and imt vs. depth
 
     :param residuals:

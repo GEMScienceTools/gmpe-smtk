@@ -1,19 +1,19 @@
 """
-Core test suite for the database and residuals construction
+Test suite for the `residual_plots` module responsible for calculating the
+data used for plotting (see `residual_plotter`)
 """
 import os
 import sys
 import shutil
 import unittest
-from unittest.mock import patch
 import numpy as np
 
 from smtk.parsers.esm_flatfile_parser import ESMFlatfileParser
 import smtk.residuals.gmpe_residuals as res
 from smtk.database_visualiser import DISTANCES
 from smtk.residuals.residual_plots import residuals_density_distribution,\
-    likelihood_density_distribution, residuals_vs_depth, residuals_vs_mag,\
-    residuals_vs_vs30, residuals_vs_dist
+    likelihood, residuals_with_depth, residuals_with_magnitude,\
+    residuals_with_vs30, residuals_with_distance
 
 
 if sys.version_info[0] >= 3:
@@ -153,16 +153,12 @@ class ResidualsTestCase(unittest.TestCase):
             for imt in self.imts:
                 for as_json in (True, False):
                     bin_w1, bin_w2 = 0.1, 0.2
-                    data1 = likelihood_density_distribution(residuals, gsim,
-                                                            imt,
-                                                            bin_width=bin_w1,
-                                                            as_json=as_json)
+                    data1 = likelihood(residuals, gsim, imt,
+                                       bin_width=bin_w1, as_json=as_json)
                     self._plot_data_check(data1, as_json, "LH (%s)" % imt,
                                           "Frequency", additional_keys)
-                    data2 = likelihood_density_distribution(residuals, gsim,
-                                                            imt,
-                                                            bin_width=bin_w2,
-                                                            as_json=as_json)
+                    data2 = likelihood(residuals, gsim, imt,
+                                       bin_width=bin_w2, as_json=as_json)
                     self._plot_data_check(data2, as_json, "LH (%s)" % imt,
                                           "Frequency", additional_keys)
 
@@ -188,9 +184,9 @@ class ResidualsTestCase(unittest.TestCase):
             for imt in self.imts:
                 for as_json in (True, False):
                     for func, expected_xlabel in \
-                        [(residuals_vs_depth, "Hypocentral Depth (km)"),
-                         (residuals_vs_mag, "Magnitude"),
-                         (residuals_vs_vs30, "Vs30 (m/s)")]:
+                        [(residuals_with_depth, "Hypocentral Depth (km)"),
+                         (residuals_with_magnitude, "Magnitude"),
+                         (residuals_with_vs30, "Vs30 (m/s)")]:
 
                         data1 = func(residuals, gsim, imt, as_json=as_json)
                         self._plot_data_check(data1, as_json,
@@ -221,12 +217,12 @@ class ResidualsTestCase(unittest.TestCase):
                             # so we simply do this for the moment (however,
                             # a scientific expertise should be required):
                             with self.assertRaises(AttributeError):
-                                residuals_vs_dist(residuals, gsim, imt,
-                                                  dist, as_json=as_json)
+                                residuals_with_distance(residuals, gsim, imt,
+                                                        dist, as_json=as_json)
                             continue
 
-                        data1 = residuals_vs_dist(residuals, gsim, imt,
-                                                  dist, as_json=as_json)
+                        data1 = residuals_with_distance(residuals, gsim, imt,
+                                                        dist, as_json=as_json)
                         self._plot_data_check(data1, as_json,
                                               "%s Distance (km)" % dist,
                                               "Z (%s)" % imt,

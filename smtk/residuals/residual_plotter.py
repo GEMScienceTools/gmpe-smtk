@@ -32,9 +32,9 @@ from smtk.residuals.gmpe_residuals import (Residuals,
                                            SingleStationAnalysis)
 
 from smtk.residuals.residual_plots import residuals_density_distribution, \
-    likelihood_density_distribution,\
-    residuals_vs_mag, residuals_vs_vs30, \
-    residuals_vs_dist, residuals_vs_depth
+    likelihood,\
+    residuals_with_magnitude, residuals_with_vs30, \
+    residuals_with_distance, residuals_with_depth
 
 
 class BaseResidualPlot(object):
@@ -61,10 +61,6 @@ class BaseResidualPlot(object):
         :param kwargs: optional keyword arguments. Supported are:
             'figure_size' (default: (7,5)), 'show' (default: True)
         """
-#         kwargs.setdefault('plot_type', "log")
-#         kwargs.setdefault('distance_type', "rjb")
-#         kwargs.setdefault("figure_size", (7, 5))
-#         kwargs.setdefault("show", True)
         self._assertion_check(residuals)
         self.residuals = residuals
         if gmpe not in residuals.gmpe_list:
@@ -79,8 +75,6 @@ class BaseResidualPlot(object):
         self.filetype = filetype
         self.dpi = dpi
         self.num_plots = len(residuals.types[gmpe][imt])
-#         self.distance_type = kwargs["distance_type"]
-#         self.plot_type = kwargs["plot_type"]
         self.figure_size = kwargs.get("figure_size",  (7, 5))
         self.show = kwargs.get("show", True)
         self.create_plot()
@@ -276,77 +270,10 @@ class ResidualPlot(ResidualHistogramPlot):
     """
     Class to create a simple histrogram of strong ground motion residuals
     """
-#     def __init__(self, residuals, gmpe, imt, filename=None, filetype="png",
-#                  dpi=300, **kwargs):
-#         """
-#         Initializes a ResidualPlot. See `BaseResidualPlot.__init__` for
-#         details on the arguments.
-#         This class supports an additional keyword argument 'bin_width'
-#         (default: 0.5)
-#         """
-#         self.bin_width = kwargs.pop('bin_width', 0.5)
-#         super(ResidualPlot, self).__init__(residuals, gmpe, imt,
-#                                            filename=filename,
-#                                            filetype=filetype,
-#                                            dpi=dpi, **kwargs)
-
-#     def _assertion_check(self, residuals):
-#         """
-#         Checks that residuals is an instance of the residuals class
-#         """
-#         assert isinstance(residuals, Residuals)
-
-#     def create_plot(self, bin_width=0.5):
-#         """
-#         Creates a histogram plot
-#         """
-#         if not self.residuals.residuals[self.gmpe][self.imt]:
-#             print("No residuals found for %s (%s)" % (self.gmpe, self.imt))
-#             return
-#         data = self.get_plot_data(bin_width)
-#         # statistics = self.residuals.get_residual_statistics()
-#         fig = plt.figure(figsize=self.figure_size)
-#         fig.set_tight_layout(True)
-#         if self.num_plots > 1:
-#             nrow = 2
-#             ncol = 2
-#         else:
-#             nrow = 1
-#             ncol = 1
-#         tloc = 1
-#         for res_type in data.keys():
-#             self._residual_plot(plt.subplot(nrow, ncol, tloc), data, res_type,
-#                                 bin_width)
-#             tloc += 1
-#         _save_image(self.filename, self.filetype, self.dpi)
-#         if self.show:
-#             plt.show()
 
     def get_plot_data(self):
         return residuals_density_distribution(self.residuals, self.gmpe,
                                               self.imt, self.bin_width)
-
-#     def get_subplots_rowcols(self):
-#         if self.num_plots > 1:
-#             nrow = 2
-#             ncol = 2
-#         else:
-#             nrow = 1
-#             ncol = 1
-#         return nrow, ncol
-
-#     def _residual_plot(self, ax, res_data, res_type, bin_width=0.5):
-#         """
-#         Plots the density distribution on the subplot axis
-#         """
-#         self.draw(ax, res_data, res_type, bin_width)
-#         ax.set_xlim(*self.get_axis_xlim(res_data, res_type))
-#         ax.set_ylim(*self.get_axis_ylim(res_data, res_type))
-#         ax.set_xlabel(res_data['xlabel'], fontsize=12)
-#         ax.set_ylabel(res_data['ylabel'], fontsize=12)
-#         title_string = self.get_axis_title(res_data, res_type)
-#         if title_string:
-#             ax.set_title(title_string, fontsize=12)
 
     def draw(self, ax, res_data, res_type):
         # draw histogram:
@@ -360,12 +287,6 @@ class ResidualPlot(ResidualHistogramPlot):
                 color="LightSlateGrey", linewidth=2.0)
         ax.plot(xdata, norm.pdf(xdata, 0.0, 1.0), '-',
                 color='k', linewidth=2.0)
-
-#     def get_axis_xlim(self, res_data, res_type):
-#         return None, None
-# 
-#     def get_axis_ylim(self, res_data, res_type):
-#         return None, None
 
     def get_axis_title(self, res_data, res_type):
         mean, stddev = res_data["mean"], res_data["stddev"]
@@ -403,13 +324,7 @@ class LikelihoodPlot(ResidualHistogramPlot):
         assert isinstance(residuals, Likelihood)
 
     def get_plot_data(self):
-        return likelihood_density_distribution(self.residuals, self.gmpe,
-                                               self.imt, self.bin_width)
-
-#     def draw(self, ax, res_data, res_type):
-#         x, y = res_data['x'], res_data['y']
-#         ax.bar(x, y, width=0.95 * self.bin_width,
-#                **self.hist_styling_kwargs)
+        return likelihood(self.residuals, self.gmpe, self.imt, self.bin_width)
 
     def get_axis_xlim(self, res_data, res_type):
         return 0., 1.0
@@ -419,60 +334,6 @@ class LikelihoodPlot(ResidualHistogramPlot):
         return "%s - %s\n Median LH = %7.3f" % (self.gmpe,
                                                 res_type,
                                                 median_lh)
-
-#     def create_plot(self, bin_width=0.1):
-#         """
-#         Creates a histogram plot
-#         """
-#         #data = self.residuals.residuals[self.gmpe][self.imt]
-#         lh_vals, statistics = self.residuals.get_likelihood_values()
-#         lh_vals = lh_vals[self.gmpe][self.imt]
-#         statistics = statistics[self.gmpe][self.imt]
-#         fig = plt.figure(figsize=self.figure_size)
-#         fig.set_tight_layout(True)
-#         if self.num_plots > 1:
-#             nrow = 2
-#             ncol = 2
-#         else:
-#             nrow = 1
-#             ncol = 1
-#         tloc = 1
-#         for res_type in lh_vals.keys():
-#             self._density_plot(
-#                 plt.subplot(nrow, ncol, tloc),
-#                 lh_vals[res_type],
-#                 res_type,
-#                 statistics[res_type],
-#                 bin_width)
-#             tloc += 1
-#         _save_image(self.filename, self.filetype, self.dpi)
-#         if self.show:
-#             plt.show()
-# 
-#     def _density_plot(self, ax, lh_values, res_type, statistics,
-#                       bin_width=0.1):
-#         """
-#         """
-#         vals, bins = self.get_histogram_data(lh_values, bin_width)
-#         ax.bar(bins[:-1], vals, width=0.95 * bin_width, color="LightSteelBlue",
-#                edgecolor="k")
-#         # Get equivalent normal distribution
-#         median_lh = statistics["Median LH"]
-#         ax.set_xlabel("LH (%s)" % self.imt, fontsize=12)
-#         ax.set_ylabel("Frequency", fontsize=12)
-#         ax.set_xlim(0., 1.0)
-#         title_string = "%s - %s\n Median LH = %7.3f" % (self.gmpe,
-#                                                         res_type,
-#                                                         median_lh)
-#         ax.set_title(title_string, fontsize=12)
-# 
-#     def get_histogram_data(self, lh_values, bin_width=0.1):
-#         """
-# 
-#         """
-#         bins = np.arange(0.0, 1.0 + bin_width, bin_width)
-#         vals = np.histogram(lh_values, bins, density=True)[0]
-#         return vals.astype(float), bins
 
 
 class ResidualScatterPlot(BaseResidualPlot):
@@ -498,15 +359,6 @@ class ResidualScatterPlot(BaseResidualPlot):
                                                   filename=filename,
                                                   filetype=filetype,
                                                   dpi=dpi, **kwargs)
-#     def create_linreg(self, res_data, res_type):
-#         x, slope, intercept = \
-#             res_data['x'], res_data['slope'], res_data['intercept']
-#         model_x = np.arange(np.min(x), np.max(x) + 1.0, 1.0)
-#         model_y = intercept + slope * model_x
-#         return model_x, model_y
-
-#     def get_plot_data(self):
-#         raise NotImplementedError()
 
     def get_subplots_rowcols(self):
         if self.num_plots > 1:
@@ -533,9 +385,6 @@ class ResidualScatterPlot(BaseResidualPlot):
             (self.gmpe, res_type, slope, intercept, pval)
 
     def draw(self, ax, res_data, res_type):
-        """
-
-        """
         x, y = res_data['x'], res_data['y']
         slope, intercept = res_data['slope'], res_data['intercept']
         model_x = np.arange(np.min(x), np.max(x) + 1.0, 1.0)
@@ -549,60 +398,6 @@ class ResidualScatterPlot(BaseResidualPlot):
         else:
             ax.plot(x, y, 'o', **pts_styling_kwargs)
             ax.plot(model_x, model_y, '-', **linreg_styling_kwargs)
-
-#     def create_plot(self):
-#         """
-#             Creates the plot. `get_plot_data` must have been implemented
-#         """
-#         if not self.residuals.residuals[self.gmpe][self.imt]:
-#             print("No residuals found for %s (%s)" % (self.gmpe, self.imt))
-#             return
-# 
-#         data = self.get_plot_data()
-# 
-#         fig = plt.figure(figsize=self.figure_size)
-#         fig.set_tight_layout(True)
-#         if self.num_plots > 1:
-#             nrow = 3
-#             ncol = 1
-#         else:
-#             nrow = 1
-#             ncol = 1
-#         tloc = 1
-#         for res_type in data.keys():
-#             self._residual_plot(
-#                 plt.subplot(nrow, ncol, tloc),
-#                 data[res_type],
-#                 res_type)
-#             tloc += 1
-#         _save_image(self.filename, self.filetype, self.dpi)
-#         if self.show:
-#             plt.show()
-
-#     def _residual_plot(self, ax, res_data, res_type):
-# #        model_x, model_y = self.create_linreg(res_data, res_type)
-# #        x, y = res_data['x'], res_data['y']
-#         self.draw(ax, res_data, res_type)
-# #         ax.plot(x, y, **self.axis_plot_kwargs)
-# #         ax.plot(model_x, model_y, 'r-', linewidth=2.0)
-#         ax.set_xlim(*self.get_axis_xlim(res_data, res_type))
-#         ax.set_ylim(*self.get_axis_ylim(res_data, res_type))
-#         ax.grid()
-#         ax.set_xlabel(res_data['xlabel'], fontsize=12)
-#         ax.set_ylabel(res_data['ylabel'], fontsize=12)
-#         title_string = self.get_axis_title(res_data, res_type)
-#         if title_string:
-#             ax.set_title(title_string, fontsize=12)
-
-#     def draw(self, ax, res_data, res_type):
-#         x, y = res_data['x'], res_data['y']
-#         ax.plot(x, y, 'o',
-#                 **self.pts_styling_kwargs)
-#         slope, intercept = res_data['slope'], res_data['intercept']
-#         model_x = np.arange(np.min(x), np.max(x) + 1.0, 1.0)
-#         model_y = intercept + slope * model_x
-#         ax.plot(model_x, model_y, '-',
-#                 **self.linreg_styling_kwargs)
 
 
 class ResidualWithDistance(ResidualScatterPlot):
@@ -632,8 +427,8 @@ class ResidualWithDistance(ResidualScatterPlot):
                                                    **kwargs)
 
     def get_plot_data(self):
-        return residuals_vs_dist(self.residuals, self.gmpe, self.imt,
-                                 self.distance_type)
+        return residuals_with_distance(self.residuals, self.gmpe, self.imt,
+                                       self.distance_type)
 
     def get_axis_xlim(self, res_data, res_type):
         x = res_data['x']
@@ -645,111 +440,6 @@ class ResidualWithDistance(ResidualScatterPlot):
             else:
                 return 0, np.max(x)
 
-#     def draw(self, ax, res_data, res_type):
-#         """
-# 
-#         """
-#         x, y = res_data['x'], res_data['y']
-#         slope, intercept = res_data['slope'], res_data['intercept']
-#         model_x = np.arange(np.min(x), np.max(x) + 1.0, 1.0)
-#         model_y = intercept + slope * model_x
-#         if self.plot_type == "log":
-#             ax.semilogx(x, y, 'o', **self.pts_styling_kwargs)
-#             ax.semilogx(model_x, model_y, '-', **self.linreg_styling_kwargs)
-#         else:
-#             ax.plot(x, y, 'o', **self.pts_styling_kwargs)
-#             ax.plot(model_x, model_y, '-', **self.linreg_styling_kwargs)
-
-#     def create_plot(self):
-#         """
-# 
-#         """
-#         data = self.residuals.residuals[self.gmpe][self.imt]
-#         if not data:
-#             print("No residuals found for %s (%s)" % (self.gmpe, self.imt))
-#             return
-# 
-#         fig = plt.figure(figsize=self.figure_size)
-#         fig.set_tight_layout(True)
-#         if self.num_plots > 1:
-#             nrow = 3
-#             ncol = 1
-#         else:
-#             nrow = 1
-#             ncol = 1
-#         tloc = 1
-#         for res_type in data.keys():
-#             distances = self._get_distances(self.gmpe, self.imt, res_type)
-#             self._residual_plot(
-#                 plt.subplot(nrow, ncol, tloc),
-#                 distances,
-#                 data,
-#                 res_type)
-#             tloc += 1
-#         _save_image(self.filename, self.filetype, self.dpi)
-#         if self.show:
-#             plt.show()
-# 
-# 
-#     def _residual_plot(self, ax, distances, data, res_type):
-#         """
-# 
-#         """
-#         slope, intercept, _, pval, _ = linregress(distances, data[res_type])
-#         print("Distance (%s): a = %.5f  b = %.5f  p = %.5f" % (res_type,
-#             intercept, slope, pval))
-#         model_x = np.arange(np.min(distances),
-#                             np.max(distances) + 1.0,
-#                             1.0)
-#         model_y = intercept + slope * model_x
-#         if self.plot_type == "log":
-#             ax.semilogx(distances,
-#                         data[res_type],
-#                         'o',
-#                         markeredgecolor='Gray',
-#                         markerfacecolor='LightSteelBlue')
-#             ax.semilogx(model_x, model_y, 'r-', linewidth=2.0)
-#             ax.set_xlim(0.1, 10.0 ** (ceil(np.log10(np.max(distances)))))
-#         else:
-#             ax.plot(distances,
-#                     data[res_type],
-#                     'o',
-#                     markeredgecolor='Gray',
-#                     markerfacecolor='LightSteelBlue')
-#             ax.plot(model_x, model_y, 'r-', linewidth=2.0)
-#             if self.distance_type == "rcdpp":
-#                 ax.set_xlim(np.min(distances), np.max(distances))
-#             else:
-#                 ax.set_xlim(0, np.max(distances))
-#         max_lim = ceil(np.max(np.fabs(data[res_type])))
-#         ax.set_ylim(-max_lim, max_lim)
-#         ax.grid()
-#         ax.set_xlabel("%s Distance (km)" % self.distance_type, fontsize=12)
-#         ax.set_ylabel("Z (%s)" % self.imt, fontsize=12)
-#         #title_string = "%s - %s (p = %.5e)" %(self.gmpe, res_type, pval)
-#         title_string = "%s - %s\n Slope = %.4e, Intercept = %7.3f"\
-#                        " p = %.6e " % (self.gmpe, res_type, slope, intercept,
-#                                        pval)
-#         ax.set_title(title_string, fontsize=12)
-
-#     def _get_distances(self, gmpe, imt, res_type):
-#         """
-# 
-#         """
-#         distances = np.array([])
-#         for i, ctxt in enumerate(self.residuals.contexts):
-#             # Get the distances
-#             if res_type == "Inter event":
-#                 ctxt_dist = getattr(ctxt["Distances"], self.distance_type)[
-#                     self.residuals.unique_indices[gmpe][imt][i]]
-#                 distances = np.hstack([distances, ctxt_dist])
-#             else:
-#                 distances = np.hstack([
-#                     distances,
-#                     getattr(ctxt["Distances"], self.distance_type)
-#                     ])
-#         return distances
-
 
 class ResidualWithMagnitude(ResidualScatterPlot):
     """
@@ -758,87 +448,7 @@ class ResidualWithMagnitude(ResidualScatterPlot):
     """
 
     def get_plot_data(self):
-        return residuals_vs_mag(self.residuals, self.gmpe, self.imt)
-
-#     def create_plot(self):
-#         """
-#         Creates the plot
-#         """
-#         data = self.residuals.residuals[self.gmpe][self.imt]
-#         if not data:
-#             print("No residuals found for %s (%s)" % (self.gmpe, self.imt))
-#             return
-# 
-#         fig = plt.figure(figsize=self.figure_size)
-#         fig.set_tight_layout(True)
-#         if self.num_plots > 1:
-#             nrow = 3
-#             ncol = 1
-#         else:
-#             nrow = 1
-#             ncol = 1
-#         tloc = 1
-#         for res_type in data.keys():
-#             magnitudes = self._get_magnitudes(self.gmpe, self.imt, res_type)
-#             self._residual_plot(
-#                 plt.subplot(nrow, ncol, tloc),
-#                 magnitudes,
-#                 data,
-#                 res_type)
-#             tloc += 1
-#         _save_image(self.filename, self.filetype, self.dpi)
-#         if self.show:
-#             plt.show()
-# 
-# 
-#     def _residual_plot(self, ax, magnitudes, data, res_type):
-#         """
-#         Plots the residuals with magnitude
-#         """
-#         slope, intercept, _, pval, _ = linregress(magnitudes, data[res_type])
-#         print("Magnitude (%s): a = %.5f  b = %.5f  p = %.5f" % (res_type,
-#             intercept, slope, pval))
-#         model_x = np.arange(np.min(magnitudes),
-#                             np.max(magnitudes) + 1.0,
-#                             1.0)
-#         model_y = intercept + slope * model_x
-#         ax.plot(magnitudes,
-#                 data[res_type],
-#                 'o',
-#                 markeredgecolor='Gray',
-#                 markerfacecolor='LightSteelBlue')
-#         ax.plot(model_x, model_y, 'r-', linewidth=2.0)
-#         ax.set_xlim(floor(np.min(magnitudes)), ceil(np.max(magnitudes)))
-#         max_lim = ceil(np.max(np.fabs(data[res_type])))
-#         ax.set_ylim(-max_lim, max_lim)
-#         ax.grid()
-#         ax.set_xlabel("Magnitude", fontsize=12)
-#         ax.set_ylabel("Z (%s)" % self.imt, fontsize=12)
-#         title_string = "%s - %s\n Slope = %.4e, Intercept = %7.3f"\
-#                        " p = %.6e " % (self.gmpe, res_type, slope, intercept,
-#                                        pval)
-#         ax.set_title(title_string, fontsize=12)
-
-#     def _get_magnitudes(self, gmpe, imt, res_type):
-#         """
-#         Returns an array of magnitudes equal in length to the number of
-#         residuals
-#         """
-#         magnitudes = np.array([])
-#         for i, ctxt in enumerate(self.residuals.contexts):
-#             if res_type == "Inter event":
-# 
-#                 nval = np.ones(
-#                     len(self.residuals.unique_indices[gmpe][imt][i])
-#                     )
-#             else:
-#                 nval = np.ones(len(ctxt["Distances"].repi))
-# 
-#             magnitudes = np.hstack([magnitudes, ctxt["Rupture"].mag * nval])
-#                 #magnitudes,
-#                 #ctxt["Rupture"].mag * np.ones(len(ctxt["Distances"].repi))])
-#         return magnitudes
-
+        return residuals_with_magnitude(self.residuals, self.gmpe, self.imt)
 
 
 class ResidualWithDepth(ResidualScatterPlot):
@@ -848,93 +458,7 @@ class ResidualWithDepth(ResidualScatterPlot):
     """
 
     def get_plot_data(self):
-        return residuals_vs_depth(self.residuals, self.gmpe, self.imt)
-
-#     def create_plot(self):
-#         """
-#         Creates the plot
-#         """
-#         data = self.residuals.residuals[self.gmpe][self.imt]
-#         if not data:
-#             print("No residuals found for %s (%s)" % (self.gmpe, self.imt))
-#             return
-# 
-#         fig = plt.figure(figsize=self.figure_size)
-#         fig.set_tight_layout(True)
-#         if self.num_plots > 1:
-#             nrow = 3
-#             ncol = 1
-#         else:
-#             nrow = 1
-#             ncol = 1
-#         tloc = 1
-#         for res_type in data.keys():
-#             depths = self._get_depths(self.gmpe, self.imt, res_type)
-#             self._residual_plot(
-#                 plt.subplot(nrow, ncol, tloc),
-#                 depths,
-#                 data,
-#                 res_type)
-#             tloc += 1
-#         _save_image(self.filename, self.filetype, self.dpi)
-#         if self.show:
-#             plt.show()
-# 
-# 
-#     def _residual_plot(self, ax, depths, data, res_type):
-#         """
-#         Plots the residuals with magnitude
-#         """
-#         slope, intercept, _, pval, _ = linregress(depths, data[res_type])
-#         print("Depth (%s): a = %.5f  b = %.5f  p = %.5f" % (res_type,
-#             intercept, slope, pval))
-#         model_x = np.arange(np.min(depths),
-#                             np.max(depths) + 1.0,
-#                             1.0)
-#         model_y = intercept + slope * model_x
-#         ax.plot(depths,
-#                 data[res_type],
-#                 'o',
-#                 markeredgecolor='Gray',
-#                 markerfacecolor='LightSteelBlue')
-#         ax.plot(model_x, model_y, 'r-', linewidth=2.0)
-#         ax.set_xlim(floor(np.min(depths)), ceil(np.max(depths)))
-#         max_lim = ceil(np.max(np.fabs(data[res_type])))
-#         ax.set_ylim(-max_lim, max_lim)
-#         ax.grid()
-#         ax.set_xlabel("Hypocentral Depth (km)", fontsize=12)
-#         ax.set_ylabel("Z (%s)" % self.imt, fontsize=12)
-#         title_string = "%s - %s\n Slope = %.4e, Intercept = %7.3f"\
-#                        " p = %.6e " % (self.gmpe, res_type, slope, intercept,
-#                                        pval)
-#         ax.set_title(title_string, fontsize=12)
-
-#     def _get_depths(self, gmpe, imt, res_type):
-#         """
-#         Returns an array of magnitudes equal in length to the number of
-#         residuals
-#         """
-#         depths = np.array([])
-#         for i, ctxt in enumerate(self.residuals.contexts):
-#             if res_type == "Inter event":
-#                 nvals = np.ones(
-#                     len(self.residuals.unique_indices[gmpe][imt][i]))
-#             else:
-#                 nvals = np.ones(len(ctxt["Distances"].repi))
-#             # TODO This hack needs to be fixed!!!
-#             if not ctxt["Rupture"].hypo_depth:
-#                 depths = np.hstack([depths, 10.0 * nvals])
-#             else:
-#                 depths = np.hstack([depths,
-#                                     ctxt["Rupture"].hypo_depth * nvals])
-#                    depths, 
-#                    10.0 * np.ones(len(ctxt["Distances"].repi))])
-#            else:
-#                depths = np.hstack([
-#                    depths,
-#                    ctxt["Rupture"].hypo_depth *
-#                    np.ones(len(ctxt["Distances"].repi))])
-#        return depths
+        return residuals_with_depth(self.residuals, self.gmpe, self.imt)
 
 
 class ResidualWithVs30(ResidualScatterPlot):
@@ -943,83 +467,15 @@ class ResidualWithVs30(ResidualScatterPlot):
         residuals (y-axis) versus Vs30 (x-axis)
     """
     def get_plot_data(self):
-        return residuals_vs_vs30(self.residuals, self.gmpe, self.imt)
+        return residuals_with_vs30(self.residuals, self.gmpe, self.imt)
 
     def get_axis_xlim(self, res_data, res_type):
         x = res_data['x']
         return 0.1, np.max(x)
 
-#     def create_plot(self):
-#         """
-# 
-#         """
-#         data = self.residuals.residuals[self.gmpe][self.imt]
-#         if not data:
-#             print("No residuals found for %s (%s)" % (self.gmpe, self.imt))
-#             return
-# 
-#         fig = plt.figure(figsize=self.figure_size)
-#         fig.set_tight_layout(True)
-#         if self.num_plots > 1:
-#             nrow = 3
-#             ncol = 1
-#         else:
-#             nrow = 1
-#             ncol = 1
-#         tloc = 1
-#         for res_type in data.keys():
-#             vs30 = self._get_vs30(self.gmpe, self.imt, res_type)
-#             self._residual_plot(
-#                 plt.subplot(nrow, ncol, tloc),
-#                 vs30,
-#                 data,
-#                 res_type)
-#             tloc += 1
-#         _save_image(self.filename, self.filetype, self.dpi)
-#         if self.show:
-#             plt.show()
-# 
-# 
-#     def _residual_plot(self, ax, vs30, data, res_type):
-#         """
-# 
-#         """
-#         slope, intercept, _, pval, _ = linregress(vs30, data[res_type])
-#         print("Site (%s): a = %.5f  b = %.5f  p = %.5f" % (res_type,
-#             intercept, slope, pval))
-#         model_x = np.arange(np.min(vs30),
-#                             np.max(vs30) + 1.0,
-#                             1.0)
-#         model_y = intercept + slope * model_x
-#         ax.plot(vs30,
-#                 data[res_type],
-#                 'o',
-#                 markeredgecolor='Gray',
-#                 markerfacecolor='LightSteelBlue')
-#         ax.plot(model_x, model_y, 'r-', linewidth=2.0)
-#         ax.set_xlim(0.1, np.max(vs30))
-#         max_lim = ceil(np.max(np.fabs(data[res_type])))
-#         ax.set_ylim(-max_lim, max_lim)
-#         ax.grid()
-#         ax.set_xlabel("Vs30 (m/s)", fontsize=12)
-#         ax.set_ylabel("Z (%s)" % self.imt, fontsize=12)
-#         title_string = "%s - %s\n Slope = %.4e, Intercept = %7.3f"\
-#                        " p = %.6e " % (self.gmpe, res_type, slope, intercept,
-#                                        pval)
-#         ax.set_title(title_string, fontsize=12)
 
-#     def _get_vs30(self, gmpe, imt, res_type):
-#         """
-# 
-#         """
-#         vs30 = np.array([])
-#         for i, ctxt in enumerate(self.residuals.contexts):
-#             if res_type == "Inter event":
-#                 vs30 = np.hstack([vs30, ctxt["Sites"].vs30[
-#                     self.residuals.unique_indices[gmpe][imt][i]]])
-#             else:
-#                 vs30 = np.hstack([vs30, ctxt["Sites"].vs30])
-#         return vs30
+# FIXME: code below not tested and buggy (at least ResidualWithSite)
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 class ResidualWithSite(ResidualPlot):
