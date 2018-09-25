@@ -134,7 +134,7 @@ class SMRecordSelector(object):
         """
         for site_id in site_ids:
             if not site_id in self.site_ids:
-                print("Site {:w is not in database" % record_id)
+                print("Site {:w is not in database" % site_id)
         idx = []
         for iloc, record in enumerate(self.database.records):
             if record.site.id in site_ids:
@@ -199,9 +199,9 @@ class SMRecordSelector(object):
         :param float lower_depth:
             Lower event depth (km)
         """
-        if not upper_depth:
+        if upper_depth is None:
             upper_depth = 0.0
-        if not lower_depth:
+        if lower_depth is None:
             lower_depth = np.inf
         assert (lower_depth >= upper_depth)
         idx = []
@@ -219,9 +219,9 @@ class SMRecordSelector(object):
         :param float upper:
             Upper bound magnitude
         """
-        if not lower:
+        if lower is None:
             lower = -np.inf
-        if not upper:
+        if upper is None:
             upper = np.inf
         assert (upper >= lower)
         idx = []
@@ -269,7 +269,7 @@ class SMRecordSelector(object):
                 idx.append(iloc)
         return self.select_records(idx, as_db)
 
-    def select_within_vs30_range(self, lower_vs30, upper_vs30, as_db=False):
+    def select_within_vs30_range(self, lower_vs30=None, upper_vs30=None, as_db=False):
         """
         Select records within a given Vs30 range
         :param float lower_vs30:
@@ -277,9 +277,9 @@ class SMRecordSelector(object):
         :param float uper_vs30:
             Upper Vs30 (m/s)
         """
-        if not lower_vs30:
+        if lower_vs30 is None:
             lower_vs30 = -np.inf
-        if not upper_vs30:
+        if upper_vs30 is None:
             upper_vs30 = np.inf
         idx = []
         for iloc, record in enumerate(self.database.records):
@@ -350,7 +350,7 @@ class SMRecordSelector(object):
         return self.select_records(idx, as_db)
 
     # Distance based selection
-    def select_within_distance_range(self, distance_type, shortest, furthest,
+    def select_within_distance_range(self, distance_type, shortest=None, furthest=None,
             alternative=False, as_db=False):
         """
         Select records based on a distance range
@@ -366,6 +366,11 @@ class SMRecordSelector(object):
             as a tuple of (distance_type, shortest, furthest)
         """
         idx = []
+        if shortest is None:
+            shortest = 0.0
+        if furthest is None:
+            furthest = np.inf
+
         for iloc, record in enumerate(self.database.records):
             value = getattr(record.distance, distance_type)
             if value:
@@ -436,7 +441,7 @@ class SMRecordSelector(object):
                      np.array([record.event.latitude]),
                      None),
                 distance)
-            if isclose[0]:
+            if is_close[0]:
                 idx.append(iloc)
         return self.select_records(idx, as_db)
 
