@@ -142,11 +142,11 @@ def conditional_simulation(
     cov_uu = correlation_model(unknown_sites, imt)
     d_k_uk = np.zeros([len(known_sites), len(unknown_sites)],
                       dtype=float)
+    klons, klats = known_sites.lons, known_sites.lats
+    ulons, ulats = unknown_sites.lons, unknown_sites.lats
     for iloc in range(len(known_sites)):
-        d_k_uk[iloc, :] = geodetic_distance(known_sites.array["lons"][iloc],
-                                            known_sites.array["lats"][iloc],
-                                            unknown_sites.array["lons"],
-                                            unknown_sites.array["lats"])
+        d_k_uk[iloc, :] = geodetic_distance(klons[iloc], klats[iloc],
+                                            ulons, ulats)
     cov_ku = correlation_model(d_k_uk, imt)
     mu = cov_ku.T * cov_kk * np.matrix(residuals).T
     stddev = cov_uu - (cov_ku.T * cov_kk * cov_ku)

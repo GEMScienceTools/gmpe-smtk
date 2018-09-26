@@ -1077,7 +1077,7 @@ class GroundMotionDatabase(object):
         """
         TODO 
         """
-        if not str_id in self.site_ids:
+        if str_id not in self.site_ids:
             self.site_ids.append(str_id)
         _id = np.argwhere(str_id == np.array(self.site_ids))[0]
         return _id[0]
