@@ -30,7 +30,7 @@ from openquake.baselib.slots import with_slots
 from openquake.hazardlib.geo import (Point, Line, Polygon, Mesh,
                                      PlanarSurface, NodalPlane)
 from openquake.hazardlib.scalerel.wc1994 import WC1994
-from openquake.hazardlib.site import Site, SiteCollection, site_param_dt
+from openquake.hazardlib.site import Site, SiteCollection
 from openquake.hazardlib.source.point import PointSource
 from openquake.hazardlib.gsim.base import (SitesContext,
                                            RuptureContext,
@@ -363,9 +363,9 @@ class PointAtRuptureDistance(PointAtDistance):
                                        'rrup')
         target_sites = SiteCollection([Site(selected_point,
                                             vs30,
-                                            vs30measured,
                                             z1pt0,
                                             z2pt5,
+                                            vs30measured=vs30measured,
                                             backarc=backarc)])
         return target_sites
 
@@ -391,9 +391,9 @@ class PointAtJoynerBooreDistance(PointAtDistance):
                                        'rjb')
         target_sites = SiteCollection([Site(selected_point,
                                             vs30,
-                                            vs30measured,
                                             z1pt0,
                                             z2pt5,
+                                            vs30measured=vs30measured,
                                             backarc=backarc)])
         return target_sites
 
@@ -415,9 +415,9 @@ class PointAtEpicentralDistance(PointAtDistance):
         return SiteCollection([Site(
             model.hypocentre.point_at(distance, 0., line_azimuth),
             vs30,
-            vs30measured,
             z1pt0,
             z2pt5,
+            vs30measured=vs30measured,
             backarc=backarc)])
 
 
@@ -439,9 +439,9 @@ class PointAtHypocentralDistance(PointAtDistance):
         return SiteCollection([Site(
             model.hypocentre.point_at(xdist, -model.hypocentre.depth, azimuth),
             vs30,
-            vs30measured,
             z1pt0,
             z2pt5,
+            vs30measured=vs30measured,
             backarc=backarc)])
 
 
@@ -586,19 +586,19 @@ class GSIMRupture(object):
         site_list = []
 
         if not z1pt0:
-            #z1pt0 = vs30_to_z1pt0_as08(vs30)
+            # z1pt0 = vs30_to_z1pt0_as08(vs30)
             z1pt0 = vs30_to_z1pt0_cy14(vs30)
 
         if not z2pt5:
-            #z2pt5 = z1pt0_to_z2pt5(z1pt0)
+            # z2pt5 = z1pt0_to_z2pt5(z1pt0)
             z2pt5 = vs30_to_z2pt5_cb14(vs30)
 
         for iloc in range(0, npts):
             site_list.append(Site(Point(gridx[iloc], gridy[iloc], 0.),
                                   vs30,
-                                  vs30measured,
                                   z1pt0,
                                   z2pt5,
+                                  vs30measured=vs30measured,
                                   backarc=backarc))
         self.target_sites = SiteCollection(site_list)
         self.target_sites_config = {
@@ -730,9 +730,9 @@ class GSIMRupture(object):
 
         self.target_sites = [Site(origin_location,
                                   vs30,
-                                  vs30measured,
                                   z1pt0,
                                   z2pt5,
+                                  vs30measured=vs30measured,
                                   backarc=backarc)]
         return azimuth, origin_location, z1pt0, z2pt5
 
@@ -746,21 +746,16 @@ class GSIMRupture(object):
         """
         for offset in distances:
             target_loc = origin_location.point_at(offset, 0., azimuth)
-            # Get Rupture distance
-            temp_mesh = Mesh(np.array(target_loc.longitude),
-                             np.array(target_loc.latitude),
-                             np.array(target_loc.depth))
-            distance = self.surface.get_min_distance(temp_mesh)
-            self.target_sites.append(Site(target_loc, 
-                                          vs30, 
-                                          vs30measured, 
+            self.target_sites.append(Site(target_loc,
+                                          vs30,
                                           z1pt0,
                                           z2pt5,
+                                          vs30measured=vs30measured,
                                           backarc=backarc))
         self.target_sites_config = {
             "TYPE": "Line",
             "RMAX": distances[-1],
-            "SPACING": np.nan if len(distances) < 2 else \
+            "SPACING": np.nan if len(distances) < 2 else
             distances[1] - distances[0],  # FIXME does it make sense?
             "AZIMUTH": line_azimuth,
             "ORIGIN": origin_point,
@@ -773,8 +768,9 @@ class GSIMRupture(object):
         self.target_sites = SiteCollection(self.target_sites)
         return self.target_sites
 
-    def get_target_sites_point(self, distance, distance_type, vs30, 
-            line_azimuth=90, origin_point=(0.5, 0.5), vs30measured=True, 
+    def get_target_sites_point(
+            self, distance, distance_type, vs30,
+            line_azimuth=90, origin_point=(0.5, 0.5), vs30measured=True,
             z1pt0=None, z2pt5=None, backarc=False):
         """
         Returns a single target site at a fixed distance from the source,
