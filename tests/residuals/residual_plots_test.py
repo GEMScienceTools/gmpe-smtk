@@ -145,7 +145,7 @@ class ResidualsTestCase(unittest.TestCase):
         Tests basic execution of Likelihood plot data.
         Does not test correctness of values
         """
-        residuals = res.Likelihood(self.gsims, self.imts)
+        residuals = res.Residuals(self.gsims, self.imts)
         residuals.get_residuals(self.database, component="Geometric")
         additional_keys = ['median']
 

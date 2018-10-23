@@ -321,7 +321,7 @@ class LikelihoodPlot(ResidualHistogramPlot):
             overrides the super-class method by asserting we are dealing
             with a `Likelihood` class
         """
-        assert isinstance(residuals, Likelihood)
+        assert isinstance(residuals, Residuals)
 
     def get_plot_data(self):
         return likelihood(self.residuals, self.gmpe, self.imt, self.bin_width)

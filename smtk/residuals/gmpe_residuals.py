@@ -64,7 +64,6 @@ def _check_gsim_list(gsim_list):
     """
     output_gsims = []
     for gsim in gsim_list:
-        print(gsim, gsim.__class__)
         if isinstance(gsim, GMPE):
             # Is an instantated GMPE, so pass directly to list
             output_gsims.append((str(gsim), gsim))

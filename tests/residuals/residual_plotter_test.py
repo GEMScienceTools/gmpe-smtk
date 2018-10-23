@@ -120,7 +120,7 @@ class ResidualsTestCase(unittest.TestCase):
         mocked_axes_obj = MagicMock()
         mock_pyplot_subplot.side_effect = lambda *a, **v: mocked_axes_obj
 
-        residuals = res.Likelihood(self.gsims, self.imts)
+        residuals = res.Residuals(self.gsims, self.imts)
         residuals.get_residuals(self.database, component="Geometric")
 
         for gsim in self.gsims:
@@ -155,7 +155,7 @@ class ResidualsTestCase(unittest.TestCase):
         mocked_axes_obj = MagicMock()
         mock_pyplot_subplot.side_effect = lambda *a, **v: mocked_axes_obj
 
-        residuals = res.Likelihood(self.gsims, self.imts)
+        residuals = res.Residuals(self.gsims, self.imts)
         residuals.get_residuals(self.database, component="Geometric")
 
         for gsim in self.gsims:
@@ -197,7 +197,7 @@ class ResidualsTestCase(unittest.TestCase):
         mocked_axes_obj = MagicMock()
         mock_pyplot_subplot.side_effect = lambda *a, **v: mocked_axes_obj
 
-        residuals = res.Likelihood(self.gsims, self.imts)
+        residuals = res.Residuals(self.gsims, self.imts)
         residuals.get_residuals(self.database, component="Geometric")
 
         for gsim in self.gsims:
