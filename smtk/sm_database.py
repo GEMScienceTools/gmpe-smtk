@@ -24,9 +24,9 @@ motion records
 import numpy as np
 import json
 from datetime import datetime
-from collections import OrderedDict, namedtuple
-from openquake.hazardlib.gsim.base import (SitesContext, DistancesContext,
-                                          RuptureContext)
+from collections import OrderedDict
+from openquake.hazardlib.gsim.base import (
+    SitesContext, DistancesContext, RuptureContext)
 from openquake.hazardlib.site import Site, SiteCollection
 from openquake.hazardlib.geo.point import Point
 from openquake.hazardlib.scalerel import PeerMSR
@@ -698,12 +698,12 @@ class RecordSite(object):
         
         location = Point(self.longitude,
                          self.latitude,
-                         -self.altitude / 1000.) # Elevation from m to km
+                         -self.altitude / 1000.)  # Elevation from m to km
         oq_site = Site(location,
                        vs30,
-                       vs30_measured,
                        z1pt0,
                        z2pt5,
+                       vs30measured=vs30_measured,
                        backarc=self.backarc)
         setattr(oq_site, "id", self.id)
         return oq_site
