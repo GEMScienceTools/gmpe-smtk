@@ -27,7 +27,7 @@ import unittest
 from smtk import load_database
 from smtk.parsers.esm_flatfile_parser import ESMFlatfileParser
 
-from smtk.gm_database import GMDatabase
+from smtk.gm_database import GMDatabaseParser
 
 if sys.version_info[0] >= 3:
     import pickle
@@ -43,13 +43,26 @@ class GmDatabaseTestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        
+
         cls.input_file = os.path.join(BASE_DATA_PATH,
                                       "template_basic_flatfile.csv")
+        cls.output_file = os.path.join(BASE_DATA_PATH,
+                                      "template_basic_flatfile.hd5")
+        if os.path.isfile(cls.output_file):
+            os.remove(cls.output_file)
 
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isfile(cls.output_file):
+            os.remove(cls.output_file)
+
+        
     def test_json_io_roundtrip(self):
 
-        g = GMDatabase.from_flatfile(self.input_file, output_path=None)
+        g = GMDatabaseParser.parse(self.input_file,
+                                     output_path=self.output_file,
+                                     return_log_dict=True)
+        h = 9
 
 
 

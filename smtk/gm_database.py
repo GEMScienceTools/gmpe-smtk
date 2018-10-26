@@ -16,15 +16,21 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
-
 """
-Constructs the HDF5 database
+Basic classes for the GMDatabase (HDF5 database) and parsers
 """
 
 import os
 import sys
 import re
 import csv
+from datetime import datetime
+from itertools import chain
+from collections import defaultdict
+import tables
+from tables.table import Table
+from tables.group import Group
+from tables.exceptions import HDF5ExtError, NoSuchNodeError
 import numpy as np
 import h5py
 from tables.description import IsDescription, Int64Col, StringCol, \
@@ -41,24 +47,6 @@ if sys.version_info[0] >= 3:
 else:
     # In Python 2 use cPickle
     import cPickle as pickle
-
-
-def _get_fieldnames_from_csv(reader):
-    """
-    """
-    scalar_fieldnames = []
-    spectra_fieldnames = []
-    periods = []
-    for fname in reader.fieldnames:
-        if fname.startswith('SA('):
-            match = re.match(r'^SA\(([^)]+?)\)$', fname)
-            periods.append(float(match.group(1)))
-            spectra_fieldnames.append(fname)
-            continue
-        for imt in SCALAR_LIST:
-            if imt in fname:
-                scalar_fieldnames.append((fname, imt))
-    return scalar_fieldnames, spectra_fieldnames, np.array(periods)
 
 
 class GMDatabaseTable(IsDescription):
@@ -160,8 +148,28 @@ class GMDatabaseTable(IsDescription):
     sa = Float64Col(shape=(111,), dflt=float('nan'))
 
 
-class GMDatabase(object):
-    _ref_periods = (0.010, 0.020, 0.022, 0.025, 0.029, 0.030, 0.032,
+def _colname(string):
+    '''returns string if string is a valid column name defined in
+    GMDatabaseTable. This method assures that if we change the names
+    above an assertion error is raised so to help debugging'''
+    assert string in GMDatabaseTable.columns
+    return string
+
+
+class GMDatabaseParser(object):
+    '''
+    Implements a base GMDatabase parser, i.e. a class converting
+    flatfiles in csv format into a GmDatabase is described by
+    the :class:`GmDatabaseTable`, which is a pytables Table
+    representing heterogeneous datasets in an HDF5 file.
+    The parsing is done in the `parse` method.
+
+    Subclasses should override the _mapping dict where flatfile specific
+    column names are mapped to :class:`GmDatabaseTable` column names, and
+    optionally the `process_flatfile_row` method where additional operation
+    is performed in-place on each flatfile row.
+    '''
+    _ref_periods = [0.010, 0.020, 0.022, 0.025, 0.029, 0.030, 0.032,
                     0.035, 0.036, 0.040, 0.042, 0.044, 0.045, 0.046,
                     0.048, 0.050, 0.055, 0.060, 0.065, 0.067, 0.070,
                     0.075, 0.080, 0.085, 0.090, 0.095, 0.100, 0.110,
@@ -176,38 +184,267 @@ class GMDatabase(object):
                     3.200, 3.400, 3.500, 3.600, 3.800, 4.000, 4.200,
                     4.400, 4.600, 4.800, 5.000, 5.500, 6.000, 6.500,
                     7.000, 7.500, 8.000, 8.500, 9.000, 9.500, 10.000,
-                    11.000, 12.000, 13.000, 14.000, 15.000, 20.000)
-    columns = GMDatabaseTable.columns
+                    11.000, 12.000, 13.000, 14.000, 15.000, 20.000]
+
+    # this dict should re-map flatfile columns (string) into standard
+    # GMDatabase column name (string). If not empty, the mapping will
+    # be performed as first operation on each flatfile row scanned
+    _mappings = {}
 
     @classmethod
-    def from_flatfile(cls, flatfile_path, output_path):
-        records = cls.rows_from_flatfile(flatfile_path)
-        # now append records to output_path
+    def parse(cls, flatfile_path, output_path, append=True,
+              col_id='record_id', return_log_dict=False):
+        '''Parses a flat file and writes its content in the GM database file
+        `output_path`, which is a HDF5 organized hierarchically in groups
+        (sort of sub-directories) each of which identifies a parsed
+        input flatfile. Each group's `table` attribute is where
+        the actual GM database data is stored and can be accessed later
+        with pytables `open_file` function (see
+        https://www.pytables.org/usersguide/tutorials.html).
+        The group will have the same name as `flatfile_path` (more precisely,
+        the file basename without extension).
+
+        :param flatfile_path: string denoting the path to the input CSV
+            flatfile
+        :param output_path: string: path to the output GM database file.
+        :param append: if True (the defaut) the new data will be appended to
+            the table, if it exists (a table already exists if `output_path`
+            has a group named as the basename of `flatfile_path` with
+            a node named 'table' in it).
+            If this argument is False, the table is first removed and a new
+            one will be populated.
+            If the table does not exist, this argument does nothing
+        :param col_id: string (default: 'record_id') the column name defining
+            a unique row identifier. If falsy (None, empty), this
+            argument is ignored. Otherwise, it serves two purposes:
+            1) It assures uniqueness of the given `col_id` by updating
+            already existing rows (i.e., with the same `col_id` value)
+            instead of appending new one each time. Note that if `append`
+            is False, or the table does not already exist, no row exists and
+            thus no row can be updated.
+            2) It assures that each flatfile row written to the GM dtabase
+            table has a non empty id (rows with empty ids will be skipped)
+        :param return_log_dict: boolean (False by default). When True, returns
+            a dict where each key is a GMDatabase column name, mapped
+            to the number of rows with missing data for that column. The dict
+            provides a sort of logging info for the user, if needed. If False,
+            this method returns None. Note that a missing value is anyway
+            stored with its default, there is no 'None' or null value in a 
+            HDF5 file. Defaults are usually nan for floats, the minimum
+            possible integers, the empty string fro strings.
+        '''
+        db_columns = GMDatabaseTable.columns  # pylint: disable=no-member
+        if col_id:
+            assert col_id in db_columns
+        assert 'id' in db_columns
+
+        with tables.open_file(output_path, mode='a',
+                              title=os.path.basename(output_path)) as h5file:
+
+            dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
+            dbpath = "/%s" % dbname
+            group = None
+            try:
+                group = h5file.get_node(dbpath, classname=Group.__name__)
+                if not append:
+                    h5file.remove_node(dbpath)
+            except NoSuchNodeError as _:
+                pass
+            if group is None:
+                group = h5file.create_group(h5file.root, dbname)
+
+            table = None
+            tablename = 'table'
+            tablepath = '/%s' % tablename
+            check_existing = False
+            current_id = 0
+            try:
+                table = group.get_node(tablepath, classname=Table.__name__)
+                check_existing = bool(col_id)
+                current_id = max(chain([0],
+                                       (r['id'] for r in table.iterrows())))
+            except NoSuchNodeError as _:
+                pass
+            if table is None:
+                table = h5file.create_table(group, 'table',
+                                            description=GMDatabaseTable)
+                table.cols.id.create_index()
+
+            logdict = defaultdict(int) if return_log_dict else None
+
+            for rowdict in cls._rows(flatfile_path):
+                # assert a record id is set:
+                if col_id and not rowdict.get(col_id, None):
+                    # this forces to log all columns as missing:
+                    rowdict = {}
+
+                if rowdict:
+                    # flag to tell if table is new, or row does not exist
+                    addrow = True
+                    current_id += 1
+                    rowdict['id'] = current_id
+                    if check_existing:
+                        for dbrow in table.where('%s == b"%s"' %
+                                                 (col_id, rowdict[col_id])):
+                            addrow = False
+                            # there should be only one row
+                            for key, val in rowdict.items():
+                                dbrow[key] = val
+                            dbrow.update()
+
+                    if addrow:
+                        dbrow = table.row
+                        for key, val in rowdict.items():
+                            dbrow[key] = val
+                        dbrow.append()  # pylint: disable=no-member
+
+                    table.flush()
+
+                    # write statistics. In case of exceptions above, all
+                    # columns are incremented
+                    if logdict is not None:
+                        for col in db_columns:
+                            if col not in rowdict:
+                                logdict[col] += 1
+
+            return logdict
 
     @classmethod
-    def rows_from_flatfile(cls, path):
+    def _rows(cls, flatfile_path):
+        '''Yields each row from the CSV file `flatfile_path` as
+        dictionary, after performing SA conversion and running custom code
+        implemented in `cls._process_flatfile_row` (if overridden by
+        subclasses). Yields empty dict in case of exceptions'''
         # For each  row of the csv:
         # maps each column of the csv to the values of the class attribute
-        # _mappings (dict). Consider e.g. times given by columns or iso format strings
-        # Sanity check (how to do?): the main idea is to write defaults for errors
+        # _mappings (dict). Consider e.g. times given by columns or iso format
+        # strings
+        # Sanity check (how to do?): the main idea is to write defaults for
+        # errors
         # or missing columns and write the row anyway
         # row = cls.row_from_flatfile(rowdict)
         # For sa: get columns starting with sa(whatever) extract the periods
         # and then loglog interpolate with the _ref_periods
         # Append the record into a list of recprds
         # Finally, return the list of records
+        ref_log_periods = np.log10(cls._ref_periods)
+        columns = GMDatabaseTable.columns  # pylint: disable=no-member
+        sa_colname = _colname('sa')
+        mappings = getattr(cls, '_mappings', {})
+        spectra_fieldnames, spectra_periods = None, None
         kwargs = {'newline': ''} if sys.version_info[0] >= 3 else {}
-        with open(path, **kwargs) as csvfile:
+
+        with open(flatfile_path, **kwargs) as csvfile:
             reader = csv.DictReader(csvfile)
+
             for rowdict in reader:
-                row = cls.row_from_dict(rowdict)
+                # re-map keys:
+                for k in mappings:
+                    rowdict[mappings[k]] = rowdict.pop(k)
+                # get spectra fields and periods (only first time):
+                # this has to be done here after re-mapping
+                if spectra_fieldnames is None:
+                    spectra_fieldnames, spectra_periods = [], []
+                    try:
+                        spectra_fieldnames, spectra_periods =\
+                            cls._get_sa_fieldnames_from_csv(rowdict.keys())
+                    except Exception as exc:
+                        raise ValueError('Unable to parse SA columns: %s' %
+                                         str(exc))
+                try:
+                    # build sa (with interpolation if needed) and set the field
+                    # in rowdict:
+                    if spectra_fieldnames:
+                        sas = cls._get_sa_values(rowdict, spectra_fieldnames,
+                                                 ref_log_periods,
+                                                 spectra_periods)
+                        rowdict[sa_colname] = sas
+
+                    # custom post processing, if needed in subclasses:
+                    cls.process_flatfile_row(rowdict)
+
+                    # now cast and return rowdict with only GMDataBaseTable's
+                    # columns:
+                    cls._cast_and_reduce(rowdict, columns)
+
+                except Exception as _:
+                    rowdict = {}
+
+                # yield row as dict:
+                yield rowdict
+
+    @staticmethod
+    def _get_sa_fieldnames_from_csv(fieldnames):
+        """Returns the field names, the spectra fieldnames and the periods
+        (numoy array) of e.g., a parsed csv reader's fieldnames
+        """
+        spectra_fieldnames = []
+        periods = []
+        reg = re.compile(r'^SA\(([^)]+?)\)$',
+                         flags=re.IGNORECASE)  # @UndefinedVariable
+        for fname in fieldnames:
+            match = reg.match(fname)
+            if match:
+                periods.append(float(match.group(1)))
+                spectra_fieldnames.append(fname)
+
+        return spectra_fieldnames, np.array(periods)
+
+    @staticmethod
+    def _get_sa_values(rowdict, spectra_fieldnames, ref_log_periods,
+                       spectra_periods):
+        '''gets sa values with log log interpolation if needed'''
+        sa_values = np.array([rowdict.get(key) for key in spectra_fieldnames],
+                             dtype=float)
+        logx = np.log10(spectra_periods)
+        logy = np.log10(sa_values)
+        return np.power(10.0, np.interp(ref_log_periods, logx, logy))
 
     @classmethod
-    def row_from_dict(cls, rowdict):
-        '''converts a CSV row (in dict format) tot a table row'''
-        if 'event_time' not in rowdict:
-            year = rowdict
-            pass
+    def process_flatfile_row(cls, rowdict):
+        '''do any further processing of the given rowdict.
+        Spectra values are already set.
+        This method should process rowdict in place, the returned value
+        is ignored.
+        Any exception is wrapped in the caller method. Try-catch it here
+        if you want different behaviour
+
+        :param rowdict: a row of the csv flatfile, as Python dict. Values
+            are strings and will be casted to the right Table column type
+            after this method call
+        '''
+        pass
+
+    @staticmethod
+    def datetime(year, month, day, hour=0, minute=0, second=0):
+        '''Utility method which converts the given date time into ISO format
+            string: '%Y-%m-%dT%H:%M:%S'
+            All parameters can be integers or int-parsable strings
+        '''
+        return datetime(int(year), int(month), int(day),
+                        int(hour), int(minute), int(second)).\
+            strftime('%Y-%m-%dT%H:%M:%S')
+
+    @staticmethod
+    def _cast_and_reduce(rowdict, table_ref_columns):
+        '''casts any given rowdict to the corresponding table_ref_columns
+        dtype. Removes mismatching column names from rowdict in-place'''
+        for field in list(rowdict.keys()):  # avoid mutating during iteration
+            colobj = table_ref_columns.get(field, None)
+            if colobj is not None:
+                dtype, shape = colobj.dtype.type, colobj.dtype.shape
+                # if the dtype has a subdtype, use it (don't know why
+                # it simply works for sa)
+                if getattr(colobj.dtype, 'subdtype', None):
+                    dtype, shape = colobj.dtype.subdtype
+                try:
+                    rowdict[field] = np.asarray(rowdict[field]).\
+                            astype(dtype).reshape(shape)
+                    continue
+                except Exception as _:
+                    pass
+            # field not found in columns, or cast unsuccessful: remove
+            rowdict.pop(field)
 
 #     def __init__(self, flatfile_location):
 #         """
