@@ -16,6 +16,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
+
 """
 Basic classes for the GMDatabase (HDF5 database) and parsers
 """
@@ -26,6 +27,7 @@ import re
 import csv
 from datetime import datetime
 from itertools import chain
+from contextlib import contextmanager
 from collections import defaultdict
 import tables
 from tables.table import Table
@@ -148,14 +150,6 @@ class GMDatabaseTable(IsDescription):
     sa = Float64Col(shape=(111,), dflt=float('nan'))
 
 
-def _colname(string):
-    '''returns string if string is a valid column name defined in
-    GMDatabaseTable. This method assures that if we change the names
-    above an assertion error is raised so to help debugging'''
-    assert string in GMDatabaseTable.columns
-    return string
-
-
 class GMDatabaseParser(object):
     '''
     Implements a base GMDatabase parser, i.e. a class converting
@@ -193,7 +187,7 @@ class GMDatabaseParser(object):
 
     @classmethod
     def parse(cls, flatfile_path, output_path, append=True,
-              col_id='record_id', return_log_dict=False):
+              col_id='record_id'):
         '''Parses a flat file and writes its content in the GM database file
         `output_path`, which is a HDF5 organized hierarchically in groups
         (sort of sub-directories) each of which identifies a parsed
@@ -224,55 +218,38 @@ class GMDatabaseParser(object):
             thus no row can be updated.
             2) It assures that each flatfile row written to the GM dtabase
             table has a non empty id (rows with empty ids will be skipped)
-        :param return_log_dict: boolean (False by default). When True, returns
-            a dict where each key is a GMDatabase column name, mapped
-            to the number of rows with missing data for that column. The dict
-            provides a sort of logging info for the user, if needed. If False,
-            this method returns None. Note that a missing value is anyway
-            stored with its default, there is no 'None' or null value in a 
-            HDF5 file. Defaults are usually nan for floats, the minimum
-            possible integers, the empty string fro strings.
+
+        :return: a dictionary holding information with keys:
+            'total': the total number of csv rows
+            'written: the number of parsed rows written on the db table
+            'missing_values: a dict with keys the table column names, mapped
+                to the number of rows which have missing values for that
+                column (e.g., parsing errors, empty values in the csv).
+                Missing values are stored in the GM database with the
+                column default, which is usually NaN for floats, the minimum
+                possible value for integers, the empty string for strings.
+                Note that a column with all missing values (i.e., equal to
+                'total') might be due to the column simply not in the csv.
         '''
         db_columns = GMDatabaseTable.columns  # pylint: disable=no-member
         if col_id:
             assert col_id in db_columns
         assert 'id' in db_columns
 
+        added_ids = set() if col_id else None
+
         with tables.open_file(output_path, mode='a',
                               title=os.path.basename(output_path)) as h5file:
 
-            dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
-            dbpath = "/%s" % dbname
-            group = None
-            try:
-                group = h5file.get_node(dbpath, classname=Group.__name__)
-                if not append:
-                    h5file.remove_node(dbpath)
-            except NoSuchNodeError as _:
-                pass
-            if group is None:
-                group = h5file.create_group(h5file.root, dbname)
+            table = cls._get_table(h5file, flatfile_path, append)
+            check_existing = col_id and table.nrows > 0
+            current_id = max(chain([0], (r['id'] for r in table.iterrows())))
 
-            table = None
-            tablename = 'table'
-            tablepath = '/%s' % tablename
-            check_existing = False
-            current_id = 0
-            try:
-                table = group.get_node(tablepath, classname=Table.__name__)
-                check_existing = bool(col_id)
-                current_id = max(chain([0],
-                                       (r['id'] for r in table.iterrows())))
-            except NoSuchNodeError as _:
-                pass
-            if table is None:
-                table = h5file.create_table(group, 'table',
-                                            description=GMDatabaseTable)
-                table.cols.id.create_index()
-
-            logdict = defaultdict(int) if return_log_dict else None
+            total, written, missing = 0, 0, defaultdict(int)
 
             for rowdict in cls._rows(flatfile_path):
+                total += 1
+
                 # assert a record id is set:
                 if col_id and not rowdict.get(col_id, None):
                     # this forces to log all columns as missing:
@@ -281,11 +258,10 @@ class GMDatabaseParser(object):
                 if rowdict:
                     # flag to tell if table is new, or row does not exist
                     addrow = True
-                    current_id += 1
-                    rowdict['id'] = current_id
+
                     if check_existing:
-                        for dbrow in table.where('%s == b"%s"' %
-                                                 (col_id, rowdict[col_id])):
+                        for dbrow in table.where('%s == %s' %
+                                                 (col_id, str(rowdict[col_id]))):
                             addrow = False
                             # there should be only one row
                             for key, val in rowdict.items():
@@ -293,21 +269,51 @@ class GMDatabaseParser(object):
                             dbrow.update()
 
                     if addrow:
+                        current_id += 1
+                        rowdict['id'] = current_id
                         dbrow = table.row
                         for key, val in rowdict.items():
                             dbrow[key] = val
                         dbrow.append()  # pylint: disable=no-member
 
                     table.flush()
+                    written += 1
 
                     # write statistics. In case of exceptions above, all
                     # columns are incremented
-                    if logdict is not None:
-                        for col in db_columns:
-                            if col not in rowdict:
-                                logdict[col] += 1
+                    for col in db_columns:
+                        if col not in rowdict:
+                            missing[col] += 1
 
-            return logdict
+            return {'total': total, 'written': written,
+                    'missing_values': missing}
+
+    @staticmethod
+    def _get_table(h5file, flatfile_path, append):
+        dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
+        dbpath = "/%s" % dbname
+        group = None
+        try:
+            group = h5file.get_node(dbpath, classname=Group.__name__)
+            if not append:
+                h5file.remove_node(dbpath, recursive=True)
+                group = None
+        except NoSuchNodeError as _:
+            pass
+        if group is None:
+            group = h5file.create_group(h5file.root, dbname)
+
+        table = None
+        tablename = 'table'
+        try:
+            table = h5file.get_node('%s/%s' % (dbpath, tablename),
+                                    classname=Table.__name__)
+        except NoSuchNodeError as _:
+            pass
+        if table is None:
+            table = h5file.create_table(group, 'table',
+                                        description=GMDatabaseTable)
+        return table
 
     @classmethod
     def _rows(cls, flatfile_path):
@@ -329,13 +335,11 @@ class GMDatabaseParser(object):
         # Finally, return the list of records
         ref_log_periods = np.log10(cls._ref_periods)
         columns = GMDatabaseTable.columns  # pylint: disable=no-member
-        sa_colname = _colname('sa')
+        assert 'sa' in columns
         mappings = getattr(cls, '_mappings', {})
         spectra_fieldnames, spectra_periods = None, None
-        kwargs = {'newline': ''} if sys.version_info[0] >= 3 else {}
 
-        with open(flatfile_path, **kwargs) as csvfile:
-            reader = csv.DictReader(csvfile)
+        with cls._get_csv_reader(flatfile_path) as reader:
 
             for rowdict in reader:
                 # re-map keys:
@@ -358,7 +362,7 @@ class GMDatabaseParser(object):
                         sas = cls._get_sa_values(rowdict, spectra_fieldnames,
                                                  ref_log_periods,
                                                  spectra_periods)
-                        rowdict[sa_colname] = sas
+                        rowdict['sa'] = sas
 
                     # custom post processing, if needed in subclasses:
                     cls.process_flatfile_row(rowdict)
@@ -372,6 +376,18 @@ class GMDatabaseParser(object):
 
                 # yield row as dict:
                 yield rowdict
+
+    @staticmethod
+    @contextmanager
+    def _get_csv_reader(filepath, dict_reader=True):
+        '''opends a csv file and yields the relative reader. To be used
+        in a with statement to properly close the csv file'''
+        # according to the docs, py3 needs the newline argument
+        kwargs = {'newline': ''} if sys.version_info[0] >= 3 else {}
+        with open(filepath, **kwargs) as csvfile:
+            reader = csv.DictReader(csvfile) if dict_reader else \
+                csv.reader(csvfile)
+            yield reader
 
     @staticmethod
     def _get_sa_fieldnames_from_csv(fieldnames):
@@ -402,15 +418,15 @@ class GMDatabaseParser(object):
 
     @classmethod
     def process_flatfile_row(cls, rowdict):
-        '''do any further processing of the given rowdict.
-        Spectra values are already set.
-        This method should process rowdict in place, the returned value
+        '''do any further processing of the given `rowdict`.
+        Spectra values are already set in rowdict under the 'sa' key.
+        This method should process `rowdict` in place, the returned value
         is ignored.
         Any exception is wrapped in the caller method. Try-catch it here
         if you want different behaviour
 
         :param rowdict: a row of the csv flatfile, as Python dict. Values
-            are strings and will be casted to the right Table column type
+            are strings and will be casted to the matching Table column type
             after this method call
         '''
         pass
@@ -444,6 +460,8 @@ class GMDatabaseParser(object):
                 except Exception as _:
                     pass
             # field not found in columns, or cast unsuccessful: remove
+            # if the field is a GMFatabaseTable column, then
+            # the default will be set later
             rowdict.pop(field)
 
 #     def __init__(self, flatfile_location):
