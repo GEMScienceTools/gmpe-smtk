@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 from tables.file import open_file
+from tables.description import Float32Col, Col, IsDescription, Float64Col
 """
 Tests the IO of a database between pickle and json
 """
@@ -26,9 +27,9 @@ import json
 import pprint
 import unittest
 from smtk import load_database
+import numpy as np
 from smtk.parsers.esm_flatfile_parser import ESMFlatfileParser
-
-from smtk.gm_database import GMDatabaseParser
+import smtk.gm_database
 
 if sys.version_info[0] >= 3:
     import pickle
@@ -40,6 +41,35 @@ BASE_DATA_PATH = os.path.join(
     os.path.join(os.path.dirname(__file__), "file_samples")
     )
 
+class GMDatabaseParser(smtk.gm_database.GMDatabaseParser):
+    
+    @classmethod
+    def process_flatfile_row(cls, rowdict):
+        '''do any further processing of the given `rowdict`, a dict
+        represenitng a parsed csv row. At this point, `rowdict` keys are
+        already mapped to the :class:`GMDatabaseTable` columns (see `_mappings`
+        class attribute), spectra values are already set in `rowdict['sa']`
+        (interpolating csv spectra columns, if needed).
+        This method should process `rowdict` in place, the returned value
+        is ignored. Any exception is wrapped in the caller method.
+
+        :param rowdict: a row of the csv flatfile, as Python dict. Values
+            are strings and will be casted to the matching Table column type
+            after this method call
+        '''
+        # convert event time from cells into a datetime string:
+        evtime = cls.datetime(rowdict.pop('year'),
+                              rowdict.pop('month'),
+                              rowdict.pop('day'),
+                              rowdict.pop('hour', None) or 0,
+                              rowdict.pop('minute', None) or 0,
+                              rowdict.pop('second', None) or 0)
+        rowdict['event_time'] = evtime
+
+class DummyTable(IsDescription):
+    floatcol = Float32Col()
+    floatarray = Float32Col(shape=(10,))
+
 class GmDatabaseTestCase(unittest.TestCase):
 
     @classmethod
@@ -48,16 +78,56 @@ class GmDatabaseTestCase(unittest.TestCase):
         cls.input_file = os.path.join(BASE_DATA_PATH,
                                       "template_basic_flatfile.csv")
         cls.output_file = os.path.join(BASE_DATA_PATH,
-                                      "template_basic_flatfile.hd5")
-        if os.path.isfile(cls.output_file):
-            os.remove(cls.output_file)
+                                       "template_basic_flatfile.hd5")
+
+    def setUp(self):
+        self.deletefile()
+
+    def tearDown(self):
+        self.deletefile()
 
     @classmethod
-    def tearDownClass(cls):
+    def deletefile(cls):
         if os.path.isfile(cls.output_file):
             os.remove(cls.output_file)
 
-    def test_json_io_roundtrip(self):
+    def testPyTable(self):
+        '''Test some pytable casting stuff NOT clearly documented :( '''
+        with open_file(self.output_file, 'a') as h5file:
+            table = h5file.create_table("/",
+                                        'table',
+                                        description=DummyTable)
+            row = table.row
+            # assert the value is the default:
+            assert row['floatcol'] == 0
+            # what if we supply a string? TypeError
+            with self.assertRaises(TypeError):
+                row['floatcol'] = 'a'
+            # assert the value is still the default:
+            assert row['floatcol'] == 0
+            # what if we supply a castable string instead? it is casted
+            row['floatcol'] = '5.5'
+            assert row['floatcol'] == 5.5
+            # what if we supply a scalr instead of an array?
+            # the value is broadcasted:
+            row['floatarray'] = 5
+            assert np.allclose([5] * 10, row['floatarray'])
+            # what if we supply a float out of bound? no error
+            # but value is saved differently!
+            maxfloat32 = 3.4028235e+38
+            val = maxfloat32 * 10
+            row['floatcol'] = val
+            h = row['floatcol']
+            # assert they are not the same
+            assert not np.isclose(h, val)
+            # now restore val to the max Float32, and assert they are the same:
+            val = maxfloat32
+            row['floatcol'] = val
+            h = row['floatcol']
+            assert np.isclose(h, val)
+            
+
+    def test_template_basic_file(self):
 
         log = GMDatabaseParser.parse(self.input_file,
                                      output_path=self.output_file)
@@ -73,16 +143,16 @@ class GmDatabaseTestCase(unittest.TestCase):
         # seems also that we should NOT break inside a iterrows or where loop
 
         # open HDF5 and check for incremental ids:
-        row_id = 1
+        row_id = b'1'
         with open_file(self.output_file, 'a') as h5file:
             table = h5file.get_node('/%s/table' % groupname)
-            ids = list(r['id'] for r in table.iterrows())
+            ids = list(r['record_id'] for r in table.iterrows())
             assert len(ids) == len(set(ids))
-            assert max(ids) == 99
+            # assert max(ids) == 99
 
             # modify one row
             count = 0
-            for row in table.where('id == %d' % row_id):
+            for row in table.where('record_id == %s' % row_id):
                 count += 1
                 modified_row_event_name = row['event_name']
                 row['event_name'] = 'dummy'
@@ -93,10 +163,10 @@ class GmDatabaseTestCase(unittest.TestCase):
         # assert that we modified the event name
         with open_file(self.output_file) as h5file:
             table = h5file.get_node('/%s/table' % groupname)
-            for row in table.where('id == %d' % row_id):
+            for row in table.where('record_id == %s' % row_id):
                 assert row['event_name'] == b'dummy'
 
-        # now re-write, with append mode:
+        # now re-write, with updated mode:
         log = GMDatabaseParser.parse(self.input_file,
                                      output_path=self.output_file)
 
@@ -105,22 +175,22 @@ class GmDatabaseTestCase(unittest.TestCase):
             table = h5file.get_node('/%s/table' % groupname)
             assert table.nrows == 99
             row = list(row['event_name'] for row in
-                       table.where('id == %d' % row_id))
+                       table.where('record_id == %s' % row_id))
             assert len(row) == 1
             assert row[0] == modified_row_event_name
 
-        # now re-write, with no col_id:
+        # now re-write, with append='a':
         log = GMDatabaseParser.parse(self.input_file,
                                      output_path=self.output_file,
-                                     col_id=None)
+                                     mode='a')
         with open_file(self.output_file) as h5file:
             table = h5file.get_node('/%s/table' % groupname)
             assert table.nrows == 99*2
 
-        # now re-write, with no append=False:
+        # now re-write, with no append='w'
         log = GMDatabaseParser.parse(self.input_file,
                                      output_path=self.output_file,
-                                     append=False)
+                                     mode='w')
         with open_file(self.output_file) as h5file:
             table = h5file.get_node('/%s/table' % groupname)
             assert table.nrows == 99

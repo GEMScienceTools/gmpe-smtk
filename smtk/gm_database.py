@@ -78,7 +78,7 @@ class GMDatabaseTable(IsDescription):
     # IntCol will be set as the minimum allowed value (default is 0, not fine)
     # TimeCol: see int col
 
-    id = UInt32Col()  # this does not have a default. Start from 1 incrementally
+    # id = UInt32Col()  # no default. Starts from 1 incrementally
     # max id: 4,294,967,295
     record_id = StringCol(20)
     event_id = StringCol(40)
@@ -88,8 +88,8 @@ class GMDatabaseTable(IsDescription):
     # Note: if we want to support YYYY-MM-DD only be aware that:
     # YYYY-MM-DD == YYYY-MM-DDT00:00:00
     # Note2: no support for microseconds for the moment
-    event_latitude = Float32Col(dflt=float('nan'))
-    event_longitude = Float32Col(dflt=float('nan'))
+    event_latitude = Float64Col(dflt=float('nan'))
+    event_longitude = Float64Col(dflt=float('nan'))
     hypocenter_depth = Float32Col(dflt=float('nan'))
     magnitude = Float16Col(dflt=float('nan'))
     magnitude_type = StringCol(5, dflt='')
@@ -107,9 +107,9 @@ class GMDatabaseTable(IsDescription):
     rupture_width = Float32Col(dflt=float('nan'))
     station_id = StringCol(15, dflt='')
     station_name = StringCol(40, dflt='')
-    station_name = StringCol(30, dflt='unknown')
-    station_latitude = Float32Col(dflt=float('nan'))
-    station_longitude = Float32Col(dflt=float('nan'))
+    # station_name = StringCol(30, dflt='unknown')
+    station_latitude = Float64Col(dflt=float('nan'))
+    station_longitude = Float64Col(dflt=float('nan'))
     station_elevation = Float32Col(dflt=float('nan'))
     vs30 = Float32Col(dflt=float('nan'))
     vs30_measured = BoolCol(dflt=True)
@@ -186,8 +186,7 @@ class GMDatabaseParser(object):
     _mappings = {}
 
     @classmethod
-    def parse(cls, flatfile_path, output_path, append=True,
-              col_id='record_id'):
+    def parse(cls, flatfile_path, output_path, mode='u'):
         '''Parses a flat file and writes its content in the GM database file
         `output_path`, which is a HDF5 organized hierarchically in groups
         (sort of sub-directories) each of which identifies a parsed
@@ -201,23 +200,13 @@ class GMDatabaseParser(object):
         :param flatfile_path: string denoting the path to the input CSV
             flatfile
         :param output_path: string: path to the output GM database file.
-        :param append: if True (the defaut) the new data will be appended to
-            the table, if it exists (a table already exists if `output_path`
-            has a group named as the basename of `flatfile_path` with
-            a node named 'table' in it).
-            If this argument is False, the table is first removed and a new
-            one will be populated.
-            If the table does not exist, this argument does nothing
-        :param col_id: string (default: 'record_id') the column name defining
-            a unique row identifier. If falsy (None, empty), this
-            argument is ignored. Otherwise, it serves two purposes:
-            1) It assures uniqueness of the given `col_id` by updating
-            already existing rows (i.e., with the same `col_id` value)
-            instead of appending new one each time. Note that if `append`
-            is False, or the table does not already exist, no row exists and
-            thus no row can be updated.
-            2) It assures that each flatfile row written to the GM dtabase
-            table has a non empty id (rows with empty ids will be skipped)
+        :param mode: either 'w', 'a' or 'u'. It is basically the `mode` option
+            to be passed to the `open_file` function: 'a' means append,
+            'w' means write (i.e. overwrite the existing table, if any), and
+            'u' means update: the file is opened in append mode ('a') *and*
+            already existing rows will not be inserted but updated
+            (assuming two rows are equal if their event and station cooridnates
+            and their event time are all equal)
 
         :return: a dictionary holding information with keys:
             'total': the total number of csv rows
@@ -231,59 +220,45 @@ class GMDatabaseParser(object):
                 Note that a column with all missing values (i.e., equal to
                 'total') might be due to the column simply not in the csv.
         '''
-        db_columns = GMDatabaseTable.columns  # pylint: disable=no-member
-        if col_id:
-            assert col_id in db_columns
-        assert 'id' in db_columns
-
-        added_ids = set() if col_id else None
+#         db_columns = GMDatabaseTable.columns  # pylint: disable=no-member
+#         assert 'id' in db_columns
 
         with tables.open_file(output_path, mode='a',
-                              title=os.path.basename(output_path)) as h5file:
+                              title="Ground motion database") as h5file:
 
-            table = cls._get_table(h5file, flatfile_path, append)
-            check_existing = col_id and table.nrows > 0
-            current_id = max(chain([0], (r['id'] for r in table.iterrows())))
+            table = cls._get_table(h5file, flatfile_path, mode != 'w')
+            # current_id = max(chain([0], (r['id'] for r in table.iterrows())))
 
             total, written, missing = 0, 0, defaultdict(int)
 
             for rowdict in cls._rows(flatfile_path):
                 total += 1
 
-                # assert a record id is set:
-                if col_id and not rowdict.get(col_id, None):
-                    # this forces to log all columns as missing:
-                    rowdict = {}
-
                 if rowdict:
                     # flag to tell if table is new, or row does not exist
                     addrow = True
 
-                    if check_existing:
-                        for dbrow in table.where('%s == %s' %
-                                                 (col_id, str(rowdict[col_id]))):
+                    if mode == 'u':
+                        for tablerow in cls._alreay_existing(rowdict, table):
                             addrow = False
                             # there should be only one row
-                            for key, val in rowdict.items():
-                                dbrow[key] = val
-                            dbrow.update()
+                            missingcols = list(cls.writerow(rowdict, tablerow))
+                            tablerow.update()
 
                     if addrow:
-                        current_id += 1
-                        rowdict['id'] = current_id
-                        dbrow = table.row
-                        for key, val in rowdict.items():
-                            dbrow[key] = val
-                        dbrow.append()  # pylint: disable=no-member
+                        tablerow = table.row
+                        missingcols = list(cls.writerow(rowdict, tablerow))
+                        tablerow.append()  # pylint: disable=no-member
 
                     table.flush()
                     written += 1
+                else:
+                    missingcols = table.columnnames
 
-                    # write statistics. In case of exceptions above, all
-                    # columns are incremented
-                    for col in db_columns:
-                        if col not in rowdict:
-                            missing[col] += 1
+                # write statistics. In case of exceptions above, all
+                # columns are incremented
+                for col in missingcols:
+                    missing[col] += 1
 
             return {'total': total, 'written': written,
                     'missing_values': missing}
@@ -367,15 +342,34 @@ class GMDatabaseParser(object):
                     # custom post processing, if needed in subclasses:
                     cls.process_flatfile_row(rowdict)
 
-                    # now cast and return rowdict with only GMDataBaseTable's
-                    # columns:
-                    cls._cast_and_reduce(rowdict, columns)
-
                 except Exception as _:
                     rowdict = {}
 
                 # yield row as dict:
                 yield rowdict
+
+    @staticmethod
+    def _alreay_existing(row, table):
+        '''yields an iterator over table with elements equal to `row`
+        according to event spatial and termporal coordinates and station
+        coordinates
+        :param row: a dict representing a flatfile csv row
+        '''
+        try:
+            condition_syntax = ('(event_time == %s) & '
+                                '(event_latitude == %s) &'
+                                '(event_longitude == %s) &'
+                                '(station_latitude == %s) &'
+                                '(station_longitude == %s)') % \
+                (row['event_time'].encode('utf8'),
+                 str(row['event_latitude']),
+                 str(row['event_longitude']),
+                 str(row['station_latitude']),
+                 str(row['station_longitude']))
+
+            return table.where(condition_syntax)
+        except KeyError:
+            return []  # mimic no row found
 
     @staticmethod
     @contextmanager
@@ -418,12 +412,13 @@ class GMDatabaseParser(object):
 
     @classmethod
     def process_flatfile_row(cls, rowdict):
-        '''do any further processing of the given `rowdict`.
-        Spectra values are already set in rowdict under the 'sa' key.
+        '''do any further processing of the given `rowdict`, a dict
+        represenitng a parsed csv row. At this point, `rowdict` keys are
+        already mapped to the :class:`GMDatabaseTable` columns (see `_mappings`
+        class attribute), spectra values are already set in `rowdict['sa']`
+        (interpolating csv spectra columns, if needed).
         This method should process `rowdict` in place, the returned value
-        is ignored.
-        Any exception is wrapped in the caller method. Try-catch it here
-        if you want different behaviour
+        is ignored. Any exception is wrapped in the caller method.
 
         :param rowdict: a row of the csv flatfile, as Python dict. Values
             are strings and will be casted to the matching Table column type
@@ -432,7 +427,8 @@ class GMDatabaseParser(object):
         pass
 
     @staticmethod
-    def datetime(year, month, day, hour=0, minute=0, second=0):
+    def datetime(year, month, day,  # pylint: disable=too-many-arguments
+                 hour=0, minute=0, second=0):
         '''Utility method which converts the given date time into ISO format
             string: '%Y-%m-%dT%H:%M:%S'
             All parameters can be integers or int-parsable strings
@@ -441,33 +437,40 @@ class GMDatabaseParser(object):
                         int(hour), int(minute), int(second)).\
             strftime('%Y-%m-%dT%H:%M:%S')
 
-    @staticmethod
-    def _cast_and_reduce(rowdict, table_ref_columns):
-        '''casts any given rowdict to the corresponding table_ref_columns
-        dtype. Removes mismatching column names from rowdict in-place'''
-        for field in list(rowdict.keys()):  # avoid mutating during iteration
-            colobj = table_ref_columns.get(field, None)
-            if colobj is not None:
-                dtype, shape = colobj.dtype.type, colobj.dtype.shape
-                # if the dtype has a subdtype, use it (don't know why
-                # it simply works for sa)
-                if getattr(colobj.dtype, 'subdtype', None):
-                    dtype, shape = colobj.dtype.subdtype
-                try:
-                    rowdict[field] = np.asarray(rowdict[field]).\
-                            astype(dtype).reshape(shape)
-                    continue
-                except Exception as _:
-                    pass
-            # field not found in columns, or cast unsuccessful: remove
-            # if the field is a GMFatabaseTable column, then
-            # the default will be set later
-            rowdict.pop(field)
+    @classmethod
+    def writerow(cls, csvrow, tablerow):
+        '''writes the content of csvrow into tablerow. Returns a list of
+        missing columns (a missing column is also a column for which
+        the csv value is invalid, i.e. it raised during assignement)'''
+        missing_colnames = []
+        for col in tablerow.table.colnames:  # sorted a->z, but we dont care
+            if col not in csvrow:
+                missing_colnames.append(col)
+                continue
+            try:
+                # remember: if val is a castable string -> ok
+                #   (e.g. table column float, val is '5.5')
+                # if val is out of bounds for the specific type, -> ok
+                #   (casted to the closest value)
+                # if val is scalar and the table column is a N length array,
+                # val it is broadcasted
+                #   (val= 5, then tablerow will have a np.array of N 5s)
+                # TypeError is raised when there is a non castable element
+                #   (e.g. 'abc' for a Float column): in this case pass
+                tablerow[col] = csvrow[col]
+#                 if isinstance(tablerow[col], float):
+#                     if tablerow[col] != float(csvrow[col]):
+#                         fg = 9  # @UnusedVariable
+
+            except (ValueError, TypeError):
+                missing_colnames.append(col)
+
+        return missing_colnames
 
 #     def __init__(self, flatfile_location):
 #         """
 #         Instantiation will create target database directory
-# 
+#
 #         :param dbtype:
 #             Instance of :class:
 #                 smtk.parsers.base_database_parser.SMDatabaseReader
