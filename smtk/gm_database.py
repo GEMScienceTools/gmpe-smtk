@@ -25,6 +25,7 @@ import os
 import sys
 import re
 import csv
+import hashlib
 from datetime import datetime
 from itertools import chain
 from contextlib import contextmanager
@@ -37,37 +38,81 @@ import numpy as np
 import h5py
 from tables.description import IsDescription, Int64Col, StringCol, \
     Int16Col, UInt16Col, Float32Col, Float16Col, TimeCol, BoolCol, \
-    UInt8Col, Float64Col, Int8Col, UInt64Col, UInt32Col
+    UInt8Col, Float64Col, Int8Col, UInt64Col, UInt32Col, EnumCol
 import smtk.intensity_measures as ims
-import smtk.sm_utils as utils
+from smtk import sm_utils
 from smtk.parsers.base_database_parser import get_float
-SCALAR_LIST = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia", "D5-95", "Housner"]
 
-if sys.version_info[0] >= 3:
-    # In Python 3 pickle uses cPickle by default
-    import pickle
-else:
-    # In Python 2 use cPickle
-    import cPickle as pickle
+# rewrite pytables description column types to account for default
+# values meaning MISSING, and bounds (min and max)
+def _col(col_class, **kwargs):
+    '''utility function returning a pytables Column. The rationale behind
+    this simple wrapper (`_col(StringCol, ...)` equals `StringCol(...)`)
+    is twofold:
+
+    1. pytables do not allow Nones, which would be perfect to specify missing
+    values. Therefore, a Gm database table column needs to use the
+    column default ('dflt') as missing value.
+    This function builds the default automatically, when not explicitly
+    provided as 'dflt' argument in `kwargs`: 0 for Unsigned integers, the
+    empty string for Enum (if the empty string is not provided in the `enum`
+    argument, it will be inserted), nan for floats and complex types, the
+    empty string for `StringCol`s.
+    This way, a default value which can be reasonably also considered as
+    missing value is set (only exception: `BoolCol`s, for which we do not
+    have a third value which can be considered missing)
+    2. pytables columns do not allow bounds (min, max), which can be
+    specified here as 'min' and 'max' arguments. None or missing values will
+    mean: no check on the relative bound (any value allowed)
+
+    :param: col_class: the pytables column class, e.g. StringCol
+    :param kwargs: keyword argument to be passed to `col_class` during
+        initialization. Note thtat the `dflt` parameter, if provided
+        will be overridden. See the `atom` module of pytables for a list
+        of arguments for each Column class
+    '''
+    if 'dflt' not in kwargs:
+        if col_class == StringCol:
+            dflt = b''
+        elif col_class == EnumCol:
+            dflt = ''
+            if dflt not in kwargs['enum']:
+                kwargs['enum'].insert(0, dflt)
+        elif col_class == BoolCol:
+            dflt = False
+        elif col_class.__name__.startswith('Complex'):
+            dflt = complex(float('nan'), float('nan'))
+        elif col_class.__name__.startswith('Float'):
+            dflt = float('nan')
+        elif col_class.__name__.startswith('UInt'):
+            dflt = 0
+        elif col_class.__name__.startswith('Int8'):
+            dflt = np.iinfo(np.int8).min
+        elif col_class.__name__.startswith('Int16'):
+            dflt = np.iinfo(np.int16).min
+        elif col_class.__name__.startswith('Int32'):
+            dflt = np.iinfo(np.int32).min
+        elif col_class.__name__.startswith('Int64'):
+            dflt = np.iinfo(np.int64).min
+        elif col_class.__name__.startswith('Int'):
+            dflt = np.iinfo(np.int).min
+
+        kwargs['dflt'] = dflt
+    min_, max_ = kwargs.pop('min', None), kwargs.pop('max', None) 
+    ret = col_class(**kwargs)
+    ret.min_value, ret.max_value = min_, max_
+    return ret
 
 
 class GMDatabaseTable(IsDescription):
     """
-    FIXME: update docs
-    Constructor of an hdf5-pkl pseudo-database.
+    Implements a GMDatabase as `pytable.IsDescription` class.
+    This class is the skeleton of the data structure of HDF5 tables, which
+    map flatfiles data (in CSV) in an HDF5 file.
 
-    :param dbtype:
-        Metadata reader as instance of class :class: SMDatabaseReader
-    :param str location:
-        Path to location of metadata (either directory name or file name)
-    :param database:
-        Strong motion database as instance of :class: SMDatabase
-    :param time_series_parser:
-        Parser for time series files, as instance of :class: SMTimeSeriesReader
-    :param spectra_parser:
-        Parser for spectra files, as instance of :class: SMSpectraReader
-    :param str metafile:
-        Path to output metadata file
+    **Remember that, with the exception of `BoolCol`s, default values
+    are interpreted as 'missing'. Usually, no dflt argument has to be passed
+    here as it will be set by default (see `_col` function)
     """
     # FIXME: check DEFAULTS. nan for floats, empty string for strings,
     # and -999? for integers? what for datetimes? empty strings? think about it?
@@ -78,91 +123,99 @@ class GMDatabaseTable(IsDescription):
     # IntCol will be set as the minimum allowed value (default is 0, not fine)
     # TimeCol: see int col
 
+    # what = column(StringCol, 16)
     # id = UInt32Col()  # no default. Starts from 1 incrementally
     # max id: 4,294,967,295
-    record_id = StringCol(20)
-    event_id = StringCol(40)
-    event_name = StringCol(40)
-    event_country = StringCol(30, dflt='unknown')
-    event_time = StringCol(19, dflt='')  # In ISO Format YYYY-MM-DDTHH:mm:ss
+    record_id = _col(StringCol, itemsize=20)
+    event_id = _col(StringCol, itemsize=20)
+    event_name = _col(StringCol, itemsize=40)
+    event_country = _col(StringCol, itemsize=30)
+    event_time = _col(StringCol, itemsize=19)  # In ISO Format YYYY-MM-DDTHH:mm:ss
     # Note: if we want to support YYYY-MM-DD only be aware that:
     # YYYY-MM-DD == YYYY-MM-DDT00:00:00
     # Note2: no support for microseconds for the moment
-    event_latitude = Float64Col(dflt=float('nan'))
-    event_longitude = Float64Col(dflt=float('nan'))
-    hypocenter_depth = Float32Col(dflt=float('nan'))
-    magnitude = Float16Col(dflt=float('nan'))
-    magnitude_type = StringCol(5, dflt='')
-    magnitude_uncertainty = Float32Col(dflt=float('nan'))
-    tectonic_environment = StringCol(30, dflt='')
-    strike_1 = Float32Col(dflt=float('nan'))
-    strike_2 = Float32Col(dflt=float('nan'))
-    dip_1 = Float32Col(dflt=float('nan'))
-    dip_2 = Float32Col(dflt=float('nan'))
-    rake_1 = Float32Col(dflt=float('nan'))
-    rake_2 = Float32Col(dflt=float('nan'))
-    style_of_faulting = Float32Col(dflt=float('nan'))
-    depth_top_of_rupture = Float32Col(dflt=float('nan'))
-    rupture_length = Float32Col(dflt=float('nan'))
-    rupture_width = Float32Col(dflt=float('nan'))
-    station_id = StringCol(15, dflt='')
-    station_name = StringCol(40, dflt='')
-    # station_name = StringCol(30, dflt='unknown')
-    station_latitude = Float64Col(dflt=float('nan'))
-    station_longitude = Float64Col(dflt=float('nan'))
-    station_elevation = Float32Col(dflt=float('nan'))
-    vs30 = Float32Col(dflt=float('nan'))
-    vs30_measured = BoolCol(dflt=True)
-    vs30_sigma = Float32Col(dflt=float('nan'))
-    depth_to_basement = Float32Col(dflt=float('nan'))
-    z1 = Float32Col(dflt=float('nan'))
-    z2pt5 = Float32Col(dflt=float('nan'))
-    repi = Float32Col(dflt=float('nan'))  # epicentral_distance
-    rhypo = Float32Col(dflt=float('nan'))  # Float32Col
-    rjb = Float32Col(dflt=float('nan'))  # joyner_boore_distance
-    rrup = Float32Col(dflt=float('nan'))  # rupture_distance
-    rx = Float32Col(dflt=float('nan'))
-    ry0 = Float32Col(dflt=float('nan'))
-    azimuth = Float32Col(dflt=float('nan'))
-    digital_recording = BoolCol(dflt=True)
-    acceleration_unit = StringCol(8, dflt='')  # (cm/s/s; m/s/s; g)',
-    type_of_filter = StringCol(25, dflt='')
-    npass = Int8Col(dflt=-128)
-    nroll = Float32Col(dflt=float('nan'))
-    hp_h1 = Float32Col(dflt=float('nan'))
-    hp_h2 = Float32Col(dflt=float('nan'))
-    lp_h1 = Float32Col(dflt=float('nan'))
-    lp_h2 = Float32Col(dflt=float('nan'))
-    factor = Float32Col(dflt=float('nan'))
-    lowest_usable_frequency_h1 = Float32Col(dflt=float('nan'))
-    lowest_usable_frequency_h2 = Float32Col(dflt=float('nan'))
-    lowest_usable_frequency_avg = Float32Col(dflt=float('nan'))
-    highest_usable_frequency_h1 = Float32Col(dflt=float('nan'))
-    highest_usable_frequency_h2 = Float32Col(dflt=float('nan'))
-    highest_usable_frequency_avg = Float32Col(dflt=float('nan'))
-    pga = Float64Col(dflt=float('nan'))
-    pgv = Float64Col(dflt=float('nan'))
-    pgd = Float64Col(dflt=float('nan'))
-    duration_5_75 = Float64Col(dflt=float('nan'))
-    duration_5_95 = Float64Col(dflt=float('nan'))
-    arias_intensity = Float64Col(dflt=float('nan'))
-    cav = Float64Col(dflt=float('nan'))
-    sa = Float64Col(shape=(111,), dflt=float('nan'))
+    event_latitude = _col(Float64Col, min=-90, max=90)
+    event_longitude = _col(Float64Col, min=-180, max=180)
+    hypocenter_depth = _col(Float32Col)
+    magnitude = _col(Float16Col)
+    magnitude_type = _col(StringCol, itemsize=5)
+    magnitude_uncertainty = _col(Float32Col)
+    tectonic_environment = _col(StringCol, itemsize=30)
+    strike_1 = _col(Float32Col)
+    strike_2 = _col(Float32Col)
+    dip_1 = _col(Float32Col)
+    dip_2 = _col(Float32Col)
+    rake_1 = _col(Float32Col)
+    rake_2 = _col(Float32Col)
+    style_of_faulting = _col(Float32Col)
+    depth_top_of_rupture = _col(Float32Col)
+    rupture_length = _col(Float32Col)
+    rupture_width = _col(Float32Col)
+    station_id = _col(StringCol, itemsize=20)
+    station_name = _col(StringCol, itemsize=40)
+    station_latitude = _col(Float64Col, min=-90, max=90)
+    station_longitude = _col(Float64Col, min=-180, max=180)
+    station_elevation = _col(Float32Col)
+    vs30 = _col(Float32Col)
+    vs30_measured = _col(BoolCol, dflt=True)
+    vs30_sigma = _col(Float32Col)
+    depth_to_basement = _col(Float32Col)
+    z1 = _col(Float32Col)
+    z2pt5 = _col(Float32Col)
+    repi = _col(Float32Col)  # epicentral_distance
+    rhypo = _col(Float32Col)  # Float32Col
+    rjb = _col(Float32Col)  # joyner_boore_distance
+    rrup = _col(Float32Col)  # rupture_distance
+    rx = _col(Float32Col)
+    ry0 = _col(Float32Col)
+    azimuth = _col(Float32Col)
+    digital_recording = _col(BoolCol, dflt=True)
+#     acceleration_unit = _col(EnumCol, enum=['cm/s/s', 'm/s/s', 'g'],
+#                              base='uint8')
+    type_of_filter = _col(StringCol, itemsize=25)
+    npass = _col(Int8Col)
+    nroll = _col(Float32Col)
+    hp_h1 = _col(Float32Col)
+    hp_h2 = _col(Float32Col)
+    lp_h1 = _col(Float32Col)
+    lp_h2 = _col(Float32Col)
+    factor = _col(Float32Col)
+    lowest_usable_frequency_h1 = _col(Float32Col)
+    lowest_usable_frequency_h2 = _col(Float32Col)
+    lowest_usable_frequency_avg = _col(Float32Col)
+    highest_usable_frequency_h1 = _col(Float32Col)
+    highest_usable_frequency_h2 = _col(Float32Col)
+    highest_usable_frequency_avg = _col(Float32Col)
+    pga = _col(Float64Col)
+    pgv = _col(Float64Col)
+    pgd = _col(Float64Col)
+    duration_5_75 = _col(Float64Col)
+    duration_5_95 = _col(Float64Col)
+    arias_intensity = _col(Float64Col)
+    cav = _col(Float64Col)
+    sa = _col(Float64Col, shape=(111,))
 
 
 class GMDatabaseParser(object):
     '''
-    Implements a base GMDatabase parser, i.e. a class converting
-    flatfiles in csv format into a GmDatabase is described by
-    the :class:`GmDatabaseTable`, which is a pytables Table
-    representing heterogeneous datasets in an HDF5 file.
-    The parsing is done in the `parse` method.
+    Implements a base class for parsing flatfiles in csv format into
+    GmDatabase files in HDF5 format. The latter are Table-like heterogeneous
+    datasets (each representing a flatfile) organized in subfolders-like
+    structures called groups.
+    See the :class:`GmDatabaseTable` for a description of the Table columns
+    and types.
 
-    Subclasses should override the _mapping dict where flatfile specific
-    column names are mapped to :class:`GmDatabaseTable` column names, and
-    optionally the `process_flatfile_row` method where additional operation
-    is performed in-place on each flatfile row.
+    The parsing is done in the `parse` method. The typical workflow
+    is to implement a new subclass for each new flatfile release.
+    Subclasses should override the `mapping` dict where flatfile
+    specific column names are mapped to :class:`GmDatabaseTable` column names
+    and optionally the `parse_row` method where additional operation
+    is performed in-place on each flatfile row. For more details, see
+    the :method:`parse_row` method docstring
     '''
+    _accel_units = ["g", "m/s/s", "m/s**2", "m/s^2",
+                    "cm/s/s", "cm/s**2", "cm/s^2"]
+
     _ref_periods = [0.010, 0.020, 0.022, 0.025, 0.029, 0.030, 0.032,
                     0.035, 0.036, 0.040, 0.042, 0.044, 0.045, 0.046,
                     0.048, 0.050, 0.055, 0.060, 0.065, 0.067, 0.070,
@@ -180,13 +233,52 @@ class GMDatabaseParser(object):
                     7.000, 7.500, 8.000, 8.500, 9.000, 9.500, 10.000,
                     11.000, 12.000, 13.000, 14.000, 15.000, 20.000]
 
-    # this dict should re-map flatfile columns (string) into standard
-    # GMDatabase column name (string). If not empty, the mapping will
-    # be performed as first operation on each flatfile row scanned
-    _mappings = {}
+    # the regular expression used to parse SAs periods. Note capturing
+    # group for the SA period:
+    _sa_periods_re = re.compile(r'^\s*sa\s*\((.*)\)\s*$',
+                                re.IGNORECASE)  # @UndefinedVariable
+
+    # the regular expression used to parse PGA periods. Note capturing
+    # group for the PGA unit
+    _pga_unit_re = re.compile(r'^\s*pga\s*\((.*)\)\s*$',
+                              re.IGNORECASE)  # @UndefinedVariable
+
+    # this field is a list of strings telling which are the column names
+    # of the event time. If:
+    # 1. A list of a single item => trivial case, it denotes the event time
+    # column, which must be supplied as ISO format
+    # 2. A list of length 3: => then it denotes the column names of the year,
+    # month and day, respectively, all three int-parsable strings
+    # 3. A list of length 6: then it denotes the column names of the
+    # year, month, day hour minutes seconds, repsectively, all six int-parsable
+    # strings
+    _event_time_colnames = ['year', 'month', 'day', 'hour', 'minute', 'second']
+
+    # The csv column names will be then converted according to the
+    # `_mappings` dict below, where a csv flatfile column is mapped to its
+    # corresponding Gm database column name. The mapping should take care of
+    # all 1 to 1 mappings. This is the first operation performed on any row.
+    # When providing the mappings, keep in mind that the algorithm
+    # after the mapping will perform the following operations:
+    # 1. Columns matching `_sa_periods_re` will be parsed and log-log
+    # interpolated with '_ref_periods'. The resulting data will be put in the
+    # Gm database 'sa' column.
+    # 2. If a column 'event_time' is missing, then the program searches
+    # for '_event_time_colnames' (ignoring case) and parses the date. The
+    # resulting date (in ISO formatted string) will be put in the Gm databse
+    # column 'event_time'.
+    # 3. If a column matching `_pga_unit_re` is found, then the unit is
+    # stored and the Gm databse column 'pga' is filled with the PGA value,
+    # converted to cm/s/s.
+    # 4. The `parse_row` method is called. Therein, the user should
+    # implement any more complex operation
+    # 5 a row is written, the columns 'event_id' , 'station_id' and
+    # 'record_id' are automatically filled to uniquely identify their
+    # respective entitites
+    mappings = {}
 
     @classmethod
-    def parse(cls, flatfile_path, output_path, mode='u'):
+    def parse(cls, flatfile_path, output_path, mode='a'):
         '''Parses a flat file and writes its content in the GM database file
         `output_path`, which is a HDF5 organized hierarchically in groups
         (sort of sub-directories) each of which identifies a parsed
@@ -200,176 +292,215 @@ class GMDatabaseParser(object):
         :param flatfile_path: string denoting the path to the input CSV
             flatfile
         :param output_path: string: path to the output GM database file.
-        :param mode: either 'w', 'a' or 'u'. It is basically the `mode` option
-            to be passed to the `open_file` function: 'a' means append,
-            'w' means write (i.e. overwrite the existing table, if any), and
-            'u' means update: the file is opened in append mode ('a') *and*
-            already existing rows will not be inserted but updated
-            (assuming two rows are equal if their event and station cooridnates
-            and their event time are all equal)
-
+        :param mode: either 'w' or 'a'. It is NOT the `mode` option of the
+            `open_file` function (which is always 'a'): 'a' means append to
+            the existing **table**, if it exists (otherwise create a new one),
+            'w' means write (i.e. overwrite the existing table, if any).
+            In case of 'a' and the table exists, it is up to the user not to
+            add duplicated entries
         :return: a dictionary holding information with keys:
             'total': the total number of csv rows
-            'written: the number of parsed rows written on the db table
-            'missing_values: a dict with keys the table column names, mapped
+            'written': the number of parsed rows written on the db table
+            'error': a list of integers denoting the position (from
+                0 = first row) of the parsed rows not written on the db table
+                because of errors
+            'missing_values': a dict with table column names as keys, mapped
                 to the number of rows which have missing values for that
-                column (e.g., parsing errors, empty values in the csv).
-                Missing values are stored in the GM database with the
-                column default, which is usually NaN for floats, the minimum
-                possible value for integers, the empty string for strings.
-                Note that a column with all missing values (i.e., equal to
-                'total') might be due to the column simply not in the csv.
+                column (e.g., invalid/empty values in the csv, or most
+                likely, a column not found, if the number of missing values
+                equals 'total').
+            'outofbound_values': a dict with table column names as keys,
+                mapped to the number of rows which had out-of-bound values for
+                that column.
+
+            Missing and out-of-bound values are stored in the GM database with
+            the column default, which is usually NaN for floats, the minimum
+            possible value for integers, the empty string for strings
         '''
-#         db_columns = GMDatabaseTable.columns  # pylint: disable=no-member
-#         assert 'id' in db_columns
+        dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
+        with cls.get_table(output_path, dbname, mode) as table:
 
-        with tables.open_file(output_path, mode='a',
-                              title="Ground motion database") as h5file:
+            i, error, missing, outofbound = \
+                -1, [], defaultdict(int), defaultdict(int)
 
-            table = cls._get_table(h5file, flatfile_path, mode != 'w')
-            # current_id = max(chain([0], (r['id'] for r in table.iterrows())))
-
-            total, written, missing = 0, 0, defaultdict(int)
-
-            for rowdict in cls._rows(flatfile_path):
-                total += 1
+            for i, rowdict in enumerate(cls._rows(flatfile_path)):
 
                 if rowdict:
-                    # flag to tell if table is new, or row does not exist
-                    addrow = True
-
-                    if mode == 'u':
-                        for tablerow in cls._alreay_existing(rowdict, table):
-                            addrow = False
-                            # there should be only one row
-                            missingcols = list(cls.writerow(rowdict, tablerow))
-                            tablerow.update()
-
-                    if addrow:
-                        tablerow = table.row
-                        missingcols = list(cls.writerow(rowdict, tablerow))
-                        tablerow.append()  # pylint: disable=no-member
-
+                    tablerow = table.row
+                    missingcols, outofboundcols = \
+                        cls._writerow(rowdict, tablerow, dbname)
+                    tablerow.append()  # pylint: disable=no-member
                     table.flush()
-                    written += 1
                 else:
-                    missingcols = table.columnnames
+                    missingcols, outofboundcols = [], []
+                    error.append(i)
 
-                # write statistics. In case of exceptions above, all
-                # columns are incremented
+                # write statistics:
                 for col in missingcols:
                     missing[col] += 1
+                for col in outofboundcols:
+                    outofbound[col] += 1
 
-            return {'total': total, 'written': written,
-                    'missing_values': missing}
+            return {'total': i+1, 'written': i+1-len(error), 'error': error,
+                    'missing_values': missing, 'outofbound_values': outofbound}
 
     @staticmethod
-    def _get_table(h5file, flatfile_path, append):
-        dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
-        dbpath = "/%s" % dbname
-        group = None
-        try:
-            group = h5file.get_node(dbpath, classname=Group.__name__)
-            if not append:
-                h5file.remove_node(dbpath, recursive=True)
-                group = None
-        except NoSuchNodeError as _:
-            pass
-        if group is None:
-            group = h5file.create_group(h5file.root, dbname)
+    @contextmanager
+    def get_table(filepath, name, mode='r'):
+        '''Yields a pytable Table object representing a Gm database
+        in the given hdf5 file `filepath`. Creates such a table if mode != 'r'
+        and the table does not exists.
 
-        table = None
-        tablename = 'table'
-        try:
-            table = h5file.get_node('%s/%s' % (dbpath, tablename),
-                                    classname=Table.__name__)
-        except NoSuchNodeError as _:
-            pass
-        if table is None:
-            table = h5file.create_table(group, 'table',
-                                        description=GMDatabaseTable)
-        return table
+        Example:
+        ```
+            with GmDatabaseParser.get_table(filepath, name, 'r') as table:
+                # ... do your operation here
+        ```
+
+        :param filepath: the string denoting the path to the hdf file
+            previously created with this method. If `mode`
+            is 'r', the file must exist
+        :param name: the name of the database table
+        :param mode: the mode ('a', 'r', 'w') whereby the **table** is opened.
+            I.e., 'w' does not overwrites the whole file, but the table data.
+            More specifically:
+            'r': opens file in 'r' mode, raises if the file or the table in
+                the file content where not found
+            'w': opens file in 'a' mode, creates the table if it does not
+                exists, clears all table data if it exists. Eventually it
+                returns the table
+            'a': open file in 'a' mode, creates the table if it does not
+                exists, does nothing otherwise. Eventually it returns the table
+
+        :raises: :class:`tables.exceptions.NoSuchNodeError` if mode is 'r'
+            and the table was not found in `filepath`, IOError if the
+            file does not exist
+        '''
+        with tables.open_file(filepath, mode if mode == 'r' else 'a') \
+                as h5file:
+            table = None
+            tablename = 'table'
+            tablepath = '/%s/%s' % (name, tablename)
+            try:
+                table = h5file.get_node(tablepath, classname=Table.__name__)
+                if mode == 'w':
+                    h5file.remove_node(tablepath, recursive=True)
+                    table = None
+            except NoSuchNodeError as _:
+                if mode == 'r':
+                    raise
+                table = None
+                # create parent group node
+                try:
+                    h5file.get_node("/%s" % name, classname=Group.__name__)
+                except NoSuchNodeError as _:
+                    h5file.create_group(h5file.root, name)
+
+            if table is None:
+                table = h5file.create_table("/%s" % name, tablename,
+                                            description=GMDatabaseTable)
+            yield table
 
     @classmethod
-    def _rows(cls, flatfile_path):
+    def _rows(cls, flatfile_path):  # pylint: disable=too-many-locals
         '''Yields each row from the CSV file `flatfile_path` as
         dictionary, after performing SA conversion and running custom code
-        implemented in `cls._process_flatfile_row` (if overridden by
+        implemented in `cls.parse_row` (if overridden by
         subclasses). Yields empty dict in case of exceptions'''
-        # For each  row of the csv:
-        # maps each column of the csv to the values of the class attribute
-        # _mappings (dict). Consider e.g. times given by columns or iso format
-        # strings
-        # Sanity check (how to do?): the main idea is to write defaults for
-        # errors
-        # or missing columns and write the row anyway
-        # row = cls.row_from_flatfile(rowdict)
-        # For sa: get columns starting with sa(whatever) extract the periods
-        # and then loglog interpolate with the _ref_periods
-        # Append the record into a list of recprds
-        # Finally, return the list of records
         ref_log_periods = np.log10(cls._ref_periods)
-        columns = GMDatabaseTable.columns  # pylint: disable=no-member
-        assert 'sa' in columns
-        mappings = getattr(cls, '_mappings', {})
-        spectra_fieldnames, spectra_periods = None, None
-
+        mappings = getattr(cls, 'mappings', {})
         with cls._get_csv_reader(flatfile_path) as reader:
+
+            newfieldnames = [mappings[f] if f in mappings else f for f in
+                             reader.fieldnames]
+            # get spectra fieldnames and priods:
+            try:
+                spectra_fieldnames, spectra_periods =\
+                    cls._get_sa_columns(newfieldnames)
+            except Exception as exc:
+                raise ValueError('Unable to parse SA columns '
+                                 '("sa(<period>)"): %s' % str(exc))
+
+            # get event time fieldname(s):
+            try:
+                evtime_fieldnames = \
+                    cls._get_event_time_columns(newfieldnames, 'event_time')
+            except Exception as exc:
+                raise ValueError('Unable to parse event '
+                                 'time column(s): %s' % str(exc))
+
+            # get pga fieldname and units:
+            try:
+                pga_col, pga_unit = cls._get_pga_column(newfieldnames)
+            except Exception as exc:
+                raise ValueError('Unable to parse PGA column '
+                                 '("pga(<unit>)"): %s' % str(exc))
 
             for rowdict in reader:
                 # re-map keys:
                 for k in mappings:
                     rowdict[mappings[k]] = rowdict.pop(k)
-                # get spectra fields and periods (only first time):
-                # this has to be done here after re-mapping
-                if spectra_fieldnames is None:
-                    spectra_fieldnames, spectra_periods = [], []
-                    try:
-                        spectra_fieldnames, spectra_periods =\
-                            cls._get_sa_fieldnames_from_csv(rowdict.keys())
-                    except Exception as exc:
-                        raise ValueError('Unable to parse SA columns: %s' %
-                                         str(exc))
+
+                # assign values (sa, event time, pga):
                 try:
-                    # build sa (with interpolation if needed) and set the field
-                    # in rowdict:
-                    if spectra_fieldnames:
-                        sas = cls._get_sa_values(rowdict, spectra_fieldnames,
-                                                 ref_log_periods,
-                                                 spectra_periods)
-                        rowdict['sa'] = sas
+                    rowdict['sa'] = cls._get_sa(rowdict, spectra_fieldnames,
+                                                ref_log_periods,
+                                                spectra_periods)
+                except Exception as _:  # pylint: disable=broad-except
+                    pass
 
+                try:
+                    rowdict['event_time'] = \
+                        cls._get_event_time(rowdict, evtime_fieldnames)
+                except Exception as _:  # pylint: disable=broad-except
+                    pass
+
+                try:
+                    rowdict['pga'] = cls._get_pga(rowdict, pga_col, pga_unit)
+                except Exception as _:  # pylint: disable=broad-except
+                    pass
+
+                try:
                     # custom post processing, if needed in subclasses:
-                    cls.process_flatfile_row(rowdict)
+                    cls.parse_row(rowdict)
+                except Exception as _:  # pylint: disable=broad-except
+                    pass
 
-                except Exception as _:
+                if not cls._sanity_check(rowdict):
                     rowdict = {}
 
                 # yield row as dict:
                 yield rowdict
 
-    @staticmethod
-    def _alreay_existing(row, table):
-        '''yields an iterator over table with elements equal to `row`
-        according to event spatial and termporal coordinates and station
-        coordinates
-        :param row: a dict representing a flatfile csv row
-        '''
-        try:
-            condition_syntax = ('(event_time == %s) & '
-                                '(event_latitude == %s) &'
-                                '(event_longitude == %s) &'
-                                '(station_latitude == %s) &'
-                                '(station_longitude == %s)') % \
-                (row['event_time'].encode('utf8'),
-                 str(row['event_latitude']),
-                 str(row['event_longitude']),
-                 str(row['station_latitude']),
-                 str(row['station_longitude']))
+    @classmethod
+    def _sanity_check(cls, rowdict):
+        '''performs sanity checks on the csv row `rowdict` before
+        writing it. Note that  pytables does not support roll backs,
+        and when closing the file pending data is automatically flushed.
+        Therefore, the data has to be checked before, on the csv row'''
+        # for the moment, just do a pga/sa[0] check for unit consistency
+        # other methods might be added in the future
+        return cls._pga_sa_unit_ok(rowdict)
 
-            return table.where(condition_syntax)
-        except KeyError:
-            return []  # mimic no row found
+    @classmethod
+    def _pga_sa_unit_ok(cls, rowdict):
+        '''Checks that pga unit and sa unit are in accordance
+        '''
+        # if the PGA and the acceleration in the shortest period of the SA
+        # columns differ by more than an order of magnitude then certainly
+        # there is something wrong and the units of the PGA and SA are not
+        # in agreement and an error should be raised.
+        try:
+            pga, sa0 = float(rowdict['pga']) / 981., float(rowdict['sa'][0])
+            retol = abs(max(pga, sa0) / min(pga, sa0))
+            if not np.isnan(retol) and round(retol) >= 10:
+                return False
+        except Exception as _:  # disable=bare-except
+            # it might seem weird to return true on exceptions, but this method
+            # should only check wheather there is certainly a unit
+            # mismatch between sa and pga, and int that case only return True
+            pass
+        return True
 
     @staticmethod
     @contextmanager
@@ -383,16 +514,15 @@ class GMDatabaseParser(object):
                 csv.reader(csvfile)
             yield reader
 
-    @staticmethod
-    def _get_sa_fieldnames_from_csv(fieldnames):
+    @classmethod
+    def _get_sa_columns(cls, csv_fieldnames):
         """Returns the field names, the spectra fieldnames and the periods
         (numoy array) of e.g., a parsed csv reader's fieldnames
         """
         spectra_fieldnames = []
         periods = []
-        reg = re.compile(r'^SA\(([^)]+?)\)$',
-                         flags=re.IGNORECASE)  # @UndefinedVariable
-        for fname in fieldnames:
+        reg = cls._sa_periods_re
+        for fname in csv_fieldnames:
             match = reg.match(fname)
             if match:
                 periods.append(float(match.group(1)))
@@ -401,8 +531,7 @@ class GMDatabaseParser(object):
         return spectra_fieldnames, np.array(periods)
 
     @staticmethod
-    def _get_sa_values(rowdict, spectra_fieldnames, ref_log_periods,
-                       spectra_periods):
+    def _get_sa(rowdict, spectra_fieldnames, ref_log_periods, spectra_periods):
         '''gets sa values with log log interpolation if needed'''
         sa_values = np.array([rowdict.get(key) for key in spectra_fieldnames],
                              dtype=float)
@@ -411,39 +540,105 @@ class GMDatabaseParser(object):
         return np.power(10.0, np.interp(ref_log_periods, logx, logy))
 
     @classmethod
-    def process_flatfile_row(cls, rowdict):
-        '''do any further processing of the given `rowdict`, a dict
-        represenitng a parsed csv row. At this point, `rowdict` keys are
-        already mapped to the :class:`GMDatabaseTable` columns (see `_mappings`
-        class attribute), spectra values are already set in `rowdict['sa']`
-        (interpolating csv spectra columns, if needed).
-        This method should process `rowdict` in place, the returned value
-        is ignored. Any exception is wrapped in the caller method.
+    def _get_event_time_columns(cls, csv_fieldnames, default_colname):
+        '''returns the event time column names'''
+        if default_colname in csv_fieldnames:
+            return [default_colname]
+        evtime_defnames = {_.lower(): i for i, _ in
+                           enumerate(cls._event_time_colnames)}
+        evtime_names = [None] * 6
+        for fname in csv_fieldnames:
+            index = evtime_defnames.get(fname.lower(), None)
+            if index is not None:
+                evtime_names[index] = fname
 
-        :param rowdict: a row of the csv flatfile, as Python dict. Values
-            are strings and will be casted to the matching Table column type
-            after this method call
+        for _, caption in zip(evtime_names, ['year', 'month', 'day']):
+            if _ is None:
+                raise Exception('column "%s" not found' % caption)
+
+        return evtime_names
+
+    @classmethod
+    def _get_event_time(cls, rowdict, evtime_fieldnames):
+        '''returns the event time column names'''
+        args = []
+        for i, fieldname in enumerate(evtime_fieldnames):
+            args.append(int(rowdict[fieldname] if i < 3 else
+                            rowdict.get(fieldname, 0)))
+
+        dtm = None
+        if len(evtime_fieldnames) == 1:
+            formats_ = ['%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S',
+                        '%Y-%m-%d']
+            for frmt in formats_:
+                try:
+                    dtm = datetime.strptime(args[0], frmt)
+                    break
+                except ValueError:
+                    pass
+            else:
+                raise ValueError('unparsable date-time string')
+        else:
+            dtm = datetime(*args)
+
+        return dtm.strftime('%Y-%m-%dT%H:%M:%S')
+
+    @classmethod
+    def _get_pga_column(cls, csv_fieldnames):
+        reg = cls._pga_unit_re
+        for fname in csv_fieldnames:
+            match = reg.match(fname)
+            if match:
+                unit = match.group(1)
+                if unit not in cls._accel_units:
+                    raise Exception('unit not in %s' % str(cls._accel_units))
+                return fname, unit
+        raise Exception('no matching column found')
+
+    @classmethod
+    def _get_pga(cls, rowdict, pga_column, pga_unit):
+        '''Returns the pga value from the given `rowdict[pga_column]`
+        converted to cm/^2
+        '''
+        return sm_utils.convert_accel_units(float(rowdict[pga_column]),
+                                            pga_unit)
+
+    @classmethod
+    def parse_row(cls, rowdict):
+        '''This method is intended to be overridden by subclasses (by default
+        is no-op) to perform any further operation on the given csv row
+        `rowdict` before writing it to the GM databse file.
+
+        Please **keep in mind that**:
+
+        1. This method should process `rowdict` in place, the returned value is
+           ignored. Any exception raised here is wrapped in the caller method.
+        2. `rowdict` keys might not be the same as the csv
+           field names (first csv row). See `mappings` class attribute
+        3. The values of `rowdict` are all strings, i.e. they have still to be
+           parsed to the correct column type, except those mapped to the keys
+           'sa', 'pga' and 'event_time': if present in the csv field names,
+           their values have been already set (in case of errors, their
+           values are left as they were in the csv).
+        4. the `rowdict` keys 'event_id', 'station_id' and 'record_id' are
+           reserved and their values will be anyway overridden, as they
+           must represent hash string whereby we might weant to compare same
+           events, stations and records, respectively
+
+        :param rowdict: a row of the csv flatfile, as Python dict
         '''
         pass
 
-    @staticmethod
-    def datetime(year, month, day,  # pylint: disable=too-many-arguments
-                 hour=0, minute=0, second=0):
-        '''Utility method which converts the given date time into ISO format
-            string: '%Y-%m-%dT%H:%M:%S'
-            All parameters can be integers or int-parsable strings
-        '''
-        return datetime(int(year), int(month), int(day),
-                        int(hour), int(minute), int(second)).\
-            strftime('%Y-%m-%dT%H:%M:%S')
-
     @classmethod
-    def writerow(cls, csvrow, tablerow):
-        '''writes the content of csvrow into tablerow. Returns a list of
-        missing columns (a missing column is also a column for which
-        the csv value is invalid, i.e. it raised during assignement)'''
-        missing_colnames = []
-        for col in tablerow.table.colnames:  # sorted a->z, but we dont care
+    def _writerow(cls, csvrow, tablerow, dbname):
+        '''writes the content of csvrow into tablerow. Returns two lists:
+        The missing column names (a missing column is also a column for which
+        the csv value is invalid, i.e. it raised during assignement), and
+        the out-of-bounds column names (in case bounds were provided in the
+        column class. In this case, the default of that column will be set
+        in `tablerow`)'''
+        missing_colnames, outofbounds_colnames = [], []
+        for col, colobj in tablerow.table.coldescrs.items():
             if col not in csvrow:
                 missing_colnames.append(col)
                 continue
@@ -458,15 +653,132 @@ class GMDatabaseParser(object):
                 # TypeError is raised when there is a non castable element
                 #   (e.g. 'abc' for a Float column): in this case pass
                 tablerow[col] = csvrow[col]
-#                 if isinstance(tablerow[col], float):
-#                     if tablerow[col] != float(csvrow[col]):
-#                         fg = 9  # @UnusedVariable
+
+                bound = getattr(colobj, 'min_value', None)
+                if bound is not None and \
+                        (np.asarray(tablerow[col]) < bound).any():
+                    tablerow[col] = colobj.dflt
+                    outofbounds_colnames.append(col)
+                    continue
+
+                bound = getattr(colobj, 'max_value', None)
+                if bound is not None and \
+                        (np.asarray(tablerow[col]) > bound).any():
+                    tablerow[col] = colobj.dflt
+                    outofbounds_colnames.append(col)
+                    continue  # actually useless, but if we add code below ...
 
             except (ValueError, TypeError):
                 missing_colnames.append(col)
 
-        return missing_colnames
+        # build a record hashes as ids:
+        evid, staid, recid = cls.get_ids(tablerow, dbname)
+        tablerow['event_id'] = evid
+        tablerow['station_id'] = staid
+        tablerow['record_id'] = recid
 
+        return missing_colnames, outofbounds_colnames
+
+    @classmethod
+    def get_ids(cls, tablerow, dbname):
+        '''Returns the tuple record_id, event_id and station_id from
+        the given HDF5 row `tablerow`'''
+        toint = cls._toint
+        ids = (dbname,
+               toint(tablerow['pga']/981., 2),  # convert from cm/s^2 to g
+               toint(tablerow['event_longitude'], 5),
+               toint(tablerow['event_latitude'], 5),
+               toint(tablerow['hypocenter_depth'], 3),
+               tablerow['event_time'],
+               toint(tablerow['station_longitude'], 5),
+               toint(tablerow['station_latitude'], 5))
+        # return event_id, station_id, record_id:
+        return cls._hash(*ids[2:6]), cls._hash(*ids[6:]), cls._hash(*ids)
+
+    @classmethod
+    def _toint(cls, value, decimals):
+        '''returns an integer by multiplying value * 10^decimals
+        and rounding the result to int. Returns nan if value is nan'''
+        return value if np.isnan(value) else \
+            int(round((10**decimals)*value))
+
+    @classmethod
+    def _hash(cls, *values):
+        '''generates a 160bit (20bytes) hash bytestring which uniquely
+        identifies the given tuple of `values`.
+        The returned string is assured to be the same for equal `values`
+        tuples (note that the order of values matters).
+        Conversely, the probability of colliding hashes, i.e., returning
+        the same bytestring for two different tuples of values, is 1 in
+        100 billion for roughly 19000 hashes (roughly 10 flatfiles with
+        all different records), and apporaches 50% for for 1.42e24 hashes
+        generated (for info, see
+        https://preshing.com/20110504/hash-collision-probabilities/#small-collision-probabilities)
+
+        :param values: a list of values, either bytes, str or numeric
+            (no support for other values sofar)
+        '''
+        hashalg = hashlib.sha1()
+        # use the slash as separator s it is unlikely to be in value(s):
+        hashalg.update(b'/'.join(cls._tobytestr(v) for v in values))
+        return hashalg.digest()
+
+    @classmethod
+    def _tobytestr(cls, value):
+        '''converts a value to bytes. value can be bytes, str or numeric'''
+        if not isinstance(value, bytes):
+            value = str(value).encode('utf8')
+        return value
+
+
+def rows(filepath, dbname, *condition_expression, limit=None):
+    count = 0
+    with GMDatabaseParser.get_table(filepath, dbname, mode='r') as tbl:
+        for row in tbl.where(condition_expression):
+            if limit is None or count < limit:
+                yield row
+
+#     @staticmethod
+#     def _alreay_existing(rowdict, table):
+#         '''NOT USED (FIXME: remove) yields an iterator over table with
+#         elements equal to `rowdict`
+#         according to event spatial and termporal coordinates and station
+#         coordinates
+#         :param rowdict: a dict representing a flatfile csv rowdict
+#         '''
+#         try:
+#             condition_syntax = ('(event_time == %s) & '
+#                                 '(event_latitude == %s) &'
+#                                 '(event_longitude == %s) &'
+#                                 '(station_latitude == %s) &'
+#                                 '(station_longitude == %s)') % \
+#                 (rowdict['event_time'].encode('utf8'),
+#                  str(rowdict['event_latitude']),
+#                  str(rowdict['event_longitude']),
+#                  str(rowdict['station_latitude']),
+#                  str(rowdict['station_longitude']))
+# 
+#             for tablerow in table.where(condition_syntax):
+#                 # compare pga, convert to g (pga are assumed to be cm/s^2):
+#                 pga1_g = rowdict['pga'] / 981.
+#                 pga2_g = tablerow['pga'] / 981.
+#                 if abs(pga1_g - pga2_g) < 0.01:
+#                     yield tablerow
+#         except KeyError:
+#             return []  # mimic no rowdict found
+
+#     # station code should be a static method
+#     def get_station_id_columns(self, columns):
+#         # this should be station_id+'.'+station_code for nga west2
+#         # and net.sta.loc.cha for ESM
+# 
+#     def get_event_id_columns(self, columns):
+#         
+#     def _make_event_id(tablerow):
+#         _tablerow['event_id'] = hash(tablerow['event_latitude'],
+#                                      tablerow['event_longitude'],
+#                                      tablerow['event_depth'],
+#                                      )
 #     def __init__(self, flatfile_location):
 #         """
 #         Instantiation will create target database directory

@@ -51,17 +51,23 @@ def nextpow2(nval):
 
 def convert_accel_units(acceleration, units):
     """
-    Converts acceleration to different units
+    Converts acceleration from different units into cm/s^2
+
+    :param units: string in "g", "m/s/s", "m/s**2", "m/s^2",
+        "cm/s/s", "cm/s**2" or "cm/s^2" (in the last three cases, this
+        function simply returns `acceleration`)
+
+    :return: acceleration converted to the given units
     """
-    if units=="g":
+    if units == "g":
         return 981. * acceleration
-    elif (units=="m/s/s") or (units=="m/s**2") or (units=="m/s^2"):
+    if units in ("m/s/s", "m/s**2", "m/s^2"):
         return 100. * acceleration
-    elif (units=="cm/s/s") or (units=="cm/s**2") or (units=="cm/s^2"):
+    if units in ("cm/s/s", "cm/s**2", "cm/s^2"):
         return acceleration
-    else:
-        raise ValueError("Unrecognised time history units. "
-                         "Should take either ''g'', ''m/s/s'' or ''cm/s/s''")
+
+    raise ValueError("Unrecognised time history units. "
+                     "Should take either ''g'', ''m/s/s'' or ''cm/s/s''")
 
 
 def get_velocity_displacement(time_step, acceleration, units="cm/s/s",
