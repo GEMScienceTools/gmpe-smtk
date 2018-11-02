@@ -92,6 +92,16 @@ class GmDatabaseTestCase(unittest.TestCase):
         self.assertTrue(str(exp) == ("(vs30_measured == True) | "
                                      "(event_time <= "
                                      "b'2016-01-01T00:00:00')"))
+        exp = ~expr('vs30_measured', '==', 'True') | ~expr('event_time', '<=',
+                                                           '2016-01-01')
+        self.assertTrue(str(exp) == ("(vs30_measured != True) | "
+                                     "(event_time > "
+                                     "b'2016-01-01T00:00:00')"))
+        exp = ~(expr('vs30_measured', '==', 'True') | expr('event_time', '<=',
+                                                           '2016-01-01'))
+        self.assertTrue(str(exp) == ("~((vs30_measured == True) | "
+                                     "(event_time <= "
+                                     "b'2016-01-01T00:00:00'))"))
         # test simple operator expressions:
         for func, symbol in zip([eq, ne, lt, gt, le, ge],
                                 ['==', '!=', '<', '>', '<=', '>=']):
@@ -126,28 +136,33 @@ class GmDatabaseTestCase(unittest.TestCase):
         self.assertTrue(str(exp) == '(pga == 0.5) | (pga == 0.75)')
         exp = ~isin('pga', 0.5, 0.75)
         self.assertTrue(str(exp) == '~((pga == 0.5) | (pga == 0.75))')
+        with self.assertRaises(TypeError):
+            exp = isin('pga')
         # test between:
         exp = between('pga', 0.5, 0.75)
         self.assertTrue(str(exp) == '(pga >= 0.5) & (pga <= 0.75)')
         exp = ~between('pga', 0.5, 0.75)
         self.assertTrue(str(exp) == '~((pga >= 0.5) & (pga <= 0.75))')
+        # between with no args
+        with self.assertRaises(TypeError):
+            exp = between('pga')  # pylint: disable=no-value-for-parameter
         # test is aval:
         exp = isaval('pga')
         self.assertTrue(str(exp) == 'pga == pga')
         exp = ~isaval('pga')
-        self.assertTrue(str(exp) == '~(pga == pga)')
-        # with booleans, defaults do not mean "missing", so it depends on the
-        # default provided. For vs30_measured, default is False
-        bool_def = \
-            GMDatabaseTable.columns['vs30_measured'].dflt
+        self.assertTrue(str(exp) == 'pga != pga')
         exp = isaval('vs30_measured')
-        self.assertTrue(str(exp) == 'vs30_measured != %s' % str(bool_def))
+        # with booleans, defaults do not mean "missing", so it depends on the
+        # default provided. For bool cols, e.g. vs30_measured, the return
+        # expression is either True or False:
+        exp = isaval('vs30_measured')
+        self.assertTrue(str(exp) == 'True')
         exp = ~isaval('vs30_measured')
-        self.assertTrue(str(exp) == '~(vs30_measured != %s)' % str(bool_def))
+        self.assertTrue(str(exp) == '~(True)')
         exp = isaval('event_country')
         self.assertTrue(str(exp) == "event_country != b''")
         exp = ~isaval('event_country')
-        self.assertTrue(str(exp) == "~(event_country != b'')")
+        self.assertTrue(str(exp) == "event_country == b''")
 
     def test_pytables(self):
         '''Test some pytable casting stuff NOT clearly documented :( '''

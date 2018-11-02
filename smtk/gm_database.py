@@ -16,8 +16,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
-import json
-
 """
 Basic classes for the GMDatabase (HDF5 database) and parsers
 """
@@ -28,21 +26,17 @@ import re
 import csv
 import hashlib
 from datetime import datetime
-from itertools import chain
 from contextlib import contextmanager
 from collections import defaultdict
 import tables
 from tables.table import Table
 from tables.group import Group
-from tables.exceptions import HDF5ExtError, NoSuchNodeError
+from tables.exceptions import NoSuchNodeError
 import numpy as np
-import h5py
 from tables.description import IsDescription, Int64Col, StringCol, \
     Int16Col, UInt16Col, Float32Col, Float16Col, TimeCol, BoolCol, \
     UInt8Col, Float64Col, Int8Col, UInt64Col, UInt32Col, EnumCol
-import smtk.intensity_measures as ims
 from smtk import sm_utils
-from smtk.parsers.base_database_parser import get_float
 
 
 # rewrite pytables description column types to account for default
@@ -817,12 +811,14 @@ def records_where(filepath, dbname, condition, limit=None):
             "(col operator value)" or "~(col operator value)"
         where:
         - ~ if given, negates the following expression
-        - `col` is a GM database column (see :class:`GMDatabaseTable`)
+        - `col` is a GM database **SCALAR** column, i.e. all columns except
+            'sa' (this is due to pytables limitations). For info on columns,
+            see the attribute names of :class:`GMDatabaseTable`
         - operator is either '==', '>' '<' ,'<=', '>=', '!='
         - value is any Python value (converted to string)
 
-        Alternatively `condition` can be given with the safer expression
-        objects imoplemented in this module:
+        Alternatively `condition` can be given with the safer and more
+        flexible expression objects imoplemented in this module:
         `eq ne lt gt le ge isin between isaval`.
         Example: the following two `condition` arguments produce the same
         result:
@@ -862,8 +858,8 @@ def records_where(filepath, dbname, condition, limit=None):
     **but** when tested in Python3.6.2 these work, so the claim is false or
     incomplete. Maybe it works as long as `value` has ascii characters only?).
 
-    To handle automatically all those caveats, the user might want to consider
-    using the module-level classes:
+    However, **to handle automatically all those caveats**, the user might want
+    to consider using the module-level expression objects:
     ```
     eq(column, value)  # column equal to value (works if value is nan)
     ne(column, value)  # column not equal to value (works if value is nan)
@@ -871,10 +867,9 @@ def records_where(filepath, dbname, condition, limit=None):
     gt(column, value)  # column greathen than value
     le(column, value)  # column lower or equal to value
     ge(column, value)  # colum greater or equal to value
-    isaval(column)  # column value is available (not missing)
+    isaval(column)  # column value is available (not the default, i.e. missing)
     between(column, min, max)  # column between (or equal to) min and max
-    outside(column, min, max)  # column outside (and not equal to) min and max
-    isin(column, *value)  # column equals to any of the given values
+    isin(column, *values)  # column equals to any of the given values
     ```
     The expressions above take care of the above mentioned caveats and
     behave exactly as string expressions (they are actually particular string
@@ -933,9 +928,6 @@ class expr(str):  # pylint: disable=invalid-name
         '''
         if len(args) == 3:
             col, operator, value = args
-        else:
-            col, operator = args[0], None
-        if operator is not None:  # 3 args passed, do some conversions:
             dbcolumns = GMDatabaseTable.columns  # pylint: disable=no-member
             if col not in dbcolumns:
                 raise ValueError("Unknown table field '%s'" % str(col))
@@ -963,12 +955,12 @@ class expr(str):  # pylint: disable=invalid-name
                     operator = '!=' if operator == '==' else '=='
             _str = "%s %s %s" % (col, operator, str(value))
         else:
-            _str = str(col)
+            _str = str(args[0])
         return str.__new__(cls, _str, **kw)
 
     def __and__(self, other):
         '''Implements logical 'and' using the & bitwise operator'''
-        if other in (True, None, '', 'True', 'true'):
+        if other in (None, '', True, 'True', 'true'):
             return self
         if other in (False, 'False', 'false'):
             return 'False'
@@ -976,14 +968,25 @@ class expr(str):  # pylint: disable=invalid-name
 
     def __or__(self, other):
         '''Implements logical 'or' using the | bitwise operator'''
-        if other in (False, 'False', 'false'):
+        if other in (None, '', False, 'False', 'false'):
             return self
-        if other in (True, None, '', 'True', 'true'):
+        if other in (True, 'True', 'true'):
             return 'True'
         return expr("(%s) | (%s)" % (self, expr(other)))
 
     def __invert__(self):
         '''Implements logical negation using the ~ bitwise operator'''
+        # before simply returning the straightforward "~self"
+        # try to guess if it's possible to provide the same
+        # expression with the opposite operator, e.g. turning
+        # "col <= 6" into the more readable "col > 6":
+        if not set(str(self)) & set('()~|&'):  # '()~|&' not in this expr
+            spl = str(self).split(' ')
+            if len(spl) == 3:
+                opposite_opr = {'==': '!=', '>': '<=', '<': '>=', '!=': '==',
+                                '>=': '<', '<=': '>'}.get(spl[1], None)
+                if opposite_opr is not None:
+                    return expr("%s %s %s" % (spl[0], opposite_opr, spl[2]))
         return expr("~(%s)" % self)
 
 
@@ -993,7 +996,7 @@ class _single_operator_expr(expr):  # pylint: disable=invalid-name
     '''
     operator = None
 
-    def __new__(cls, col, value):
+    def __new__(cls, col, value):  # pylint: disable=arguments-differ
         '''forwards the super-constructor with the class-operator'''
         return expr.__new__(cls, col, cls.operator, value)
 
@@ -1035,7 +1038,9 @@ class isin(expr):  # pylint: disable=invalid-name
     '''is-in expression ("in" in SQL): isin('pga', 1, 4.4, 5) translates to:
     "(pga == 1) | (pga == 4.4) | (pga == 5)"
     '''
-    def __new__(cls, col, *values):
+    def __new__(cls, col, *values):  # pylint: disable=arguments-differ
+        if not values:
+            raise TypeError('No values provided for %s' % cls.__name__)
         exp = None
         for val in values:
             if exp is None:
@@ -1049,17 +1054,23 @@ class isaval(expr):  # pylint: disable=invalid-name
     '''available (not missing) expression: isaval('pga') translates to:
     "(pga == pga)" (pga is not nan), ~isaval('event_time') translates to
     "event_time == ''" (event_time empty), and so on.
+
+    Note: As boolean columns cannot have missing values (either True or False)
+    for boolean columns this class returns 'True'. Use `eq(col, False)` or
+    `eq(col, True)` in case
     '''
-    def __new__(cls, col):
+    def __new__(cls, col):  # pylint: disable=arguments-differ
         colobj = GMDatabaseTable.columns[col]  # pylint: disable=no-member
+        if isinstance(colobj, BoolCol):
+            return expr.__new__(cls, "True")
         return expr.__new__(cls, col, '!=', colobj.dflt)
 
 
 class between(expr):  # pylint: disable=invalid-name
-    '''is-in expression ("between" in SQL): between('pga', 1, 4.4) translates
+    '''between expression ("between" in SQL): between('pga', 1, 4.4) translates
     to: "(pga >= 1) & (pga <= 4.4)"
     '''
-    def __new__(cls, col, min_, max_):
+    def __new__(cls, col, min_, max_):  # pylint: disable=arguments-differ
         exp1 = expr(col, '>=', min_) if min_ is not None else None
         exp2 = expr(col, '<=', max_) if max_ is not None else None
         if exp1 and exp2:
