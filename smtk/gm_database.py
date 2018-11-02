@@ -16,6 +16,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
+import json
 
 """
 Basic classes for the GMDatabase (HDF5 database) and parsers
@@ -43,6 +44,7 @@ import smtk.intensity_measures as ims
 from smtk import sm_utils
 from smtk.parsers.base_database_parser import get_float
 
+
 # rewrite pytables description column types to account for default
 # values meaning MISSING, and bounds (min and max)
 def _col(col_class, **kwargs):
@@ -65,12 +67,22 @@ def _col(col_class, **kwargs):
     specified here as 'min' and 'max' arguments. None or missing values will
     mean: no check on the relative bound (any value allowed)
 
-    :param: col_class: the pytables column class, e.g. StringCol
+    :param: col_class: the pytables column class, e.g. StringCol. You can
+        also supply the String "DateTime" which will set default to StringCol
+        adding the default 'itemsize' to `kwargs` and a custom attribute
+        'is_datetime_str' to the returned object. The attribute will be used
+        in the `expr` class to properly cast passed values into the correct
+        date-time ISO-formated string
     :param kwargs: keyword argument to be passed to `col_class` during
         initialization. Note thtat the `dflt` parameter, if provided
         will be overridden. See the `atom` module of pytables for a list
         of arguments for each Column class
     '''
+    is_iso_dtime = col_class == 'DateTime'
+    if is_iso_dtime:
+        col_class = StringCol
+        if 'itemsize' not in kwargs:
+            kwargs['itemsize'] = 19  # '1999-31-12T01:02:59'
     if 'dflt' not in kwargs:
         if col_class == StringCol:
             dflt = b''
@@ -98,9 +110,11 @@ def _col(col_class, **kwargs):
             dflt = np.iinfo(np.int).min
 
         kwargs['dflt'] = dflt
-    min_, max_ = kwargs.pop('min', None), kwargs.pop('max', None) 
+    min_, max_ = kwargs.pop('min', None), kwargs.pop('max', None)
     ret = col_class(**kwargs)
     ret.min_value, ret.max_value = min_, max_
+    if is_iso_dtime:
+        ret.is_datetime_str = True
     return ret
 
 
@@ -130,7 +144,7 @@ class GMDatabaseTable(IsDescription):
     event_id = _col(StringCol, itemsize=20)
     event_name = _col(StringCol, itemsize=40)
     event_country = _col(StringCol, itemsize=30)
-    event_time = _col(StringCol, itemsize=19)  # In ISO Format YYYY-MM-DDTHH:mm:ss
+    event_time = _col("DateTime")  # In ISO Format YYYY-MM-DDTHH:mm:ss
     # Note: if we want to support YYYY-MM-DD only be aware that:
     # YYYY-MM-DD == YYYY-MM-DDT00:00:00
     # Note2: no support for microseconds for the moment
@@ -418,8 +432,7 @@ class GMDatabaseParser(object):
                 spectra_fieldnames, spectra_periods =\
                     cls._get_sa_columns(newfieldnames)
             except Exception as exc:
-                raise ValueError('Unable to parse SA columns '
-                                 '("sa(<period>)"): %s' % str(exc))
+                raise ValueError('Unable to parse SA columns: %s' % str(exc))
 
             # get event time fieldname(s):
             try:
@@ -433,8 +446,7 @@ class GMDatabaseParser(object):
             try:
                 pga_col, pga_unit = cls._get_pga_column(newfieldnames)
             except Exception as exc:
-                raise ValueError('Unable to parse PGA column '
-                                 '("pga(<unit>)"): %s' % str(exc))
+                raise ValueError('Unable to parse PGA column: %s' % str(exc))
 
             for rowdict in reader:
                 # re-map keys:
@@ -456,7 +468,9 @@ class GMDatabaseParser(object):
                     pass
 
                 try:
-                    rowdict['pga'] = cls._get_pga(rowdict, pga_col, pga_unit)
+                    acc_unit = rowdict[pga_unit] \
+                        if pga_unit == 'acceleration_unit' else pga_unit
+                    rowdict['pga'] = cls._get_pga(rowdict, pga_col, acc_unit)
                 except Exception as _:  # pylint: disable=broad-except
                     pass
 
@@ -495,7 +509,7 @@ class GMDatabaseParser(object):
             retol = abs(max(pga, sa0) / min(pga, sa0))
             if not np.isnan(retol) and round(retol) >= 10:
                 return False
-        except Exception as _:  # disable=bare-except
+        except Exception as _:  # disable=broad-except
             # it might seem weird to return true on exceptions, but this method
             # should only check wheather there is certainly a unit
             # mismatch between sa and pga, and int that case only return True
@@ -561,38 +575,72 @@ class GMDatabaseParser(object):
     @classmethod
     def _get_event_time(cls, rowdict, evtime_fieldnames):
         '''returns the event time column names'''
-        args = []
-        for i, fieldname in enumerate(evtime_fieldnames):
-            args.append(int(rowdict[fieldname] if i < 3 else
-                            rowdict.get(fieldname, 0)))
+        dtime = rowdict[evtime_fieldnames[0]]
+        if len(evtime_fieldnames) > 1:
+            args = [int(rowdict[fieldname] if i < 3 else
+                        rowdict.get(fieldname, 0))
+                    for i, fieldname in enumerate(evtime_fieldnames)]
+            dtime = datetime(*args)
 
-        dtm = None
-        if len(evtime_fieldnames) == 1:
-            formats_ = ['%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S',
-                        '%Y-%m-%d']
+        return cls.normalize_dtime(dtime)
+
+    @staticmethod
+    def normalize_dtime(dtime):
+        '''Returns a datetime *string* in ISO format ('%Y-%m-%dT%H:%M:%S')
+        representing `dtime`
+
+        :param dtime: string or datetime. In the former case, it must be
+            in any of these formats:
+            '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%Y'
+        :return: ISO formatted string representing `dtime`
+        :raises: ValueError (string not parsable) or TypeError (`dtime`
+            neither datetime not string)
+        '''
+        base_format = '%Y-%m-%dT%H:%M:%S'
+        if not isinstance(dtime, datetime):
+            formats_ = [base_format, '%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%Y']
             for frmt in formats_:
                 try:
-                    dtm = datetime.strptime(args[0], frmt)
+                    dtime = datetime.strptime(dtime, frmt)
                     break
                 except ValueError:
                     pass
             else:
-                raise ValueError('unparsable date-time string')
-        else:
-            dtm = datetime(*args)
-
-        return dtm.strftime('%Y-%m-%dT%H:%M:%S')
+                raise ValueError('Unparsable as date-time: "%s"' % str(dtime))
+        return dtime.strftime(base_format)
 
     @classmethod
     def _get_pga_column(cls, csv_fieldnames):
+        '''returns the column name denoting the PGA and the PGA unit.
+        The latter is usually retrieved in the PGA column name. Otherwise,
+        if a column 'PGA' *and* 'acceleration_unit' are found, returns
+        the names of those columns'''
         reg = cls._pga_unit_re
+        # store fields 'pga' and 'acceleration_unit', if present:
+        pgacol, pgaunitcol = None, None
         for fname in csv_fieldnames:
+            if not pgacol and fname.lower().strip() == 'pga':
+                pgacol = fname
+                continue
+            if not pgaunitcol and fname.lower().strip() == 'acceleration_unit':
+                pgaunitcol = fname
+                continue
             match = reg.match(fname)
             if match:
                 unit = match.group(1)
                 if unit not in cls._accel_units:
                     raise Exception('unit not in %s' % str(cls._accel_units))
                 return fname, unit
+        # no pga(<unit>) column found. Check if we had 'pga' and
+        # 'acceleration_unit'
+        pgacol_ok, pgaunitcol_ok = pgacol is not None, pgaunitcol is not None
+        if pgacol_ok and not pgaunitcol_ok:
+            raise ValueError("provide field 'acceleration_unit' or "
+                             "specify unit in '%s'" % pgacol)
+        elif not pgacol_ok and pgaunitcol_ok:
+            raise ValueError("missing field 'pga'")
+        elif pgacol_ok and pgaunitcol_ok:
+            return pgacol, pgaunitcol
         raise Exception('no matching column found')
 
     @classmethod
@@ -612,17 +660,15 @@ class GMDatabaseParser(object):
         Please **keep in mind that**:
 
         1. This method should process `rowdict` in place, the returned value is
-           ignored. Any exception raised here is wrapped in the caller method.
+           ignored. Any exception raised here is hanlded in the caller method.
         2. `rowdict` keys might not be the same as the csv
            field names (first csv row). See `mappings` class attribute
         3. The values of `rowdict` are all strings, i.e. they have still to be
            parsed to the correct column type, except those mapped to the keys
-           'sa', 'pga' and 'event_time': if present in the csv field names,
-           their values have been already set (in case of errors, their
-           values are left as they were in the csv).
+           'sa', 'pga' and 'event_time', if present.
         4. the `rowdict` keys 'event_id', 'station_id' and 'record_id' are
            reserved and their values will be anyway overridden, as they
-           must represent hash string whereby we might weant to compare same
+           must represent hash string whereby comparing same
            events, stations and records, respectively
 
         :param rowdict: a row of the csv flatfile, as Python dict
@@ -719,7 +765,7 @@ class GMDatabaseParser(object):
             (no support for other values sofar)
         '''
         hashalg = hashlib.sha1()
-        # use the slash as separator s it is unlikely to be in value(s):
+        # use the slash as separator as it is unlikely to be in value(s):
         hashalg.update(b'/'.join(cls._tobytestr(v) for v in values))
         return hashalg.digest()
 
@@ -730,804 +776,298 @@ class GMDatabaseParser(object):
             value = str(value).encode('utf8')
         return value
 
+#########################################
+# Database selection
+#########################################
 
-def rows(filepath, dbname, *condition_expression, limit=None):
+
+def records_where(filepath, dbname, condition, limit=None):
+    '''Returns an iterator yielding records (Python dicts) of the
+    database table "dbname" stored inside the HDF5 file with path `filepath`.
+    The records returned will be filtered according to `condition`.
+    IMPORTANT: This function is designed to be used inside a `for...` loop
+    to avoid loading all data into memory. Do **not** do this as it fails:
+    `list(records_where(...))`.
+    If you want all records in a list (be aware of potential meory leaks
+    for huge amount of data) use :function:`read_where`
+
+    Example:
+    ```
+        for rec in records_where("/home/gmdb.hdf5", "esm_sa_2018",
+                                 "((pga >= 0.5) & (pga <=0.8)) | (pgv <1.1)"):
+            # do your stuff with `rec`, e.g. access the fields:
+            sa = rec["sa"]
+    ```
+    The same can be obtained by using the expression functions
+    implemented in this module (`eq ne lt gt le ge isin between isaval`)
+    which take care of some known caveats [1]:
+    ```
+        for rec in records_where("/home/gmdb.hdf5", "esm_sa_2018",
+                                 between("pga", 0.5, 0.8) | lt("pgv", 1.1)):
+            # do your stuff with `rec`, e.g. access the fields:
+            sa = rec["sa"]
+    ```
+
+
+    :param filepath: the path of the HDF5 GM database file
+    :param dbname: the name of the database table inside `filepath`
+    :param condition: a string expression, or a list of string expressions
+        concatenated with '&' (logical AND) or '|' (logical OR). Any string
+        expression is of the form:
+            "(col operator value)" or "~(col operator value)"
+        where:
+        - ~ if given, negates the following expression
+        - `col` is a GM database column (see :class:`GMDatabaseTable`)
+        - operator is either '==', '>' '<' ,'<=', '>=', '!='
+        - value is any Python value (converted to string)
+
+        Alternatively `condition` can be given with the safer expression
+        objects imoplemented in this module:
+        `eq ne lt gt le ge isin between isaval`.
+        Example: the following two `condition` arguments produce the same
+        result:
+        ```
+        "(pga < 0.14) & (pga > 1.1) & (event_time <= '2006-01-01T00:00:00')"
+
+        ~between('pga', 0.14, 1.1) & le('event_time', '2006-01-01T00:00:00')
+        ```
+
+    :param limit: integer (defaults: None) implements a SQL 'limit'
+        when provided, yields only the first `limit` matching rows
+
+    [1] Notes on `condition`: when given as raw string, the user should be
+    aware that:
+    1. expressions concatenated with & or | should be put into brakets. This
+    does *not* work:
+        "pga <= 0.5 & pgv > 9.5"
+    whereas this does:
+        "(pga <= 0.5) & (pgv > 9.5)"
+    2. NaNs might be tricky to compare. For instance, given a valid column
+    name (e.g. ,"pga") and the variable `value = float("nan")`, this does
+    not work:
+        "pga == %s" % str(value)
+        "pga != %s" % str(value)
+    whereas these get what expected:
+        "pga != pga"
+        "pga == pga"
+    3. String column types (e.g., 'event_country') should be compared with
+    quoted strings. Given e.g. `value = 'Germany'`, this does not work:
+        "event_country == %s" % str(value)
+    whereas this work:
+        "event_country == '%s'" % str(value)
+        'event_country == "%s"' % str(value)
+    (in pytables documentation, they claim that in Python3 the above do not
+    work either, as they should be encoded into bytes:
+    "event_country == %s" % str(value).encode('utf8')
+    **but** when tested in Python3.6.2 these work, so the claim is false or
+    incomplete. Maybe it works as long as `value` has ascii characters only?).
+
+    To handle automatically all those caveats, the user might want to consider
+    using the module-level classes:
+    ```
+    eq(column, value)  # column equal to value (works if value is nan)
+    ne(column, value)  # column not equal to value (works if value is nan)
+    lt(column, value)  # column lower than value
+    gt(column, value)  # column greathen than value
+    le(column, value)  # column lower or equal to value
+    ge(column, value)  # colum greater or equal to value
+    isaval(column)  # column value is available (not missing)
+    between(column, min, max)  # column between (or equal to) min and max
+    outside(column, min, max)  # column outside (and not equal to) min and max
+    isin(column, *value)  # column equals to any of the given values
+    ```
+    The expressions above take care of the above mentioned caveats and
+    behave exactly as string expressions (they are actually particular string
+    objects)
+    '''
     count = 0
     with GMDatabaseParser.get_table(filepath, dbname, mode='r') as tbl:
-        for row in tbl.where(condition_expression):
+        for row in tbl.where(str(condition)):
             if limit is None or count < limit:
                 yield row
 
-#     @staticmethod
-#     def _alreay_existing(rowdict, table):
-#         '''NOT USED (FIXME: remove) yields an iterator over table with
-#         elements equal to `rowdict`
-#         according to event spatial and termporal coordinates and station
-#         coordinates
-#         :param rowdict: a dict representing a flatfile csv rowdict
-#         '''
-#         try:
-#             condition_syntax = ('(event_time == %s) & '
-#                                 '(event_latitude == %s) &'
-#                                 '(event_longitude == %s) &'
-#                                 '(station_latitude == %s) &'
-#                                 '(station_longitude == %s)') % \
-#                 (rowdict['event_time'].encode('utf8'),
-#                  str(rowdict['event_latitude']),
-#                  str(rowdict['event_longitude']),
-#                  str(rowdict['station_latitude']),
-#                  str(rowdict['station_longitude']))
-# 
-#             for tablerow in table.where(condition_syntax):
-#                 # compare pga, convert to g (pga are assumed to be cm/s^2):
-#                 pga1_g = rowdict['pga'] / 981.
-#                 pga2_g = tablerow['pga'] / 981.
-#                 if abs(pga1_g - pga2_g) < 0.01:
-#                     yield tablerow
-#         except KeyError:
-#             return []  # mimic no rowdict found
 
-#     # station code should be a static method
-#     def get_station_id_columns(self, columns):
-#         # this should be station_id+'.'+station_code for nga west2
-#         # and net.sta.loc.cha for ESM
-# 
-#     def get_event_id_columns(self, columns):
-#         
-#     def _make_event_id(tablerow):
-#         _tablerow['event_id'] = hash(tablerow['event_latitude'],
-#                                      tablerow['event_longitude'],
-#                                      tablerow['event_depth'],
-#                                      )
-#     def __init__(self, flatfile_location):
-#         """
-#         Instantiation will create target database directory
-#
-#         :param dbtype:
-#             Instance of :class:
-#                 smtk.parsers.base_database_parser.SMDatabaseReader
-#         :param str db_location:
-#             Path to database to be written.
-#         """
-#         self.dbreader = None
-#         if os.path.exists(flatfile_location):
-#             raise IOError("Target database directory %s already exists!"
-#                           % flatfile_location)
-#         self.location = db_location
-#         os.mkdir(self.location)
-#         self.database = None
-#         self.time_series_parser = None
-#         self.spectra_parser = None
-#         self.metafile = None
-# 
-#     def build_database(self, db_id, db_name, metadata_location,
-#                        record_location=None):
-#         """
-#         Constructs the metadata database and exports to a .pkl file
-#         :param str db_id:
-#             Unique ID string of the database
-#         :param str db_name:
-#             Name of the database
-#         :param str metadata_location:
-#             Path to location of metadata
-#         :param str record_directory:
-#             Path to directory containing records (if different from metadata)
-#         """
-#         self.dbreader = self.dbtype(db_id, db_name, metadata_location,
-#                                     record_location)
-#         # Build database
-#         print("Reading database ...")
-#         self.database = self.dbreader.parse()
-#         self.metafile = os.path.join(self.location, "metadatafile.pkl")
-#         print("Storing metadata to file %s" % self.metafile)
-#         with open(self.metafile, "wb+") as f:
-#             pickle.dump(self.database, f)
-# 
-#     def parse_records(self, time_series_parser, spectra_parser=None,
-#                       units="cm/s/s"):
-#         """
-#         Parses the strong motion records to hdf5
-#         :param time_series_parser:
-#             Reader of the time series as instance of :class:
-#             smtk.parsers.base_database_parser.SMTimeSeriesReader
-#         :param spectra_parser:
-#             Reader of the spectra files as instance of :class:
-#             smtk.parsers.base_database_parser.SMSpectraReader
-#         :param str units:
-#             Units of the records
-#         """
-#         record_dir = os.path.join(self.location, "records")
-#         os.mkdir(record_dir)
-#         print("Creating repository for strong motion hdf5 records ... %s"
-#               % record_dir)
-#         nrecords = self.database.number_records()
-#         valid_records = []
-#         for iloc, record in enumerate(self.database.records):
-#             print("Processing record %s of %s" % (iloc, nrecords))
-#             has_spectra = isinstance(record.spectra_file, list) and\
-#                 (spectra_parser is not None)
-#             # Parse strong motion record
-#             sm_parser = time_series_parser(record.time_series_file,
-#                                            self.dbreader.record_folder,
-#                                            units)
-#             if len(sm_parser.input_files) < 2:
-#                 print("Record contains < 2 components - skipping!")
-#                 continue
-#             sm_data = sm_parser.parse_records(record)
-#             if not sm_data.get("X", {}).get("Original", {}):
-#                 print('No processed records - skipping')
-#                 continue
-# 
-#             # Create hdf file and parse time series data
-#             fle, output_file = self.build_time_series_hdf5(record, sm_data,
-#                                                            record_dir)
-# 
-#             if has_spectra:
-#                 # Parse spectra data
-#                 spec_parser = spectra_parser(record.spectra_file,
-#                                              self.dbreader.filename)
-#                 spec_data = spec_parser.parse_spectra()
-#                 fle = self.build_spectra_hdf5(fle, spec_data)
-#             else:
-#                 # Build the data structure for IMS
-#                 self._build_hdf5_structure(fle, sm_data)
-#             fle.close()
-#             print("Record %s written to output file %s" % (record.id,
-#                                                            output_file))
-#             record.datafile = output_file
-#             valid_records.append(record)
-#         self.database.records = valid_records
-#         print("Updating metadata file")
-#         os.remove(self.metafile)
-#         with open(self.metafile, "wb+") as f:
-#             pickle.dump(self.database, f)
-#         print("Done!")
-# 
-#     def build_spectra_from_flatfile(self, component, damping="05",
-#                                     units="cm/s/s"):
-#         """
-#         In the case in which the spectra data is defined in the
-#         flatfile we construct the hdf5 from this information
-#         :param str component:
-#             Component to which the horizontal (or vertical!) records refer
-#         :param str damping"
-#             Percent damping
-#         """
-# 
-#         # Flatfile name should be stored in database parser
-#         # Get header
-# 
-#         reader = csv.DictReader(open(self.dbreader.filename, "r"))
-#         # Fieldnames
-#         scalar_fieldnames, spectra_fieldnames, periods =\
-#             _get_fieldnames_from_csv(reader)
-#         # Setup records folder
-#         record_dir = os.path.join(self.location, "records")
-#         os.mkdir(record_dir)
-#         print("Creating repository for strong motion hdf5 records ... %s"
-#               % record_dir)
-#         valid_idset = [rec.id for rec in self.database.records]
-#         for i, row in enumerate(reader):
-#             # Build database file
-#             # Waveform ID
-#             if not row["Record Sequence Number"] in valid_idset:
-#                 # The record being passed has already been flagged as bad
-#                 # skipping
-#                 continue
-#             idx = valid_idset.index(row["Record Sequence Number"])
-#             wfid = self.database.records[idx].id
-#             output_file = os.path.join(record_dir, wfid + ".hdf5")
-#             self._build_spectra_hdf5_from_row(output_file, row, periods,
-#                                               scalar_fieldnames,
-#                                               spectra_fieldnames,
-#                                               component, damping, units)
-#             self.database.records[idx].datafile = output_file
-#             if (i % 100) == 0:
-#                 print("Record %g written" % i)
-#         print("Updating metadata file")
-#         os.remove(self.metafile)
-#         with open(self.metafile, "wb+") as f:
-#             pickle.dump(self.database, f)
-#         print("Done!")
-# 
-#     def _build_spectra_hdf5_from_row(self, output_file, row, periods,
-#                                      scalar_fields, spectra_fields, component,
-#                                      damping, units):
-#         fle = h5py.File(output_file, "w-")
-#         ts_grp = fle.create_group("Time Series")
-#         ims_grp = fle.create_group("IMS")
-#         h_grp = ims_grp.create_group("H")
-#         scalar_grp = h_grp.create_group("Scalar")
-#         # Create Scalar values
-#         for f_attr, imt in scalar_fields:
-#             dset = scalar_grp.create_dataset(imt, (1,), dtype="f")
-#             dset.attrs["Component"] = component
-#             input_units = re.search('\((.*?)\)', f_attr).group(1)
-#             if imt == "PGA":
-#                 # Convert acceleration from reported units to cm/s/s
-#                 dset.attrs["Units"] = "cm/s/s"
-#                 dset[:] = utils.convert_accel_units(get_float(row[f_attr]),
-#                                                     input_units)
-#             else:
-#                 # For other values take direct from spreadsheet
-#                 # Units should be given in parenthesis from fieldname
-#                 dset.attrs["Units"] = input_units
-#                 dset[:] = get_float(row[f_attr])
-# 
-#         spectra_grp = h_grp.create_group("Spectra")
-#         rsp_grp = spectra_grp.create_group("Response")
-#         # Setup periods dataset
-#         per_dset = rsp_grp.create_dataset("Periods",
-#                                           (len(periods),),
-#                                           dtype="f")
-#         per_dset.attrs["High Period"] = np.max(periods)
-#         per_dset.attrs["Low Period"] = np.min(periods)
-#         per_dset.attrs["Number Periods"] = len(periods)
-#         per_dset[:] = periods
-#         # Get response spectra
-#         spectra = np.array([get_float(row[f_attr])
-#                             for f_attr in spectra_fields])
-#         acc_grp = rsp_grp.create_group("Acceleration")
-#         comp_grp = acc_grp.create_group(component)
-#         spectra_dset = comp_grp.create_dataset("damping_{:s}".format(damping),
-#                                                (len(spectra),),
-#                                                dtype="f")
-#         spectra_dset.attrs["Units"] = "cm/s/s"
-#         spectra_dset[:] = utils.convert_accel_units(spectra, units)
-#         fle.close()
-# 
-#     def build_time_series_hdf5(self, record, sm_data, record_dir):
-#         """
-#         Constructs the hdf5 file for storing the strong motion record
-#         :param record:
-#             Strong motion record as instance of :class: GroundMotionRecord
-#         :param dict sm_data:
-#             Data dictionary for the strong motion record
-#         :param str record_dir:
-#             Directory in which to save the record
-#         """
-#         output_file = os.path.join(record_dir, record.id + ".hdf5")
-#         fle = h5py.File(output_file, "w-")
-#         grp = fle.create_group("Time Series")
-#         for key in sm_data.keys():
-#             if not sm_data[key]["Original"]:
-#                 continue
-#             grp_comp = grp.create_group(key)
-#             grp_orig = grp_comp.create_group("Original Record")
-#             for attribute in self.TS_ATTRIBUTE_LIST:
-#                 if attribute in sm_data[key]["Original"]:
-#                     grp_orig.attrs[attribute] =\
-#                         sm_data[key]["Original"][attribute]
-#             ts_dset = grp_orig.create_dataset(
-#                 "Acceleration",
-#                 (sm_data[key]["Original"]["Number Steps"],),
-#                 dtype="f")
-#             ts_dset.attrs["Units"] = "cm/s/s"
-#             time_step = sm_data[key]["Original"]["Time-step"]
-#             ts_dset.attrs["Time-step"] = time_step
-#             number_steps = sm_data[key]["Original"]["Number Steps"]
-#             ts_dset.attrs["Number Steps"] = number_steps
-#             ts_dset.attrs["PGA"] = utils.convert_accel_units(
-#                 sm_data[key]["Original"]["PGA"],
-#                 sm_data[key]["Original"]["Units"])
-#             # Store acceleration as cm/s/s
-#             ts_dset[:] = utils.convert_accel_units(
-#                 sm_data[key]["Original"]["Acceleration"],
-#                 sm_data[key]["Original"]["Units"])
-#             # Get velocity and displacement
-#             vel, dis = utils.get_velocity_displacement(
-#                 time_step,
-#                 ts_dset[:],
-#                 "cm/s/s")
-#             # Build velocity data set
-#             v_dset = grp_orig.create_dataset("Velocity",
-#                                              (number_steps,),
-#                                              dtype="f")
-#             v_dset.attrs["Units"] = "cm/s"
-#             v_dset.attrs["Time-step"] = time_step
-#             v_dset.attrs["Number Steps"] = number_steps
-#             v_dset[:] = vel
-#             # Build displacement data set
-#             d_dset = grp_orig.create_dataset("Displacement",
-#                                              (number_steps,),
-#                                              dtype="f")
-#             d_dset.attrs["Units"] = "cm"
-#             d_dset.attrs["Time-step"] = time_step
-#             d_dset.attrs["Number Steps"] = number_steps
-#             d_dset[:] = dis
-#                 
-#         # Get the velocity and displacement time series and build scalar IMS
-#         return fle, output_file
-# 
-#     def _build_hdf5_structure(self, fle, data):
-#         """
-#         :param fle:
-#             Datastream of hdf file
-#         :param data:
-#             Strong motion database
-#         """
-#         grp0 = fle.create_group("IMS")
-#         for key in data.keys():
-#             grp_comp0 = grp0.create_group(key)
-#             grp_scalar = grp_comp0.create_group("Scalar")
-#             pga_dset = grp_scalar.create_dataset("PGA", (1,), dtype="f")
-#             pga_dset.attrs["Units"] = "cm/s/s"
-#             pgv_dset = grp_scalar.create_dataset("PGV", (1,), dtype="f")
-#             pgv_dset.attrs["Units"] = "cm/s"
-#             pgd_dset = grp_scalar.create_dataset("PGD", (1,), dtype="f")
-#             pgd_dset.attrs["Units"] = "cm"
-#             locn = "/".join(["Time Series", key, "Original Record"])
-#             pga_dset[:] = np.max(np.fabs(fle[locn + "/Acceleration"].value))
-#             pgv_dset[:] = np.max(np.fabs(fle[locn + "/Velocity"].value))
-#             pgd_dset[:] = np.max(np.fabs(fle[locn + "/Displacement"].value))
-# 
-#     def build_spectra_hdf5(self, fle, data):
-#         """
-#         Adds intensity measure data (scalar and spectra) to hdf5 datafile
-#         :param fle:
-#             h5py.File object for storing record data
-#         :param dict data:
-#             Intensity MEasure Data dictionary
-#         """
-#         grp0 = fle.create_group("IMS")
-#         for key in data.keys():
-#             if not data[key]["Spectra"]["Response"]:
-#                 continue
-#             grp_comp0 = grp0.create_group(key)
-#             grp_scalar = grp_comp0.create_group("Scalar")
-#             for scalar_im in self.IMS_SCALAR_LIST:
-#                 if scalar_im in data[key]["Scalar"]:
-#                     #print scalar_im, data[key]["Scalar"][scalar_im]
-#                     dset_scalar = grp_scalar.create_dataset(scalar_im, (1,),
-#                                                             dtype="f")
-#                     dset_scalar.attrs["Units"] =\
-#                         data[key]["Scalar"][scalar_im]["Units"]
-#                     dset_scalar[:] = data[key]["Scalar"][scalar_im]["Value"]
-#             grp_spectra = grp_comp0.create_group("Spectra")
-#             grp_four = grp_spectra.create_group("Fourier")
-#             grp_resp = grp_spectra.create_group("Response")
-#             # Add periods
-#             periods = data[key]["Spectra"]["Response"]["Periods"]
-#             num_per = len(data[key]["Spectra"]["Response"]["Periods"])
-#             dset_per = grp_resp.create_dataset("Periods", (num_per,),
-#                                                dtype="f")
-#             dset_per.attrs["Number Periods"] = num_per
-#             dset_per.attrs["Low Period"] = np.min(periods)
-#             dset_per.attrs["High Period"] = np.max(periods)
-#             dset_per[:] = periods
-#             # Add spectra
-#             for spec_type in self.SPECTRA_LIST:
-#                 if not data[key]["Spectra"]["Response"][spec_type]:
-#                     continue
-#                 # Parser spectra
-#                 spec_data = data[key]["Spectra"]["Response"][spec_type]
-#                 grp_spec = grp_resp.create_group(spec_type)
-#                 grp_spec.attrs["Units"] = spec_data["Units"]
-#                 for spc_key in spec_data.keys():
-#                     if spc_key == "Units":
-#                         continue
-#                     resp_dset = grp_spec.create_dataset(spc_key, (num_per,),
-#                                                         dtype="f")
-#                     resp_dset.attrs["Damping"] = float(spc_key.split("_")[1])
-#                     resp_dset[:] = spec_data[spc_key]
-#         return fle
+def read_where(filepath, dbname, condition, limit=None):
+    '''Returns a list of records (Python dicts) of the
+    database table "dbname" stored inside the HDF5 file with path `filepath`.
+    The records returned will be filtered according to `condition`.
+    IMPORTANT: This function loads all data into memory
+    To avoid potential memory leaks, see :function:`records_where`.
+
+    All parameters are the same as :function:`records_where`
+    '''
+    with GMDatabaseParser.get_table(filepath, dbname, mode='r') as tbl:
+        return tbl.read_where(condition)[:limit]
+
+#############################
+# Database selection syntax #
+#############################
 
 
-def get_name_list(fle):
-    """
-    Returns structure of the hdf5 file as a list
-    """
-    name_list = []
+class expr(str):  # pylint: disable=invalid-name
+    '''expression class subclassing string
+    All expression classes are lower case as they mimic functions rather than
+    classes'''
+    _operators = set(['==', '>', '<', '!=', '>=', '<='])
 
-    def append_name_list(name, obj):
-        name_list.append(name)
-    fle.visititems(append_name_list)
-    return name_list
+    def __new__(cls, *args, **kw):
+        '''Creates a string expression parsing the given arguments, e.g.:
 
+            ```expr("pgv", "<=", 9)```
+        where
+        1st arg is the column name (string)
+        2nd arg is the operator (string): <= >= < > == !=
+        3rd arg is a Python value
 
-def add_recursive_nameset(fle, string):
-    """
-    For an input structure (e.g. AN/INPUT/STRUCTURE) will create the
-    the corresponding name space at the level.
-    """
-    if string in get_name_list(fle):
-        return
-    levels = string.split("/")
-    current_level = levels[0]
-    if current_level not in fle:
-        fle.create_group(current_level)
+        This class takes care of converting value to
+        the proper column's Python type and handles some caveats
+        (e.g., quoting strings, handling NaNs comparison, date-time conversion
+        to ISO formatted strings, casting to proper type when possible)
 
-    for iloc in range(1, len(levels)):
-        new_level = levels[iloc]
-        if new_level not in fle[current_level]:
-            fle[current_level].create_group(new_level)
-            current_level = "/".join([current_level, new_level])
+        This class can also be called with a single argument `arg` to skip
+        the conversion, behaving exactly as `str(arg)`. This type of
+        initialization is usually reserved for private use when concatenating
+        expressions with logical operators
 
-
-SCALAR_IMS = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia", "T90", "Housner"]
-
-
-SPECTRAL_IMS = ["Geometric", "Arithmetic", "Envelope", "Larger PGA"]
-
-
-SCALAR_XY = {"Geometric": lambda x, y : np.sqrt(x * y),
-             "Arithmetic": lambda x, y : (x + y) / 2.,
-             "Larger": lambda x, y: np.max(np.array([x, y])),
-             "Vectorial": lambda x, y : np.sqrt(x ** 2. + y ** 2.)}
-
-
-ORDINARY_SA_COMBINATION = {
-    "Geometric": ims.geometric_mean_spectrum,
-    "Arithmetic": ims.arithmetic_mean_spectrum,
-    "Envelope": ims.envelope_spectrum,
-    "Larger PGA": ims.larger_pga
-    }
-
-
-class HorizontalMotion(object):
-    """
-    Base Class to implement methods to add horizontal motions to database
-    """
-    def __init__(self, fle, component="Geometric", periods=[], damping=0.05):
-        """
-        :param fle:
-            Opem datastream of hdf5 file
-        :param str component:
-            The component of horizontal motion
-        :param np.ndarray periods:
-            Spectral periods
-        :param float damping:
-            Fractional coefficient of damping
-        """
-        self.fle = fle
-        self.periods = periods
-        self.damping = damping
-        self.component = component
-
-    def add_data(self):
-        """
-        Adds the data
-        """
-
-
-class AddPGA(HorizontalMotion):
-    """
-    Adds the resultant Horizontal PGA to the database
-    """
-    def add_data(self):
-        """
-        Takes PGA from X and Y component and determines the resultant
-        horizontal component
-        """
-        if "PGA" not in self.fle["IMS/X/Scalar"]:
-            x_pga = self._get_pga_from_time_series(
-                "Time Series/X/Original Record/Acceleration",
-                "IMS/X/Scalar")
+        :raise: ValueError, TypeError when `value` or `operator` are invalid
+        '''
+        if len(args) == 3:
+            col, operator, value = args
         else:
-            x_pga = self.fle["IMS/X/Scalar/PGA"].value
-
-        if "PGA" not in self.fle["IMS/Y/Scalar"]:
-            y_pga = self._get_pga_from_time_series(
-                "Time Series/Y/Original Record/Acceleration",
-                "IMS/Y/Scalar")
+            col, operator = args[0], None
+        if operator is not None:  # 3 args passed, do some conversions:
+            dbcolumns = GMDatabaseTable.columns  # pylint: disable=no-member
+            if col not in dbcolumns:
+                raise ValueError("Unknown table field '%s'" % str(col))
+            if operator not in cls._operators:
+                raise ValueError("Unknown operator '%s'" % str(operator))
+            colobj = dbcolumns[col]
+            if isinstance(value, datetime) or \
+                    getattr(colobj, 'is_datetime_str', False):
+                value = GMDatabaseParser.normalize_dtime(value)
+            if isinstance(colobj, StringCol):
+                if not isinstance(value, bytes):
+                    # fixing py3 bytes comparison issue for safety, although
+                    # the pytables claim does not seem to be true in py3.6.2:
+                    value = str(value).encode('utf8')
+            elif colobj.__class__.__name__.startswith('Int') or \
+                    colobj.__class__.__name__.startswith('UInt'):
+                value = int(value)
+            elif colobj.__class__.__name__.startswith('Float'):
+                value = float(value)
+                if np.isnan(value):
+                    if operator not in ('==', '!='):
+                        raise ValueError('only != and == supported with NaNs')
+                    value = col
+                    # swap operator:
+                    operator = '!=' if operator == '==' else '=='
+            _str = "%s %s %s" % (col, operator, str(value))
         else:
-            y_pga = self.fle["IMS/Y/Scalar/PGA"].value
+            _str = str(col)
+        return str.__new__(cls, _str, **kw)
 
-        h_pga = self.fle["IMS/H/Scalar"].create_dataset("PGA", (1,),
-                                                        dtype=float)
-        h_pga.attrs["Units"] = "cm/s/s"
-        h_pga.attrs["Component"] = self.component
-        h_pga[:] = SCALAR_XY[self.component](x_pga, y_pga)
+    def __and__(self, other):
+        '''Implements logical 'and' using the & bitwise operator'''
+        if other in (True, None, '', 'True', 'true'):
+            return self
+        if other in (False, 'False', 'false'):
+            return 'False'
+        return expr("(%s) & (%s)" % (self, expr(other)))
 
-    def _get_pga_from_time_series(self, time_series_location, target_location):
-        """
-        If PGA is not found as an attribute of the X or Y dataset then
-        this extracts them from the time series.
-        """
-        pga = np.max(np.fabs(self.fle[time_series_location].value))
-        pga_dset = self.fle[target_location].create_dataset("PGA", (1,),
-                                                            dtype=float)
-        pga_dset.attrs["Units"] = "cm/s/s"
-        pga_dset[:] = pga
-        return pga
+    def __or__(self, other):
+        '''Implements logical 'or' using the | bitwise operator'''
+        if other in (False, 'False', 'false'):
+            return self
+        if other in (True, None, '', 'True', 'true'):
+            return 'True'
+        return expr("(%s) | (%s)" % (self, expr(other)))
+
+    def __invert__(self):
+        '''Implements logical negation using the ~ bitwise operator'''
+        return expr("~(%s)" % self)
 
 
-class AddPGV(HorizontalMotion):
-    """
-    Adds the resultant Horizontal PGV to the database
-    """
-    def add_data(self):
-        """
-        Takes PGV from X and Y component and determines the resultant
-        horizontal component
-        """
-        if "PGV" not in self.fle["IMS/X/Scalar"]:
-            x_pgv = self._get_pgv_from_time_series(
-                "Time Series/X/Original Record/",
-                "IMS/X/Scalar")
+class _single_operator_expr(expr):  # pylint: disable=invalid-name
+    '''abstract-like class implementing a single operator expression, e.g.:
+    expr("pga", ">", 0.5)`
+    '''
+    operator = None
+
+    def __new__(cls, col, value):
+        '''forwards the super-constructor with the class-operator'''
+        return expr.__new__(cls, col, cls.operator, value)
+
+
+class eq(_single_operator_expr):  # pylint: disable=invalid-name
+    '''Equality expression: eq('pga', 0.5) translates to "pga == 0.5",
+    eq('pga', float('nan')) translates to"pga != pga" '''
+    operator = '=='
+
+
+class ne(_single_operator_expr):  # pylint: disable=invalid-name
+    '''Inequality expression: ne('pga', 0.5) translates to "pga != 0.5",
+    ne('pga', float('nan')) translates to"pga == pga" '''
+    operator = '!='
+
+
+class lt(_single_operator_expr):  # pylint: disable=invalid-name
+    '''Lower-than expression: lt('pga', 0.5) translates to "pga < 0.5" '''
+    operator = '<'
+
+
+class le(_single_operator_expr):  # pylint: disable=invalid-name
+    '''Lower-equal-to expression: le('pga', 0.5) translates to "pga <= 0.5" '''
+    operator = '<='
+
+
+class gt(_single_operator_expr):  # pylint: disable=invalid-name
+    '''Greater-than expression: gt('pga', 0.5) translates to "pga > 0.5" '''
+    operator = '>'
+
+
+class ge(_single_operator_expr):  # pylint: disable=invalid-name
+    '''Greater-equal-to expression: ge('pga', 0.5) translates to "pga >= 0.5"
+    '''
+    operator = '>='
+
+
+class isin(expr):  # pylint: disable=invalid-name
+    '''is-in expression ("in" in SQL): isin('pga', 1, 4.4, 5) translates to:
+    "(pga == 1) | (pga == 4.4) | (pga == 5)"
+    '''
+    def __new__(cls, col, *values):
+        exp = None
+        for val in values:
+            if exp is None:
+                exp = eq(col, val)
+                continue
+            exp |= eq(col, val)
+        return expr.__new__(cls, exp)
+
+
+class isaval(expr):  # pylint: disable=invalid-name
+    '''available (not missing) expression: isaval('pga') translates to:
+    "(pga == pga)" (pga is not nan), ~isaval('event_time') translates to
+    "event_time == ''" (event_time empty), and so on.
+    '''
+    def __new__(cls, col):
+        colobj = GMDatabaseTable.columns[col]  # pylint: disable=no-member
+        return expr.__new__(cls, col, '!=', colobj.dflt)
+
+
+class between(expr):  # pylint: disable=invalid-name
+    '''is-in expression ("between" in SQL): between('pga', 1, 4.4) translates
+    to: "(pga >= 1) & (pga <= 4.4)"
+    '''
+    def __new__(cls, col, min_, max_):
+        exp1 = expr(col, '>=', min_) if min_ is not None else None
+        exp2 = expr(col, '<=', max_) if max_ is not None else None
+        if exp1 and exp2:
+            exp = exp1 & exp2
+        elif exp1:
+            exp = exp1
+        elif exp2:
+            exp = exp2
         else:
-            x_pgv = self.fle["IMS/X/Scalar/PGV"].value
-
-        if "PGV" not in self.fle["IMS/Y/Scalar"]:
-            y_pgv = self._get_pgv_from_time_series(
-                "Time Series/Y/Original Record",
-                "IMS/Y/Scalar")
-        else:
-            y_pgv = self.fle["IMS/Y/Scalar/PGV"].value
-
-        h_pgv = self.fle["IMS/H/Scalar"].create_dataset("PGV", (1,),
-                                                        dtype=float)
-        h_pgv.attrs["Units"] = "cm/s"
-        h_pgv.attrs["Component"] = self.component
-        h_pgv[:] = SCALAR_XY[self.component](x_pgv, y_pgv)
-
-    def _get_pgv_from_time_series(self, time_series_location, target_location):
-        """
-        If PGV is not found as an attribute of the X or Y dataset then
-        this extracts them from the time series.
-        """
-        if "Velocity" not in self.fle[time_series_location]:
-            accel_loc = time_series_location + "/Acceleration"
-            # Add velocity to the record
-            velocity, _ = ims.get_velocity_displacement(
-                self.fle[accel_loc].attrs["Time-step"],
-                self.fle[accel_loc].value)
-
-            vel_dset = self.fle[time_series_location].create_dataset(
-                "Velocity",
-                (len(velocity),),
-                dtype=float)
-
-        else:
-            velocity = self.fle[time_series_location + "/Velocity"].value
-
-        pgv = np.max(np.fabs(velocity))
-        pgv_dset = self.fle[target_location].create_dataset("PGV", (1,),
-                                                            dtype=float)
-        pgv_dset.attrs["Units"] = "cm/s/s"
-        pgv_dset[:] = pgv
-        return pgv
-
-
-SCALAR_IM_COMBINATION = {"PGA": AddPGA,
-                         "PGV": AddPGV}
-
-
-class AddResponseSpectrum(HorizontalMotion):
-    """
-    Adds the resultant horizontal response spectrum to the database
-    """
-    def add_data(self):
-        """
-        Adds the response spectrum
-        """
-        if len(self.periods) == 0:
-            self.periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
-
-        x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
-        y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
-        sax, say = ims.get_response_spectrum_pair(x_acc.value,
-                                                  x_acc.attrs["Time-step"],
-                                                  y_acc.value,
-                                                  y_acc.attrs["Time-step"],
-                                                  self.periods,
-                                                  self.damping)
-        sa_hor = ORDINARY_SA_COMBINATION[self.component](sax, say)
-        dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
-        nvals = len(sa_hor["Acceleration"])
-        self._build_group("IMS/H/Spectra/Response", "Acceleration",
-                          "Acceleration", sa_hor, nvals, "cm/s/s", dstring)
-        self._build_group("IMS/H/Spectra/Response", "Velocity",
-                          "Velocity", sa_hor, nvals, "cm/s", dstring)
-        self._build_group("IMS/H/Spectra/Response", "Displacement",
-                          "Displacement", sa_hor, nvals, "cm", dstring)
-        self._build_group("IMS/H/Spectra/Response", "PSA",
-                          "Pseudo-Acceleration", sa_hor, nvals, "cm/s/s",
-                          dstring)
-        self._build_group("IMS/H/Spectra/Response", "PSV",
-                          "Pseudo-Velocity", sa_hor, nvals, "cm/s", dstring)
-        self._add_periods()
-
-    def _build_group(self, base_string, key, im_key, sa_hor, nvals, units,
-                     dstring):
-        """
-        Builds the group corresponding to the full definition of the
-        resultant component
-        """
-        if key not in self.fle[base_string]:
-            base_grp = self.fle[base_string].create_group(key)
-        else:
-            base_grp = self.fle["/".join([base_string, key])]
-        base_cmp_grp = base_grp.create_group(self.component)
-        dset = base_cmp_grp.create_dataset(dstring, (nvals,), dtype=float)
-        dset.attrs["Units"] = units
-        dset[:] = sa_hor[im_key]
-
-    def _add_periods(self):
-        """
-        Adds the periods to the database
-        """
-        if "Periods" in self.fle["IMS/H/Spectra/Response"]:
-            return
-        dset = self.fle["IMS/H/Spectra/Response"].create_dataset(
-            "Periods",
-            (len(self.periods),),
-            dtype="f")
-        dset.attrs["High Period"] = np.max(self.periods)
-        dset.attrs["Low Period"] = np.min(self.periods)
-        dset.attrs["Number Periods"] = len(self.periods)
-        dset[:] = self.periods
-
-
-class AddGMRotDppSpectrum(AddResponseSpectrum):
-    """
-    Adds the GMRotDpp spectrum to the database
-    """
-    def add_data(self, percentile=50.0):
-        """
-        :param float percentile:
-            Percentile (pp)
-        """
-        if len(self.periods) == 0:
-            self.periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
-
-        x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
-        y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
-
-        gmrotdpp = ims.gmrotdpp(x_acc.value, x_acc.attrs["Time-step"],
-                                y_acc.value, y_acc.attrs["Time-step"],
-                                self.periods, percentile, self.damping)
-        dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
-        nvals = len(gmrotdpp)
-        # Acceleration
-        if not "Acceleration" in self.fle["IMS/H/Spectra/Response"]:
-            acc_grp = self.fle["IMS/H/Spectra/Response"].create_group(
-                "Acceleration")
-        else:
-            acc_grp = self.fle["IMS/H/Spectra/Response/Acceleration"]
-        acc_cmp_grp = acc_grp.create_group("GMRotD" + 
-                                           str(int(percentile)).zfill(2))
-        acc_dset = acc_cmp_grp.create_dataset(dstring, (nvals,), dtype=float)
-        acc_dset.attrs["Units"] = "cm/s/s"
-        acc_dset[:] = gmrotdpp["GMRotDpp"]
-        self._add_periods()
-
-
-class AddRotDppSpectrum(AddResponseSpectrum):
-    """
-    Adds the RotDpp spectrum to the database
-    """
-    def add_data(self, percentile=50.0):
-        """
-        :param float percentile:
-            Percentile (pp)
-        """
-        if len(self.periods) == 0:
-            self.periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
-
-        x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
-        y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
-        rotdpp = ims.rotdpp(x_acc.value, x_acc.attrs["Time-step"],
-                                y_acc.value, y_acc.attrs["Time-step"],
-                                self.periods, percentile, self.damping)[0]
-        dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
-        nvals = len(rotdpp["Pseudo-Acceleration"])
-        # Acceleration
-        if not "Acceleration" in self.fle["IMS/H/Spectra/Response"]:
-            acc_grp = self.fle["IMS/H/Spectra/Response"].create_group(
-                "Acceleration")
-        else:
-            acc_grp = self.fle["IMS/H/Spectra/Response/Acceleration"]
-        acc_cmp_grp = acc_grp.create_group("RotD" + 
-                                           str(int(percentile)).zfill(2))
-        acc_dset = acc_cmp_grp.create_dataset(dstring, (nvals,), dtype=float)
-        acc_dset.attrs["Units"] = "cm/s/s"
-        acc_dset[:] = rotdpp["Pseudo-Acceleration"]
-        self._add_periods()
-
-
-class AddGMRotIppSpectrum(AddResponseSpectrum):
-    """
-    Adds the GMRotIpp spectrum to the database
-    """
-    def add_data(self, percentile=50.0):
-        """
-        :param float percentile:
-            Percentile (pp)
-        """
-        if len(self.periods) == 0:
-            self.periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
-
-        x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
-        y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
-        sa_hor = ims.gmrotipp(x_acc.value, x_acc.attrs["Time-step"],
-                              y_acc.value, y_acc.attrs["Time-step"],
-                              self.periods, percentile, self.damping)
-        nvals = len(sa_hor["Acceleration"])
-        dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
-        # Acceleration
-        self._build_group("IMS/H/Spectra/Response", "Acceleration", 
-                          "Acceleration", sa_hor, nvals, "cm/s/s", dstring)
-        # Velocity
-        self._build_group("IMS/H/Spectra/Response", "Velocity", 
-                          "Velocity", sa_hor, nvals, "cm/s", dstring)
-        # Displacement
-        self._build_group("IMS/H/Spectra/Response", "Displacement", 
-                          "Displacement", sa_hor, nvals, "cm", dstring)
-        # Pseudo-Acceletaion
-        self._build_group("IMS/H/Spectra/Response", "PSA", 
-                          "Pseudo-Acceleration", sa_hor, nvals,
-                          "cm/s/s", dstring)
-        # Pseudo-Velocity
-        self._build_group("IMS/H/Spectra/Response", "PSV", 
-                          "Pseudo-Velocity", sa_hor, nvals, "cm/s", dstring)
-        self._add_periods()
-
-
-SPECTRUM_COMBINATION = {"Geometric": AddResponseSpectrum,
-                        "Arithmetic": AddResponseSpectrum,  
-                        "Envelope": AddResponseSpectrum,  
-                        "Larger PGA": AddResponseSpectrum} 
-
-
-def add_horizontal_im(database, intensity_measures, component="Geometric",
-        damping="05", periods=[]):
-    """
-    For a database this adds the resultant horizontal components to the
-    hdf databse for each record
-    :param database:
-        Strong motion databse as instance of :class:
-        smtk.sm_database.GroundMotionDatabase
-    :param list intensity_measures:
-        List of strings of intensity measures
-    :param str Geometric:
-        For scalar measures only, defines the resultant horizontal component
-    :param str damping:
-        Percentile damping
-    :param list/np.ndarray periods:
-        Periods
-    """
-    nrecs = len(database.records)
-    for iloc, record in enumerate(database.records):
-        print("Processing %s (Record %s of %s)" % (record.datafile, 
-                                                   iloc + 1,
-                                                   nrecs))
-        fle = h5py.File(record.datafile, "r+")
-        add_recursive_nameset(fle, "IMS/H/Spectra/Response")
-        fle["IMS/H/"].create_group("Scalar")
-        for intensity_measure in intensity_measures:
-            if len(intensity_measure.split("GMRotI")) > 1:
-                # GMRotIpp
-                percentile = float(intensity_measure.split("GMRotI")[1])
-                i_m = AddGMRotIppSpectrum(fle, intensity_measure, periods, 
-                                          float(damping) / 100.)
-                i_m.add_data(percentile)
-            elif len(intensity_measure.split("GMRotD")) > 1:
-                # GMRotDpp
-                percentile = float(intensity_measure.split("GMRotD")[1])
-                i_m = AddGMRotDppSpectrum(fle, intensity_measure, periods, 
-                                          float(damping) / 100.)
-                i_m.add_data(percentile)
-            elif len(intensity_measure.split("RotD")) > 1:
-                # RotDpp
-                percentile = float(intensity_measure.split("RotD")[1])
-                i_m = AddRotDppSpectrum(fle, intensity_measure, periods, 
-                                          float(damping) / 100.)
-                i_m.add_data(percentile)
-            elif intensity_measure in SCALAR_IMS:
-                # Is a scalar value
-                i_m = SCALAR_IM_COMBINATION[intensity_measure](fle,
-                    component,
-                    periods,
-                    float(damping) / 100.)
-                i_m.add_data()
-            elif intensity_measure in SPECTRAL_IMS:
-                # Is a normal spectrum combination
-                i_m = SPECTRUM_COMBINATION[intensity_measure](fle,
-                    component,
-                    periods,
-                    float(damping) / 100.)
-                i_m.add_data()
-            else:
-                raise ValueError("Unrecognised Intensity Measure!")
-        fle.close()
+            exp = 'True'
+        return expr.__new__(cls, exp)
