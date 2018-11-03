@@ -32,7 +32,8 @@ from tables.description import Float32Col, Col, IsDescription, Float64Col, \
     StringCol, EnumCol
 
 from smtk.gm_database import expr, isin, eq, ne, lt, gt, le, ge, \
-    GMDatabaseParser, between, isaval, GMDatabaseTable
+    GMDatabaseParser, between, isaval, GMDatabaseTable, records_where, get_table,\
+    read_where
 
 BASE_DATA_PATH = os.path.join(
     os.path.join(os.path.dirname(__file__), "file_samples")
@@ -68,101 +69,6 @@ class GmDatabaseTestCase(unittest.TestCase):
         '''deletes tmp hdf5 file'''
         if os.path.isfile(cls.output_file):
             os.remove(cls.output_file)
-
-    def test_expr(self):
-        '''tests gm database `expr`'''
-        exp = expr('pga', '!=', np.nan) & expr('pgv', '==', 6.5)
-        self.assertTrue(str(exp) == "(pga == pga) & (pgv == 6.5)")
-        for dtime in [datetime(2016, 1, 31), '2016-01-31']:
-            exp = expr('event_time', '<=', dtime)
-            self.assertTrue(str(exp) == "event_time <= b'2016-01-31T00:00:00'")
-        # try with string and bytes str, supplying quotes and special chars
-        for ecn in ['itå"\'ly'.encode('utf8'), 'itå"\'ly']:
-            exp = expr('event_country', '>', ecn)
-            self.assertTrue(str(exp) ==
-                            "event_country > b'it\\xc3\\xa5\"\\'ly'")
-        # test boolean and combined expression
-        exp = expr('vs30_measured', '==', 'True') & expr('event_time', '<=',
-                                                         '2016-01-01')
-        self.assertTrue(str(exp) == ("(vs30_measured == True) & "
-                                     "(event_time <= "
-                                     "b'2016-01-01T00:00:00')"))
-        exp = expr('vs30_measured', '==', 'True') | expr('event_time', '<=',
-                                                         '2016-01-01')
-        self.assertTrue(str(exp) == ("(vs30_measured == True) | "
-                                     "(event_time <= "
-                                     "b'2016-01-01T00:00:00')"))
-        exp = ~expr('vs30_measured', '==', 'True') | ~expr('event_time', '<=',
-                                                           '2016-01-01')
-        self.assertTrue(str(exp) == ("(vs30_measured != True) | "
-                                     "(event_time > "
-                                     "b'2016-01-01T00:00:00')"))
-        exp = ~(expr('vs30_measured', '==', 'True') | expr('event_time', '<=',
-                                                           '2016-01-01'))
-        self.assertTrue(str(exp) == ("~((vs30_measured == True) | "
-                                     "(event_time <= "
-                                     "b'2016-01-01T00:00:00'))"))
-        # test simple operator expressions:
-        for func, symbol in zip([eq, ne, lt, gt, le, ge],
-                                ['==', '!=', '<', '>', '<=', '>=']):
-            # assert that with event_time we cannot cast to datetime:
-            with self.assertRaises(TypeError):
-                exp = func('event_time', 0.75)
-                self.assertTrue(str(exp) == 'event_time %s 0.75' % symbol)
-            # with string columns it does not raise, and converts to str:
-            exp = func('event_country', 0.75)
-            self.assertTrue(str(exp) == "event_country %s b'0.75'" % symbol)
-            # it works, obviously, with float columns
-            exp = func('pgv', 0.75)
-            self.assertTrue(str(exp) == 'pgv %s 0.75' % symbol)
-            # what if with numeric we provide a castable string?: it casts:
-            exp = func('pgv', "0.75")
-            self.assertTrue(str(exp) == 'pgv %s 0.75' % symbol)
-            # what if with numeric we provide a non castable string?: raises:
-            with self.assertRaises(ValueError):
-                exp = func('pgv', "abc")
-        # what if with numeric we provide 'nan'? it casts:
-        for nan in ['nan', np.nan, float('nan')]:
-            exp = eq('pgv', nan)
-            self.assertTrue(str(exp) == 'pgv != pgv')
-            exp = ne('pgv', nan)
-            self.assertTrue(str(exp) == 'pgv == pgv')
-            for func in [lt, le, gt, ge]:
-                with self.assertRaises(ValueError):
-                    exp = func('pgv', "nan")
-        # test builtin expressions:
-        # test isin:
-        exp = isin('pga', 0.5, 0.75)
-        self.assertTrue(str(exp) == '(pga == 0.5) | (pga == 0.75)')
-        exp = ~isin('pga', 0.5, 0.75)
-        self.assertTrue(str(exp) == '~((pga == 0.5) | (pga == 0.75))')
-        with self.assertRaises(TypeError):
-            exp = isin('pga')
-        # test between:
-        exp = between('pga', 0.5, 0.75)
-        self.assertTrue(str(exp) == '(pga >= 0.5) & (pga <= 0.75)')
-        exp = ~between('pga', 0.5, 0.75)
-        self.assertTrue(str(exp) == '~((pga >= 0.5) & (pga <= 0.75))')
-        # between with no args
-        with self.assertRaises(TypeError):
-            exp = between('pga')  # pylint: disable=no-value-for-parameter
-        # test is aval:
-        exp = isaval('pga')
-        self.assertTrue(str(exp) == 'pga == pga')
-        exp = ~isaval('pga')
-        self.assertTrue(str(exp) == 'pga != pga')
-        exp = isaval('vs30_measured')
-        # with booleans, defaults do not mean "missing", so it depends on the
-        # default provided. For bool cols, e.g. vs30_measured, the return
-        # expression is either True or False:
-        exp = isaval('vs30_measured')
-        self.assertTrue(str(exp) == 'True')
-        exp = ~isaval('vs30_measured')
-        self.assertTrue(str(exp) == '~(True)')
-        exp = isaval('event_country')
-        self.assertTrue(str(exp) == "event_country != b''")
-        exp = ~isaval('event_country')
-        self.assertTrue(str(exp) == "event_country == b''")
 
     def test_pytables(self):
         '''Test some pytable casting stuff NOT clearly documented :( '''
@@ -265,7 +171,7 @@ class GmDatabaseTestCase(unittest.TestCase):
             self.assertTrue(len(vals) == 1)
 
     def test_template_basic_file(self):
-
+        '''parses sample flatfile and perfomrs some tests'''
         # test a file not found
         with self.assertRaises(IOError):
             with GMDatabaseParser.get_table(self.output_file + 'what',
@@ -369,6 +275,166 @@ class GmDatabaseTestCase(unittest.TestCase):
                            tbl.where('%s == %s' % (test_col, test_col_newval)))
             self.assertTrue(not newrows)
 
+    def test_expr(self):
+        '''tests gm database `expr` class and subclasses'''
+        exp = expr('pga', '!=', np.nan) & expr('pgv', '==', 6.5)
+        self.assertTrue(str(exp) == "(pga == pga) & (pgv == 6.5)")
+        for dtime in [datetime(2016, 1, 31), '2016-01-31']:
+            exp = expr('event_time', '<=', dtime)
+            self.assertTrue(str(exp) == "event_time <= b'2016-01-31T00:00:00'")
+        # try with string and bytes str, supplying quotes and special chars
+        for ecn in ['itå"\'ly'.encode('utf8'), 'itå"\'ly']:
+            exp = expr('event_country', '>', ecn)
+            self.assertTrue(str(exp) ==
+                            "event_country > b'it\\xc3\\xa5\"\\'ly'")
+        # test boolean and combined expression
+        exp = expr('vs30_measured', '==', 'True') & \
+            expr('event_time', '<=', '2016-01-01')
+        self.assertTrue(str(exp) == str(~~exp) ==
+                        ("(vs30_measured == True) & "
+                         "(event_time <= b'2016-01-01T00:00:00')"))
+#         exp = ~~exp
+#         self.assertTrue(str(exp) ==
+#                         ("(vs30_measured == True) & "
+#                          "(event_time <= b'2016-01-01T00:00:00')"))
+        exp |= eq('pga', 9.85)
+        self.assertTrue(str(exp) ==
+                        ("((vs30_measured == True) & "
+                         "(event_time <= b'2016-01-01T00:00:00')) | "
+                         "(pga == 9.85)"))
+        self.assertTrue(str(~exp) ==
+                        ("((vs30_measured != True) | "
+                         "(event_time > b'2016-01-01T00:00:00')) & "
+                         "(pga != 9.85)"))
+        # test simple operator expressions:
+        for func, symbol in zip([eq, ne, lt, gt, le, ge],
+                                ['==', '!=', '<', '>', '<=', '>=']):
+            # assert that with event_time we cannot cast to datetime:
+            with self.assertRaises(TypeError):
+                exp = func('event_time', 0.75)
+                self.assertTrue(str(exp) == 'event_time %s 0.75' % symbol)
+            # with string columns it does not raise, and converts to str:
+            exp = func('event_country', 0.75)
+            self.assertTrue(str(exp) == "event_country %s b'0.75'" % symbol)
+            # it works, obviously, with float columns
+            exp = func('pgv', 0.75)
+            self.assertTrue(str(exp) == 'pgv %s 0.75' % symbol)
+            # what if with numeric we provide a castable string?: it casts:
+            exp = func('pgv', "0.75")
+            self.assertTrue(str(exp) == 'pgv %s 0.75' % symbol)
+            # what if with numeric we provide a non castable string?: raises:
+            with self.assertRaises(ValueError):
+                exp = func('pgv', "abc")
+        # what if with numeric we provide 'nan'? it casts:
+        for nan in ['nan', np.nan, float('nan')]:
+            exp = eq('pgv', nan)
+            self.assertTrue(str(exp) == 'pgv != pgv')
+            exp = ne('pgv', nan)
+            self.assertTrue(str(exp) == 'pgv == pgv')
+            for func in [lt, le, gt, ge]:
+                with self.assertRaises(ValueError):
+                    exp = func('pgv', "nan")
+        # test edge cases:
+        self.assertTrue(expr(True) == expr('True') == expr('true') ==
+                        ~expr(False))
+        self.assertTrue(expr(False) == expr('False') == expr('false') ==
+                        ~expr(True))
+        with self.assertRaises(ValueError):
+            expr('')
+        with self.assertRaises(ValueError):
+            expr(None)
+        # test builtin expressions:
+        # test isin:
+        exp = isin('pga', 0.5, 0.75)
+        self.assertTrue(str(exp) == '(pga == 0.5) | (pga == 0.75)')
+        exp = ~isin('pga', 0.5, 0.75)
+        self.assertTrue(str(exp) == '(pga != 0.5) & (pga != 0.75)')
+        with self.assertRaises(TypeError):
+            exp = isin('pga')
+        # test between:
+        exp = between('pga', 0.5, 0.75)
+        self.assertTrue(str(exp) == '(pga >= 0.5) & (pga <= 0.75)')
+        exp = ~between('pga', 0.5, 0.75)
+        self.assertTrue(str(exp) == '(pga < 0.5) | (pga > 0.75)')
+        # between with no args
+        with self.assertRaises(TypeError):
+            exp = between('pga')  # pylint: disable=no-value-for-parameter
+        # test is aval:
+        exp = isaval('pga')
+        self.assertTrue(str(exp) == 'pga == pga')
+        exp = ~isaval('pga')
+        self.assertTrue(str(exp) == 'pga != pga')
+        exp = isaval('vs30_measured')
+        # with booleans, defaults do not mean "missing", so it depends on the
+        # default provided. For bool cols, e.g. vs30_measured, the return
+        # expression is either True or False:
+        exp = isaval('vs30_measured')
+        self.assertTrue(str(exp) == 'True')
+        exp = ~isaval('vs30_measured')
+        self.assertTrue(str(exp) == 'False')
+        exp = isaval('event_country')
+        self.assertTrue(str(exp) == "event_country != b''")
+        exp = ~isaval('event_country')
+        self.assertTrue(str(exp) == "event_country == b''")
+
+    def test_template_basic_file_selection(self):
+        '''parses a sample flatfile and tests some selection syntax on it'''
+        log = GMDatabaseParser.parse(self.input_file,
+                                     output_path=self.output_file)
+        dbname = os.path.splitext(os.path.basename(self.output_file))[0]
+        with get_table(self.output_file, dbname) as table:
+            total = table.nrows
+            selection = le('pga', 100.75)
+            ids = [r['record_id'] for r in records_where(table, selection)]
+            ids_len = len(ids)
+            # test that read where gets the same number of records:
+            ids = [r['record_id'] for r in read_where(table, selection)]
+            self.assertEqual(len(ids), ids_len)
+            # test with limit given:
+            ids = [r['record_id'] for r in records_where(table, selection,
+                                                         ids_len-1)]
+            self.assertEqual(len(ids), ids_len-1)
+            # test by negating the selection condition and expect the remaining
+            # records to be found:
+            ids = [r['record_id'] for r in records_where(table, ~selection)]
+            self.assertEqual(len(ids), total - ids_len)
+            # same should happend for read_where:
+            ids = [r['record_id'] for r in read_where(table, ~selection)]
+            self.assertEqual(len(ids), total - ids_len)
+            # test with limit 0 (expected: no record yielded):
+            ids = [r['record_id'] for r in records_where(table, ~selection, 0)]
+            self.assertEqual(len(ids), 0)
+            # restrict the search:
+            # note that we must pass strings to event_time,
+            # either 1935-01-01, 1935-01-01T00:00:00, or simply the year:
+            selection2 = selection & between('event_time', '1935', '1936')
+            ids = [r['record_id'] for r in records_where(table, selection2)]
+            ids_len2 = len(ids)
+            # test that the search was restricted:
+            self.assertTrue(ids_len2 < ids_len)
+            # now negate the serarch on event_time and test that we get all
+            # remaining records:
+            selection2 = selection & ~between('event_time', '1935', '1936')
+            ids = [r['record_id'] for r in records_where(table, selection2)]
+            self.assertEqual(len(ids) + ids_len2, ids_len)
+            # test truthy condition (isaval on bool col returns True):
+            selection = isaval('vs30_measured')
+            ids = read_where(table, selection)
+            self.assertEqual(len(ids), total)
+            # test with limit exceeding the available records (should get
+            # all records as if limit was not given):
+            ids = read_where(table, selection, total+1)
+            self.assertEqual(len(ids), total)
+            # records_where should get the same results as read_where:
+            ids = [r['record_id'] for r in records_where(table, selection)]
+            self.assertEqual(len(ids), total)
+            # test falsy condition (isaval on bool col returns True):
+            ids = read_where(table, ~selection)
+            self.assertEqual(len(ids), 0)
+            ids = read_where(table, selection, total+1)
+            self.assertEqual(len(ids), total)
+            ids = [r['record_id'] for r in records_where(table, ~selection)]
+            self.assertEqual(len(ids), 0)
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

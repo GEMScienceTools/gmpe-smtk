@@ -29,6 +29,7 @@ from datetime import datetime
 from contextlib import contextmanager
 from collections import defaultdict
 import tables
+from tables.file import File
 from tables.table import Table
 from tables.group import Group
 from tables.exceptions import NoSuchNodeError
@@ -771,15 +772,26 @@ class GMDatabaseParser(object):
         return value
 
 #########################################
-# Database selection
+# Database selection / maniuplation
 #########################################
 
 
-def records_where(filepath, dbname, condition, limit=None):
+def get_table(filepath, dbname):
+    '''Returns a Gm database table from the given database name `dbname`
+    located in the specific HDF5 file with path `filepath`. To be used within
+    a "with" statement:
+    ```
+    with get_table(filepath, dbname):
+        # do your stuff here
+    '''
+    return GMDatabaseParser.get_table(filepath, dbname, 'r')
+
+
+def records_where(table, condition, limit=None):
     '''Returns an iterator yielding records (Python dicts) of the
     database table "dbname" stored inside the HDF5 file with path `filepath`.
     The records returned will be filtered according to `condition`.
-    IMPORTANT: This function is designed to be used inside a `for...` loop
+    IMPORTANT: This function is designed to be used inside a `for ...` loop
     to avoid loading all data into memory. Do **not** do this as it fails:
     `list(records_where(...))`.
     If you want all records in a list (be aware of potential meory leaks
@@ -787,24 +799,24 @@ def records_where(filepath, dbname, condition, limit=None):
 
     Example:
     ```
-        for rec in records_where("/home/gmdb.hdf5", "esm_sa_2018",
-                                 "((pga >= 0.5) & (pga <=0.8)) | (pgv <1.1)"):
-            # do your stuff with `rec`, e.g. access the fields:
-            sa = rec["sa"]
+        condition = between("pga", 0.5, 0.8) | lt("pgv", 1.1)
+        with get_table(...) as table:
+            for rec in records_where(table, condition):
+                # do your stuff with `rec`, e.g. access the fields:
+                sa = rec["sa"]
+                pga = rec['pga']  # and so on...
     ```
-    The same can be obtained by using the expression functions
-    implemented in this module (`eq ne lt gt le ge isin between isaval`)
-    which take care of some known caveats [1]:
+    The same can be obtained by specifying `condition` without built-in
+    functions of this module (`eq ne lt gt le ge isin between isaval`) but
+    with the default pytables string expression syntax. Note however that
+    this approach has some caveats (see [1]) which the first approach tries
+    to solve. Example with standard string expression:
     ```
-        for rec in records_where("/home/gmdb.hdf5", "esm_sa_2018",
-                                 between("pga", 0.5, 0.8) | lt("pgv", 1.1)):
-            # do your stuff with `rec`, e.g. access the fields:
-            sa = rec["sa"]
+        condition = "((pga >= 0.5) & (pga <=0.8)) | (pgv <1.1)"
+        # the remainder of the code is the same as the example above
     ```
 
-
-    :param filepath: the path of the HDF5 GM database file
-    :param dbname: the name of the database table inside `filepath`
+    :param table: The pytables Table object. See module function `get_table`
     :param condition: a string expression, or a list of string expressions
         concatenated with '&' (logical AND) or '|' (logical OR). Any string
         expression is of the form:
@@ -875,24 +887,29 @@ def records_where(filepath, dbname, condition, limit=None):
     behave exactly as string expressions (they are actually particular string
     objects)
     '''
-    count = 0
-    with GMDatabaseParser.get_table(filepath, dbname, mode='r') as tbl:
-        for row in tbl.where(str(condition)):
+    if condition not in ('False', 'false'):
+        for count, row in enumerate(table.iterrows()
+                                    if condition in ('True', 'true', None)
+                                    else table.where(condition)):
             if limit is None or count < limit:
                 yield row
 
 
-def read_where(filepath, dbname, condition, limit=None):
+def read_where(table, condition, limit=None):
     '''Returns a list of records (Python dicts) of the
     database table "dbname" stored inside the HDF5 file with path `filepath`.
     The records returned will be filtered according to `condition`.
     IMPORTANT: This function loads all data into memory
-    To avoid potential memory leaks, see :function:`records_where`.
+    To avoid potential memory leaks (especially if for some reason
+    `condition` is 'True' or 'true' or None), use :function:`records_where`.
 
     All parameters are the same as :function:`records_where`
     '''
-    with GMDatabaseParser.get_table(filepath, dbname, mode='r') as tbl:
-        return tbl.read_where(condition)[:limit]
+    if condition in ('True', 'true', None):
+        return table.read()[:limit]
+    if condition in ('False', 'false'):
+        return []
+    return table.read_where(condition)[:limit]
 
 #############################
 # Database selection syntax #
@@ -903,9 +920,11 @@ class expr(str):  # pylint: disable=invalid-name
     '''expression class subclassing string
     All expression classes are lower case as they mimic functions rather than
     classes'''
-    _operators = set(['==', '>', '<', '!=', '>=', '<='])
+    # dict of valid operators mapped to their negtation:
+    _operators = {'==': '!=', '!=': '==', '>': '<=', '<': '>=',
+                  '>=': '<', '<=': '>'}
 
-    def __new__(cls, *args, **kw):
+    def __new__(cls, *args):
         '''Creates a string expression parsing the given arguments, e.g.:
 
             ```expr("pgv", "<=", 9)```
@@ -917,77 +936,101 @@ class expr(str):  # pylint: disable=invalid-name
         This class takes care of converting value to
         the proper column's Python type and handles some caveats
         (e.g., quoting strings, handling NaNs comparison, date-time conversion
-        to ISO formatted strings, casting to proper type when possible)
-
-        This class can also be called with a single argument `arg` to skip
-        the conversion, behaving exactly as `str(arg)`. This type of
-        initialization is usually reserved for private use when concatenating
-        expressions with logical operators
+        to ISO formatted strings, casting to float or int when needed)
 
         :raise: ValueError, TypeError when `value` or `operator` are invalid
         '''
-        if len(args) == 3:
+        # Note: the constructor with one or two arguments shoule be used only
+        # by module-level functions and not exposed publicly
+        if len(args) == 3:  # 3 args: column, operator, value: process value
             col, operator, value = args
-            dbcolumns = GMDatabaseTable.columns  # pylint: disable=no-member
-            if col not in dbcolumns:
-                raise ValueError("Unknown table field '%s'" % str(col))
-            if operator not in cls._operators:
-                raise ValueError("Unknown operator '%s'" % str(operator))
-            colobj = dbcolumns[col]
-            if isinstance(value, datetime) or \
-                    getattr(colobj, 'is_datetime_str', False):
+            cls._check_operator(operator)
+            colobj = cls._getcolobj(col)
+            colclass = colobj.__class__.__name__
+            if getattr(colobj, 'is_datetime_str', False):  # aka datetime col
                 value = GMDatabaseParser.normalize_dtime(value)
             if isinstance(colobj, StringCol):
                 if not isinstance(value, bytes):
-                    # fixing py3 bytes comparison issue for safety, although
-                    # the pytables claim does not seem to be true in py3.6.2:
+                    # encode in bytes (pytables claims is mandatory in py3,
+                    # although their claim does not seem to be true in py3.6.2)
                     value = str(value).encode('utf8')
-            elif colobj.__class__.__name__.startswith('Int') or \
-                    colobj.__class__.__name__.startswith('UInt'):
+            elif colclass.startswith('Int') or colclass.startswith('UInt'):
                 value = int(value)
-            elif colobj.__class__.__name__.startswith('Float'):
+            elif colclass.startswith('Float'):
                 value = float(value)
                 if np.isnan(value):
                     if operator not in ('==', '!='):
                         raise ValueError('only != and == supported with NaNs')
-                    value = col
-                    # swap operator:
-                    operator = '!=' if operator == '==' else '=='
+                    # swap col==nan with col!=col, col!=nan with col==col:
+                    value, operator = col, cls._operators[operator]
             _str = "%s %s %s" % (col, operator, str(value))
-        else:
+            _negation = "%s %s %s" % (col, cls._operators[operator],
+                                      str(value))
+        elif len(args) == 2:  # 2 args: expression, negation (internal use)
             _str = str(args[0])
-        return str.__new__(cls, _str, **kw)
+            _negation = str(args[1])
+        else:  # 1 arg: expression (internal use)
+            _str = str(args[0])
+            _negation = args[0]._negation if isinstance(args[0], expr) \
+                else "~(%s)" % _str
+        _str, _negation = cls._final_check(_str, _negation)
+        ret = str.__new__(cls, _str)
+        # _negation is the logical negation of this expression. It makes
+        # composition more readable (and probably also more efficient when
+        # selecting with pytables): example: ~~expr('pga', '<', 9.5) (negate
+        # twice) will return the same expression "pga < 9.5" instead of
+        # "~(~(pga < 9.5))". The little memory overhead of storing an
+        # additional string is negligible
+        ret._negation = _negation  # pylint: disable=protected-access
+        return ret
+
+    @classmethod
+    def _getcolobj(cls, colname):
+        dbcolumns = GMDatabaseTable.columns  # pylint: disable=no-member
+        if colname not in dbcolumns:
+            raise ValueError("Unknown table field '%s'" % str(colname))
+        return dbcolumns[colname]
+
+    @classmethod
+    def _check_operator(cls, operator):
+        if operator not in cls._operators:
+            raise ValueError("Unknown operator '%s'" % str(operator))
+
+    @classmethod
+    def _final_check(cls, expression, negation):
+        if not expression or expression == 'None':
+            raise ValueError('empty expression')
+        if expression in ('True', 'true'):
+            expression, negation = 'True', 'False'
+        elif expression in ('False', 'false'):
+            expression, negation = 'False', 'True'
+        return expression, negation
 
     def __and__(self, other):
-        '''Implements logical 'and' using the & bitwise operator'''
+        '''Implements logical 'and' obtainable by means of the & operator'''
         if other in (None, '', True, 'True', 'true'):
             return self
         if other in (False, 'False', 'false'):
             return expr('False')
-        return expr("(%s) & (%s)" % (self, expr(other)))
+        expr2 = expr(other)
+        neg = self._negation  # pylint: disable=no-member, protected-access
+        neg2 = expr2._negation  # pylint: disable=no-member, protected-access
+        return expr("(%s) & (%s)" % (self, expr2), "(%s) | (%s)" % (neg, neg2))
 
     def __or__(self, other):
-        '''Implements logical 'or' using the | bitwise operator'''
+        '''Implements logical 'or' obtainable by means of the | operator'''
         if other in (None, '', False, 'False', 'false'):
             return self
         if other in (True, 'True', 'true'):
             return expr('True')
-        return expr("(%s) | (%s)" % (self, expr(other)))
+        expr2 = expr(other)
+        neg = self._negation  # pylint: disable=no-member, protected-access
+        neg2 = expr2._negation  # pylint: disable=no-member, protected-access
+        return expr("(%s) | (%s)" % (self, expr2), "(%s) & (%s)" % (neg, neg2))
 
     def __invert__(self):
-        '''Implements logical negation using the ~ bitwise operator'''
-        # before simply returning the straightforward "~self"
-        # try to guess if it's possible to provide the same
-        # expression with the opposite operator, e.g. turning
-        # "col <= 6" into the more readable "col > 6":
-        if not set(str(self)) & set('()~|&'):  # '()~|&' not in this expr
-            spl = str(self).split(' ')
-            if len(spl) == 3:
-                opposite_opr = {'==': '!=', '>': '<=', '<': '>=', '!=': '==',
-                                '>=': '<', '<=': '>'}.get(spl[1], None)
-                if opposite_opr is not None:
-                    return expr("%s %s %s" % (spl[0], opposite_opr, spl[2]))
-        return expr("~(%s)" % self)
+        '''Implements logical negation obtainable by means of the ~ operator'''
+        return expr(self._negation, self)  # pylint: disable=no-member
 
 
 class _single_operator_expr(expr):  # pylint: disable=invalid-name
@@ -1003,7 +1046,8 @@ class _single_operator_expr(expr):  # pylint: disable=invalid-name
 
 class eq(_single_operator_expr):  # pylint: disable=invalid-name
     '''Equality expression: eq('pga', 0.5) translates to "pga == 0.5",
-    eq('pga', float('nan')) translates to"pga != pga" '''
+    eq('pga', float('nan')) translates to "pga != pga"
+    '''
     operator = '=='
 
 
