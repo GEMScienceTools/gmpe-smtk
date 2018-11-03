@@ -963,7 +963,7 @@ class expr(str):  # pylint: disable=invalid-name
         if other in (None, '', True, 'True', 'true'):
             return self
         if other in (False, 'False', 'false'):
-            return 'False'
+            return expr('False')
         return expr("(%s) & (%s)" % (self, expr(other)))
 
     def __or__(self, other):
@@ -971,7 +971,7 @@ class expr(str):  # pylint: disable=invalid-name
         if other in (None, '', False, 'False', 'false'):
             return self
         if other in (True, 'True', 'true'):
-            return 'True'
+            return expr('True')
         return expr("(%s) | (%s)" % (self, expr(other)))
 
     def __invert__(self):
