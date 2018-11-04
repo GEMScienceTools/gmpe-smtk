@@ -79,11 +79,11 @@ class GmDatabaseTestCase(unittest.TestCase):
                                         description=DummyTable)
             row = table.row
 
-            # define set and get to avoid typing pylint flase positives
+            # define set and get to avoid pylint flase positives
             # everywhere:
-            def set(field, value):  # @ReservedAssignment
+            def set(field, val):  # @ReservedAssignment
                 '''sets a value on the row'''
-                row[field] = value  # pylint: disable=unsupported-assignment-operation
+                row[field] = val  # pylint: disable=unsupported-assignment-operation
 
             def get(field):
                 '''gets a value from the row'''
@@ -189,15 +189,15 @@ class GmDatabaseTestCase(unittest.TestCase):
 
         total = log['total']
         written = total - 2  # row 2 and 3 not written
-        self.assertTrue(log['total'] == 99)
-        self.assertTrue(log['written'] == written)
-        self.assertTrue(sorted(log['error']) == [2, 3])  # pga sa[0] mismatch, skipped
-        self.assertTrue(len(log['outofbound_values']) == 2)  # rows 0 and 1
-        self.assertTrue(log['outofbound_values']['event_latitude'] == 1)  # row 0
-        self.assertTrue(log['outofbound_values']['event_longitude'] == 1)  # row 1
-        self.assertTrue(log['missing_values']['pga'] == 0)
-        self.assertTrue(log['missing_values']['pgv'] == log['written'])
-        self.assertTrue(log['missing_values']['pgv'] == log['written'])
+        self.assertEqual(log['total'], 99)
+        self.assertEqual(log['written'], written)
+        self.assertEqual(sorted(log['error']), [2, 3])
+        self.assertEqual(len(log['outofbound_values']), 2)  # rows 0 and 1
+        self.assertEqual(log['outofbound_values']['event_latitude'], 1)  # 0
+        self.assertEqual(log['outofbound_values']['event_longitude'], 1)  # 1
+        self.assertEqual(log['missing_values']['pga'], 0)
+        self.assertEqual(log['missing_values']['pgv'], log['written'])
+        self.assertEqual(log['missing_values']['pgv'], log['written'])
 
         # assert auto generated ids are not missing:
         self.assertFalse('record_id' in log['missing_values'])
