@@ -31,7 +31,7 @@ from tables.file import open_file
 from tables.description import Float32Col, Col, IsDescription, Float64Col, \
     StringCol, EnumCol
 
-from smtk.gm_database import expr, isin, eq, ne, lt, gt, le, ge, \
+from smtk.gm_database import expr, eq, ne, lt, gt, le, ge, \
     GMDatabaseParser, between, isaval, GMDatabaseTable, records_where, get_table,\
     read_where
 
@@ -90,15 +90,15 @@ class GmDatabaseTestCase(unittest.TestCase):
                 return row[field]  # pylint: disable=unsubscriptable-object
 
             # assert the value is the default:
-            self.assertTrue(get('floatcol') == 0)
+            self.assertEqual(get('floatcol'), 0)
             # what if we supply a string? TypeError
             with self.assertRaises(TypeError):
                 set('floatcol', 'a')
             # assert the value is still the default:
-            self.assertTrue(get('floatcol') == 0)
+            self.assertEqual(get('floatcol'), 0)
             # what if we supply a castable string instead? it is casted
             set('floatcol', '5.5')
-            self.assertTrue(get('floatcol') == 5.5)
+            self.assertEqual(get('floatcol'), 5.5)
             # what if we supply a scalr instead of an array?
             # the value is broadcasted:
             set('arraycol', 5)
@@ -148,7 +148,7 @@ class GmDatabaseTestCase(unittest.TestCase):
             # test: (https://stackoverflow.com/a/10821267)
             vals = [r['floatcol'] for r in tbl.where('floatcol != floatcol')]
             # now it works:
-            self.assertTrue(len(vals) == 1)
+            self.assertEqual(len(vals), 1)
 
             ###########################
             # TEST ARRAY SELECTION:
@@ -345,12 +345,24 @@ class GmDatabaseTestCase(unittest.TestCase):
             expr(None)
         # test builtin expressions:
         # test isin:
-        exp = isin('pga', 0.5, 0.75)
-        self.assertTrue(str(exp) == '(pga == 0.5) | (pga == 0.75)')
-        exp = ~isin('pga', 0.5, 0.75)
-        self.assertTrue(str(exp) == '(pga != 0.5) & (pga != 0.75)')
+        exp1 = eq('pga', 0.5, 0.75)
+        self.assertTrue(str(exp1) == '(pga == 0.5) | (pga == 0.75)')
+        exp2 = ~eq('pga', 0.5, 0.75)
+        self.assertTrue(str(exp2) == '(pga != 0.5) & (pga != 0.75)')
+        exp2 = ne('pga', 0.5, 0.75)
+        self.assertTrue(str(exp1) == str(~exp2))
+        self.assertTrue(str(exp2) == str(~exp1))
         with self.assertRaises(TypeError):
-            exp = isin('pga')
+            exp = eq('pga')
+        # test with more args:
+        exp1 = eq('pga', 0.5, 0.75, 1)
+        self.assertTrue(str(exp1) == ('(pga == 0.5) | (pga == 0.75) | '
+                                      '(pga == 1.0)'))
+        exp2 = ne('pga', 0.5, 0.75, 1)
+        self.assertTrue(str(exp2) == ('(pga != 0.5) & (pga != 0.75) & '
+                                      '(pga != 1.0)'))
+        self.assertEqual(~exp1, exp2)
+        self.assertEqual(exp1, ~exp2)
         # test between:
         exp = between('pga', 0.5, 0.75)
         self.assertTrue(str(exp) == '(pga >= 0.5) & (pga <= 0.75)')

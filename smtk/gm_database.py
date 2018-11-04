@@ -799,20 +799,25 @@ def records_where(table, condition, limit=None):
 
     Example:
     ```
-        condition = between("pga", 0.5, 0.8) | lt("pgv", 1.1)
+        # given a variable dtime representing a datetime object:
+
+        condition = between('pga', 0.14, 1.1) & ne('pgv', 'nan') &
+                    lt('event_time', dtime)
+
         with get_table(...) as table:
             for rec in records_where(table, condition):
                 # do your stuff with `rec`, e.g. access the fields:
                 sa = rec["sa"]
                 pga = rec['pga']  # and so on...
     ```
-    The same can be obtained by specifying `condition` without built-in
-    functions of this module (`eq ne lt gt le ge isin between isaval`) but
-    with the default pytables string expression syntax. Note however that
-    this approach has some caveats (see [1]) which the first approach solves.
-    Example with standard string expression:
+    The same can be obtained by specifying `condition` with the default
+    pytables string expression syntax (note however that
+    this approach has some caveats, see [1]):
     ```
-        condition = "((pga >= 0.5) & (pga <=0.8)) | (pgv <1.1)"
+        condition = "(pga < 0.14) | (pga > 1.1) & (pgv == pgv) & \
+            (event_time < %s)" % \
+            dtime.strftime(''%Y-%m-%d %H:%M:%S').encode('utf8')
+
         # the remainder of the code is the same as the example above
     ```
 
@@ -820,36 +825,26 @@ def records_where(table, condition, limit=None):
     :param condition: a string expression denoting a selection condition.
         See https://www.pytables.org/usersguide/tutorials.html#reading-and-selecting-data-in-a-table
 
-        Alternatively `condition` can be given with the safer and more
-        flexible expression objects imoplemented in this module, which can be
-        prepended with the negation operator ~ or concatenated with the logical
-        operators & (and), | (or):
+        `condition` can be also given with the expression objects imoplemented
+        in this module, which handle some caveats (see note [1]) and also
+        ease the casting and construction of string expressions from python
+        variables. All expression objeects are actually enhanced Python strings
+        supporting also logical operators: negation ~, logical and & and or |.
+        They are:
         ```
-        eq(column, value)  # column equal to value (works if value is nan)
-        ne(column, value)  # column not equal to value (works if value is nan)
-        lt(column, value)  # column lower than value
-        gt(column, value)  # column greathen than value
-        le(column, value)  # column lower or equal to value
-        ge(column, value)  # colum greater or equal to value
+        eq(column, *values)  # column value equal to any given value
+        ne(column, *values)  # column value differs from all given value(s)
+        lt(column, value)  # column value lower than the given value
+        gt(column, value)  # column value greater than the given value
+        le(column, value)  # column value lower or equal to the given value
+        ge(column, value)  # column value greater or equal to the given value
+        between(column, min, max)  # column between (or equal to) min and max
         isaval(column)  # column value is available (i.e. not missing)
             # (for boolean columns, isaval always returns all records)
-        between(column, min, max)  # column between (or equal to) min and max
-        isin(column, *values)  # column equals any of the given values
         ```
-        Example: the following `condition` (select element with PGA lower
-        than 0.14 or greater than 1.1, with available PGV (not nan) and whose
-        earthquake happened before 2006):
-        ```
-        ~between('pga', 0.14, 1.1) & ne('pgv', 'nan') &
-            lt('event_time', '2006')
-        ```
-        should be rendered as string with the less friendly:
-        ```
-        "(pga < 0.14) | (pga > 1.1) & (pgv == pgv) &
-            (event_time < b'2006-01-01T00:00:00')"
-        ```
-        See note [1] below for details if you need to implement string
-        expressions.
+        All values can be given as Python objects or strings (including
+        'nan' or float('nan')): the casting is automatically done according to
+        the column type
 
     :param limit: integer (defaults: None) implements a SQL 'limit'
         when provided, yields only the first `limit` matching rows
@@ -857,30 +852,19 @@ def records_where(table, condition, limit=None):
     --------------------------------------------------------------------------
 
     [1] The use of the module level expression objects in the `condition`
-    argument avoids some issues that users implementing strings should be
+    handles some caveats that users implementing strings should be
     aware of:
-    1. expressions concatenated with & or | should be put into brakets. This
-    does *not* work:
-        "pga <= 0.5 & pgv > 9.5"
-    whereas this does:
+    1. expressions concatenated with & or | should be put into brakets:
         "(pga <= 0.5) & (pgv > 9.5)"
-    2. NaNs might be tricky to compare. For instance, given a valid column
-    name (e.g. ,"pga") and the variable `value = float("nan")`, this does
-    not work:
-        "pga == %s" % str(value)
-        "pga != %s" % str(value)
-    whereas these get what expected:
-        "pga != pga"
-        "pga == pga"
+    2. NaNs should be compared like this:
+        "pga != pga"  (pga is nan)
+        "pga == pga"  (pga is not nan)
     3. String column types (e.g., 'event_country') should be compared with
-    quoted strings. Given e.g. `value = 'Germany'`, this does not work:
-        "event_country == %s" % str(value)
-    whereas this work:
-        "event_country == '%s'" % str(value)
-        'event_country == "%s"' % str(value)
+    quoted strings:
+        "event_country == 'Germany'" (or "Germany")
     (in pytables documentation, they claim that in Python3 the above do not
     work either, as they should be encoded into bytes:
-    "event_country == %s" % str(value).encode('utf8')
+    "event_country == %s" % "Germany".encode('utf8')
     **but** when tested in Python3.6.2 these work, so the claim is false or
     incomplete. Maybe it works as long as `value` has ascii characters only?).
     '''
@@ -1031,27 +1015,14 @@ class expr(str):  # pylint: disable=invalid-name
 
 
 class _single_operator_expr(expr):  # pylint: disable=invalid-name
-    '''abstract-like class implementing a single operator expression, e.g.:
-    expr("pga", ">", 0.5)`
+    '''abstract-like class implementing a single operator expression.
+    Subclasses: gt (>), ge (>=), lt (<), le (<=)
     '''
     operator = None
 
     def __new__(cls, col, value):  # pylint: disable=arguments-differ
         '''forwards the super-constructor with the class-operator'''
         return expr.__new__(cls, col, cls.operator, value)
-
-
-class eq(_single_operator_expr):  # pylint: disable=invalid-name
-    '''Equality expression: eq('pga', 0.5) translates to "pga == 0.5",
-    eq('pga', float('nan')) translates to "pga != pga"
-    '''
-    operator = '=='
-
-
-class ne(_single_operator_expr):  # pylint: disable=invalid-name
-    '''Inequality expression: ne('pga', 0.5) translates to "pga != 0.5",
-    ne('pga', float('nan')) translates to"pga == pga" '''
-    operator = '!='
 
 
 class lt(_single_operator_expr):  # pylint: disable=invalid-name
@@ -1075,20 +1046,43 @@ class ge(_single_operator_expr):  # pylint: disable=invalid-name
     operator = '>='
 
 
-class isin(expr):  # pylint: disable=invalid-name
-    '''is-in expression ("in" in SQL): isin('pga', 1, 4.4, 5) translates to:
-    "(pga == 1) | (pga == 4.4) | (pga == 5)"
+class _single_operator_expr_multi(_single_operator_expr):  # pylint: disable=invalid-name
+    '''abstract-like class implementing a single operator expression with
+    multiple values in the constructor. Subclasses: eq (==), ne (!=)
     '''
+    mode = ''
+
     def __new__(cls, col, *values):  # pylint: disable=arguments-differ
         if not values:
             raise TypeError('No values provided for %s' % cls.__name__)
-        exp = None
-        for val in values:
-            if exp is None:
-                exp = eq(col, val)
-                continue
-            exp |= eq(col, val)
-        return expr.__new__(cls, exp)
+        exps = [expr(col, cls.operator, val) for val in values]
+        # we might simply concat each expression with & or |, but we want to
+        # avoid redundant brackets: E.g. build something like:
+        # (pga == 2) | (pga == 3) | (pga == 1) | (pga == 4)
+        # instead of
+        # (((pga == 2) | (pga == 3)) | (pga == 1)) | (pga == 4)
+        frmt = "%s" if len(exps) == 1 else "(%s)"
+        _swapper = {'&': '|', '|': '&'}
+        mode, negmode = " %s " % cls.mode, " %s " % _swapper[cls.mode]
+        return expr.__new__(cls, mode.join(frmt % e for e in exps),
+                            negmode.join(frmt % ~e for e in exps))
+
+
+class eq(_single_operator_expr_multi):  # pylint: disable=invalid-name
+    '''Equality expression: eq('pga', 0.5) translates to "pga == 0.5",
+    eq('pga', 0.5, 0.1) translates to "(pga == 0.5) | (pga == 0.1)"
+    eq('pga', 'nan') translates to "pga != pga"
+    '''
+    operator = '=='
+    mode = "|"
+
+
+class ne(_single_operator_expr_multi):  # pylint: disable=invalid-name
+    '''Inequality expression: ne('pga', 0.5) translates to "pga != 0.5",
+    ne('pga', 0.5, 0.1) translates to "(pga != 0.5) & (pga != 0.1)"
+    ne('pga', float('nan')) translates to"pga == pga" '''
+    operator = '!='
+    mode = "&"
 
 
 class isaval(expr):  # pylint: disable=invalid-name
@@ -1096,9 +1090,13 @@ class isaval(expr):  # pylint: disable=invalid-name
     "(pga == pga)" (pga is not nan), ~isaval('event_time') translates to
     "event_time == ''" (event_time empty), and so on.
 
-    Note: As boolean columns cannot have missing values (either True or False)
-    for boolean columns this class returns 'True'. Use `eq(col, False)` or
-    `eq(col, True)` in case
+    Note: This function compares each value with the column default value,
+    which by convention means "missing" (pytables does not allow storing
+    Nones). This is fine for most types ("" is the default of string columns,
+    nan for float columns, etcetera). However, as boolean columns default
+    can be either False or True, there can not be missing values in this case
+    and therefore, for boolean columns this class always returns 'True'.
+    Use `eq(col, False)` or `eq(col, True)` in case
     '''
     def __new__(cls, col):  # pylint: disable=arguments-differ
         colobj = GMDatabaseTable.columns[col]  # pylint: disable=no-member
