@@ -845,7 +845,7 @@ def records_where(table, condition, limit=None):
     ```
         # given a variable dtime representing a datetime object:
 
-        condition = between('pga', 0.14, 1.1) & ne('pgv', 'nan') &
+        condition = between('pga', 0.14, 1.1) & ne('pgv', 'nan') & \
                     lt('event_time', dtime)
 
         with get_table(...) as table:
@@ -883,7 +883,7 @@ def records_where(table, condition, limit=None):
         le(column, value)  # column value lower or equal to the given value
         ge(column, value)  # column value greater or equal to the given value
         between(column, min, max)  # column between (or equal to) min and max
-        isaval(column)  # column value is available (i.e. not missing)
+        isaval(column)  # column value is available (i.e. not the default)
             # (for boolean columns, isaval always returns all records)
         ```
         All values can be given as Python objects or strings (including
@@ -1130,16 +1130,16 @@ class ne(_single_operator_expr_multi):  # pylint: disable=invalid-name
 
 
 class isaval(expr):  # pylint: disable=invalid-name
-    '''available (not missing) expression: isaval('pga') translates to:
-    "(pga == pga)" (pga is not nan), ~isaval('event_time') translates to
+    '''available (i.e., not the default) expression: isaval('pga') translates
+    to: "(pga == pga)" (pga is not nan), ~isaval('event_time') translates to
     "event_time == ''" (event_time empty), and so on.
 
     Note: This function compares each value with the column default value,
     which by convention means "missing" (pytables does not allow storing
     Nones). This is fine for most types ("" is the default of string columns,
-    nan for float columns, etcetera). However, as boolean columns default
-    can be either False or True, there can not be missing values in this case
-    and therefore, for boolean columns this class always returns 'True'.
+    nan for float columns, etcetera). However, as booleans can be either True
+    or False and thus there can not be a clear missing value, for boolean
+    columns this expression always returns 'True'.
     Use `eq(col, False)` or `eq(col, True)` in case
     '''
     def __new__(cls, col):  # pylint: disable=arguments-differ
