@@ -39,6 +39,38 @@ from tables.description import IsDescription, Int64Col, StringCol, \
     UInt8Col, Float64Col, Int8Col, UInt64Col, UInt32Col, EnumCol
 from smtk import sm_utils
 
+# custom defaults. Defaults will be considered equal to "missing":
+COLUMN_DEFAULTS = {
+    "StringCol": b'',
+    # 'BoolCol': False
+    "EnumCol": b'',
+    "IntCol": np.iinfo(np.int).min,
+    "Int8Col": np.iinfo(np.int8).min,
+    "Int16Col": np.iinfo(np.int16).min,
+    "Int32Col": np.iinfo(np.int32).min,
+    "Int64Col": np.iinfo(np.int64).min,
+    "UIntCol": 0,
+    "UInt8Col": 0,
+    "UInt16Col": 0,
+    "UInt32Col": 0,
+    "UInt64Col": 0,
+    "FloatCol": float('nan'),
+    "Float16Col": float('nan'),
+    "Float32Col": float('nan'),
+    "Float64Col": float('nan'),
+    "Float96Col": float('nan'),
+    "Float128Col": float('nan'),
+    "ComplexCol": complex(float('nan'), float('nan')),
+    "Complex32Col": complex(float('nan'), float('nan')),
+    "Complex64Col": complex(float('nan'), float('nan')),
+    "Complex128Col": complex(float('nan'), float('nan')),
+    "Complex192Col": complex(float('nan'), float('nan')),
+    "Complex256Col": complex(float('nan'), float('nan')),
+    # "TimeCol": 0,
+    # "Time32Col": 0,
+    # "Time64Col": 0
+}
+
 
 # rewrite pytables description column types to account for default
 # values meaning MISSING, and bounds (min and max)
@@ -47,27 +79,46 @@ def _col(col_class, **kwargs):
     this simple wrapper (`_col(StringCol, ...)` equals `StringCol(...)`)
     is twofold:
 
-    1. pytables do not allow Nones, which would be perfect to specify missing
-    values. Therefore, a Gm database table column needs to use the
-    column default ('dflt') as missing value.
-    This function builds the default automatically, when not explicitly
-    provided as 'dflt' argument in `kwargs`: 0 for Unsigned integers, the
-    empty string for Enum (if the empty string is not provided in the `enum`
-    argument, it will be inserted), nan for floats and complex types, the
-    empty string for `StringCol`s.
-    This way, a default value which can be reasonably also considered as
-    missing value is set (only exception: `BoolCol`s, for which we do not
-    have a third value which can be considered missing)
-    2. pytables columns do not allow bounds (min, max), which can be
+    1. Pytables columns do not allow bounds (min, max), which can be
     specified here as 'min' and 'max' arguments. None or missing values will
     mean: no check on the relative bound (any value allowed)
+
+    2. When inserting/updating records, each missing value will be set as the
+    relative column's default (attribute "dflt") defined for the column.
+    This value is not always distinguishable from a value input from the user.
+    Therefore, when not explicitly provided as 'dflt' argument in `kwargs`,
+    this function sets a value which can interpreted as "missing", whenever
+    possible, and will be (column types not listed below - e.g. TimeColumns -
+    will not change their default):
+
+    -----------------------+----------------------------------------
+    column's type          | dflt
+    -----------------------+----------------------------------------
+    string                 | "" (same as pytables)
+    -----------------------+----------------------------------------
+    unsigned integer       |
+    (uint8, uint16, ...)   | 0 (same as pytables)
+    -----------------------+----------------------------------------
+    float                  | nan
+    (float8, float16, ...) |
+    -----------------------+----------------------------------------
+    int (int8, int16, ...) | the type minimum value
+    -----------------------+----------------------------------------
+    Enum                   | "" (if not in the enum list of values,
+                           |     it will be added)
+    -----------------------+----------------------------------------
+    bool                   | False (same as pytables). Note that having
+                           | booleans only two possible values, they
+                           | can not have a default interpretable as
+                           | missing
+    -----------------------+----------------------------------------
 
     :param: col_class: the pytables column class, e.g. StringCol. You can
         also supply the String "DateTime" which will set default to StringCol
         adding the default 'itemsize' to `kwargs` and a custom attribute
         'is_datetime_str' to the returned object. The attribute will be used
         in the `expr` class to properly cast passed values into the correct
-        date-time ISO-formated string
+        date-time ISO-formatted string
     :param kwargs: keyword argument to be passed to `col_class` during
         initialization. Note thtat the `dflt` parameter, if provided
         will be overridden. See the `atom` module of pytables for a list
@@ -78,42 +129,26 @@ def _col(col_class, **kwargs):
         col_class = StringCol
         if 'itemsize' not in kwargs:
             kwargs['itemsize'] = 19  # '1999-31-12T01:02:59'
-    if 'dflt' not in kwargs:
-        if col_class == StringCol:
-            dflt = b''
-        elif col_class == EnumCol:
-            dflt = ''
-            if dflt not in kwargs['enum']:
-                kwargs['enum'].insert(0, dflt)
-        elif col_class == BoolCol:
-            dflt = False
-        elif col_class.__name__.startswith('Complex'):
-            dflt = complex(float('nan'), float('nan'))
-        elif col_class.__name__.startswith('Float'):
-            dflt = float('nan')
-        elif col_class.__name__.startswith('UInt'):
-            dflt = 0
-        elif col_class.__name__.startswith('Int8'):
-            dflt = np.iinfo(np.int8).min
-        elif col_class.__name__.startswith('Int16'):
-            dflt = np.iinfo(np.int16).min
-        elif col_class.__name__.startswith('Int32'):
-            dflt = np.iinfo(np.int32).min
-        elif col_class.__name__.startswith('Int64'):
-            dflt = np.iinfo(np.int64).min
-        elif col_class.__name__.startswith('Int'):
-            dflt = np.iinfo(np.int).min
 
-        kwargs['dflt'] = dflt
+    if 'dflt' not in kwargs:
+        if col_class.__name__ in COLUMN_DEFAULTS:
+            dflt = COLUMN_DEFAULTS[col_class.__name__]
+            if col_class == EnumCol:
+                dflt = ''
+                if dflt not in kwargs['enum']:
+                    kwargs['enum'].insert(0, dflt)
+            kwargs['dflt'] = dflt
+
     min_, max_ = kwargs.pop('min', None), kwargs.pop('max', None)
     ret = col_class(**kwargs)
     ret.min_value, ret.max_value = min_, max_
     if is_iso_dtime:
-        ret.is_datetime_str = True
+        ret.is_datetime_str = True  # will be used in selection syntax to
+        # convert string values in the correct format %Y-%m-%dT%H:%M:%s
     return ret
 
 
-class GMDatabaseTable(IsDescription):
+class GMDatabaseTable(IsDescription):  # pylint: disable=too-few-public-methods
     """
     Implements a GMDatabase as `pytable.IsDescription` class.
     This class is the skeleton of the data structure of HDF5 tables, which
@@ -123,16 +158,6 @@ class GMDatabaseTable(IsDescription):
     are interpreted as 'missing'. Usually, no dflt argument has to be passed
     here as it will be set by default (see `_col` function)
     """
-    # FIXME: check DEFAULTS. nan for floats, empty string for strings,
-    # and -999? for integers? what for datetimes? empty strings? think about it?
-    # Also, what about max length strings?
-
-    # CONVENTION: StringCols default is '' (fine)
-    # FloatCol is float('nan') by default is 0 (NOT fine)
-    # IntCol will be set as the minimum allowed value (default is 0, not fine)
-    # TimeCol: see int col
-
-    # what = column(StringCol, 16)
     # id = UInt32Col()  # no default. Starts from 1 incrementally
     # max id: 4,294,967,295
     record_id = _col(StringCol, itemsize=20)
@@ -215,7 +240,7 @@ class GMDatabaseParser(object):
     and types.
 
     The parsing is done in the `parse` method. The typical workflow
-    is to implement a new subclass for each new flatfile release.
+    is to implement a new subclass for each new flatfile released.
     Subclasses should override the `mapping` dict where flatfile
     specific column names are mapped to :class:`GmDatabaseTable` column names
     and optionally the `parse_row` method where additional operation
@@ -264,11 +289,9 @@ class GMDatabaseParser(object):
     _event_time_colnames = ['year', 'month', 'day', 'hour', 'minute', 'second']
 
     # The csv column names will be then converted according to the
-    # `_mappings` dict below, where a csv flatfile column is mapped to its
-    # corresponding Gm database column name. The mapping should take care of
-    # all 1 to 1 mappings. This is the first operation performed on any row.
-    # When providing the mappings, keep in mind that the algorithm
-    # after the mapping will perform the following operations:
+    # `mappings` dict below, where a csv flatfile column is mapped to its
+    # corresponding Gm database column name. The mapping is the first
+    # operation performed on any row. After that:
     # 1. Columns matching `_sa_periods_re` will be parsed and log-log
     # interpolated with '_ref_periods'. The resulting data will be put in the
     # Gm database 'sa' column.
@@ -281,9 +304,9 @@ class GMDatabaseParser(object):
     # converted to cm/s/s.
     # 4. The `parse_row` method is called. Therein, the user should
     # implement any more complex operation
-    # 5 a row is written, the columns 'event_id' , 'station_id' and
-    # 'record_id' are automatically filled to uniquely identify their
-    # respective entitites
+    # 5 a row is written as record of the output HDF5 file. The columns
+    # 'event_id', 'station_id' and 'record_id' are automatically filled to
+    # uniquely identify their respective entitites
     mappings = {}
 
     @classmethod
@@ -293,8 +316,7 @@ class GMDatabaseParser(object):
         (sort of sub-directories) each of which identifies a parsed
         input flatfile. Each group's `table` attribute is where
         the actual GM database data is stored and can be accessed later
-        with pytables `open_file` function (see
-        https://www.pytables.org/usersguide/tutorials.html).
+        with the module's :function:`get_table`.
         The group will have the same name as `flatfile_path` (more precisely,
         the file basename without extension).
 
@@ -310,8 +332,8 @@ class GMDatabaseParser(object):
         :return: a dictionary holding information with keys:
             'total': the total number of csv rows
             'written': the number of parsed rows written on the db table
-            'error': a list of integers denoting the position (from
-                0 = first row) of the parsed rows not written on the db table
+            'error': a list of integers denoting the position
+                (0 = first row) of the parsed rows not written on the db table
                 because of errors
             'missing_values': a dict with table column names as keys, mapped
                 to the number of rows which have missing values for that
@@ -774,6 +796,28 @@ class GMDatabaseParser(object):
 #########################################
 # Database selection / maniuplation
 #########################################
+
+
+def get_dbnames(filepath):
+    '''Returns he database names of the given Gm database (HDF5 file)
+    The file should have been created with the `GMDatabaseParser.parse`
+    method.
+
+    :param filepath: the path to the HDF5 file
+    :return: a list of strings identyfying the database names in the file
+    '''
+    with tables.open_file(filepath, 'r') as h5file:
+        root = h5file.get_node('/')
+        return [group._v_name for group in  # pylint: disable=protected-access
+                h5file.list_nodes(root, classname='Group')]
+        # note: h5file.walk_groups() might raise a ClosedNodeError.
+        # This error is badly documented (as much pytables styff),
+        # the only mention is (pytables pdf doc): "CloseNodeError: The
+        # operation can not be completed because the node is closed. For
+        # instance, listing the children of a closed group is not allowed".
+        # I suspect it deals with groups deleted / overwritten and the way
+        # hdf5 files mark portions of files to be "empty". However,
+        # the list_nodes above seems not to raise anymore
 
 
 def get_table(filepath, dbname):

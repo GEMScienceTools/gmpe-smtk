@@ -33,7 +33,7 @@ from tables.description import Float32Col, Col, IsDescription, Float64Col, \
 
 from smtk.gm_database import expr, eq, ne, lt, gt, le, ge, \
     GMDatabaseParser, between, isaval, GMDatabaseTable, records_where, get_table,\
-    read_where
+    read_where, get_dbnames
 
 BASE_DATA_PATH = os.path.join(
     os.path.join(os.path.dirname(__file__), "file_samples")
@@ -274,6 +274,12 @@ class GmDatabaseTestCase(unittest.TestCase):
             newrows = list(row[test_col] for row in
                            tbl.where('%s == %s' % (test_col, test_col_newval)))
             self.assertTrue(not newrows)
+
+        # get db names:
+        dbnames = get_dbnames(self.output_file)
+        self.assertTrue(len(dbnames) == 1)
+        name = os.path.splitext(os.path.basename(self.output_file))[0]
+        self.assertTrue(dbnames[0] == name)
 
     def test_expr(self):
         '''tests gm database `expr` class and subclasses'''
