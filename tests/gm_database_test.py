@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 """
-Tests the IO of a database between pickle and json
+Tests the GM database parsing and selection
 """
 import os
 # import shutil
@@ -32,8 +32,8 @@ from tables.description import Float32Col, Col, IsDescription, Float64Col, \
     StringCol, EnumCol
 
 from smtk.gm_database import expr, eq, ne, lt, gt, le, ge, \
-    GMDatabaseParser, between, isaval, GMDatabaseTable, records_where, get_table,\
-    read_where, get_dbnames
+    GMDatabaseParser, between, isaval, GMDatabaseTable, records_where, \
+    get_table, read_where, get_dbnames
 
 BASE_DATA_PATH = os.path.join(
     os.path.join(os.path.dirname(__file__), "file_samples")
