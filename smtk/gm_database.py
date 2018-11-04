@@ -809,42 +809,56 @@ def records_where(table, condition, limit=None):
     The same can be obtained by specifying `condition` without built-in
     functions of this module (`eq ne lt gt le ge isin between isaval`) but
     with the default pytables string expression syntax. Note however that
-    this approach has some caveats (see [1]) which the first approach tries
-    to solve. Example with standard string expression:
+    this approach has some caveats (see [1]) which the first approach solves.
+    Example with standard string expression:
     ```
         condition = "((pga >= 0.5) & (pga <=0.8)) | (pgv <1.1)"
         # the remainder of the code is the same as the example above
     ```
 
     :param table: The pytables Table object. See module function `get_table`
-    :param condition: a string expression, or a list of string expressions
-        concatenated with '&' (logical AND) or '|' (logical OR). Any string
-        expression is of the form:
-            "(col operator value)" or "~(col operator value)"
-        where:
-        - ~ if given, negates the following expression
-        - `col` is a GM database **SCALAR** column, i.e. all columns except
-            'sa' (this is due to pytables limitations). For info on columns,
-            see the attribute names of :class:`GMDatabaseTable`
-        - operator is either '==', '>' '<' ,'<=', '>=', '!='
-        - value is any Python value (converted to string)
+    :param condition: a string expression denoting a selection condition.
+        See https://www.pytables.org/usersguide/tutorials.html#reading-and-selecting-data-in-a-table
 
         Alternatively `condition` can be given with the safer and more
-        flexible expression objects imoplemented in this module:
-        `eq ne lt gt le ge isin between isaval`.
-        Example: the following two `condition` arguments produce the same
-        result:
+        flexible expression objects imoplemented in this module, which can be
+        prepended with the negation operator ~ or concatenated with the logical
+        operators & (and), | (or):
         ```
-        "(pga < 0.14) & (pga > 1.1) & (event_time <= '2006-01-01T00:00:00')"
-
-        ~between('pga', 0.14, 1.1) & le('event_time', '2006-01-01T00:00:00')
+        eq(column, value)  # column equal to value (works if value is nan)
+        ne(column, value)  # column not equal to value (works if value is nan)
+        lt(column, value)  # column lower than value
+        gt(column, value)  # column greathen than value
+        le(column, value)  # column lower or equal to value
+        ge(column, value)  # colum greater or equal to value
+        isaval(column)  # column value is available (i.e. not missing)
+            # (for boolean columns, isaval always returns all records)
+        between(column, min, max)  # column between (or equal to) min and max
+        isin(column, *values)  # column equals any of the given values
         ```
+        Example: the following `condition` (select element with PGA lower
+        than 0.14 or greater than 1.1, with available PGV (not nan) and whose
+        earthquake happened before 2006):
+        ```
+        ~between('pga', 0.14, 1.1) & ne('pgv', 'nan') &
+            lt('event_time', '2006')
+        ```
+        should be rendered as string with the less friendly:
+        ```
+        "(pga < 0.14) | (pga > 1.1) & (pgv == pgv) &
+            (event_time < b'2006-01-01T00:00:00')"
+        ```
+        See note [1] below for details if you need to implement string
+        expressions.
 
     :param limit: integer (defaults: None) implements a SQL 'limit'
         when provided, yields only the first `limit` matching rows
 
-    [1] Notes on `condition`: when given as raw string, the user should be
-    aware that:
+    --------------------------------------------------------------------------
+
+    [1] The use of the module level expression objects in the `condition`
+    argument avoids some issues that users implementing strings should be
+    aware of:
     1. expressions concatenated with & or | should be put into brakets. This
     does *not* work:
         "pga <= 0.5 & pgv > 9.5"
@@ -869,23 +883,6 @@ def records_where(table, condition, limit=None):
     "event_country == %s" % str(value).encode('utf8')
     **but** when tested in Python3.6.2 these work, so the claim is false or
     incomplete. Maybe it works as long as `value` has ascii characters only?).
-
-    However, **to handle automatically all those caveats**, the user might want
-    to consider using the module-level expression objects:
-    ```
-    eq(column, value)  # column equal to value (works if value is nan)
-    ne(column, value)  # column not equal to value (works if value is nan)
-    lt(column, value)  # column lower than value
-    gt(column, value)  # column greathen than value
-    le(column, value)  # column lower or equal to value
-    ge(column, value)  # colum greater or equal to value
-    isaval(column)  # column value is available (not the default, i.e. missing)
-    between(column, min, max)  # column between (or equal to) min and max
-    isin(column, *values)  # column equals to any of the given values
-    ```
-    The expressions above take care of the above mentioned caveats and
-    behave exactly as string expressions (they are actually particular string
-    objects)
     '''
     if condition not in ('False', 'false'):
         for count, row in enumerate(table.iterrows()
