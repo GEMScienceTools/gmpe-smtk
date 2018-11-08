@@ -24,6 +24,7 @@ import os
 import sys
 import numpy as np
 from scipy.integrate import cumtrapz
+from scipy.constants import g
 from collections import OrderedDict
 from openquake.hazardlib.geo import (PlanarSurface, SimpleFaultSurface,
                                      ComplexFaultSurface, MultiSurface,
@@ -60,7 +61,7 @@ def convert_accel_units(acceleration, units):
     :return: acceleration converted to the given units
     """
     if units == "g":
-        return 981. * acceleration
+        return (100*g) * acceleration
     if units in ("m/s/s", "m/s**2", "m/s^2"):
         return 100. * acceleration
     if units in ("cm/s/s", "cm/s**2", "cm/s^2"):

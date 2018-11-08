@@ -25,6 +25,10 @@ import sys
 import re
 import csv
 import hashlib
+import shlex
+import tokenize
+from tokenize import generate_tokens, TokenError, untokenize
+from io import StringIO
 from datetime import datetime
 from contextlib import contextmanager
 from collections import defaultdict
@@ -34,6 +38,8 @@ from tables.table import Table
 from tables.group import Group
 from tables.exceptions import NoSuchNodeError
 import numpy as np
+from scipy.constants import g
+
 from tables.description import IsDescription, Int64Col, StringCol, \
     Int16Col, UInt16Col, Float32Col, Float16Col, TimeCol, BoolCol, \
     UInt8Col, Float64Col, Int8Col, UInt64Col, UInt32Col, EnumCol
@@ -522,7 +528,8 @@ class GMDatabaseParser(object):
         # there is something wrong and the units of the PGA and SA are not
         # in agreement and an error should be raised.
         try:
-            pga, sa0 = float(rowdict['pga']) / 981., float(rowdict['sa'][0])
+            pga, sa0 = float(rowdict['pga']) / (100*g),\
+                float(rowdict['sa'][0])
             retol = abs(max(pga, sa0) / min(pga, sa0))
             if not np.isnan(retol) and round(retol) >= 10:
                 return False
@@ -748,7 +755,7 @@ class GMDatabaseParser(object):
         the given HDF5 row `tablerow`'''
         toint = cls._toint
         ids = (dbname,
-               toint(tablerow['pga']/981., 2),  # convert from cm/s^2 to g
+               toint(tablerow['pga'], 0),  # (first two decimals of pga in g)
                toint(tablerow['event_longitude'], 5),
                toint(tablerow['event_latitude'], 5),
                toint(tablerow['hypocenter_depth'], 3),
@@ -912,12 +919,10 @@ def records_where(table, condition, limit=None):
     **but** when tested in Python3.6.2 these work, so the claim is false or
     incomplete. Maybe it works as long as `value` has ascii characters only?).
     '''
-    if condition not in ('False', 'false'):
-        for count, row in enumerate(table.iterrows()
-                                    if condition in ('True', 'true', None)
-                                    else table.where(condition)):
-            if limit is None or count < limit:
-                yield row
+    for count, row in enumerate(table.iterrows() if condition in ('', None)
+                                else table.where(_parse_condition(condition))):
+        if limit is None or count < limit:
+            yield row
 
 
 def read_where(table, condition, limit=None):
@@ -930,238 +935,88 @@ def read_where(table, condition, limit=None):
 
     All parameters are the same as :function:`records_where`
     '''
-    if condition in ('True', 'true', None):
-        return table.read()[:limit]
-    if condition in ('False', 'false'):
-        return []
-    return table.read_where(condition)[:limit]
-
-#############################
-# Database selection syntax #
-#############################
+    return table.read_where(_parse_condition(condition))[:limit]
 
 
-class expr(str):  # pylint: disable=invalid-name
-    '''expression class subclassing string
-    All expression classes are lower case as they mimic functions rather than
-    classes'''
-    # dict of valid operators mapped to their negtation:
-    _operators = {'==': '!=', '!=': '==', '>': '<=', '<': '>=',
-                  '>=': '<', '<=': '>'}
-
-    def __new__(cls, *args):
-        '''Creates a string expression parsing the given arguments, e.g.:
-
-            ```expr("pgv", "<=", 9)```
-        where
-        1st arg is the column name (string)
-        2nd arg is the operator (string): <= >= < > == !=
-        3rd arg is a Python value
-
-        This class takes care of converting value to
-        the proper column's Python type and handles some caveats
-        (e.g., quoting strings, handling NaNs comparison, date-time conversion
-        to ISO formatted strings, casting to float or int when needed)
-
-        :raise: ValueError, TypeError when `value` or `operator` are invalid
-        '''
-        # Note: the constructor with one or two arguments shoule be used only
-        # by module-level functions and not exposed publicly
-        if len(args) == 3:  # 3 args: column, operator, value: process value
-            col, operator, value = args
-            cls._check_operator(operator)
-            colobj = cls._getcolobj(col)
-            colclass = colobj.__class__.__name__
-            if getattr(colobj, 'is_datetime_str', False):  # aka datetime col
-                value = GMDatabaseParser.normalize_dtime(value)
-            if isinstance(colobj, StringCol):
-                if not isinstance(value, bytes):
-                    # encode in bytes (pytables claims is mandatory in py3,
-                    # although their claim does not seem to be true in py3.6.2)
-                    value = str(value).encode('utf8')
-            elif colclass.startswith('Int') or colclass.startswith('UInt'):
-                value = int(value)
-            elif colclass.startswith('Float'):
-                value = float(value)
-                if np.isnan(value):
-                    if operator not in ('==', '!='):
-                        raise ValueError('only != and == supported with NaNs')
-                    # swap col==nan with col!=col, col!=nan with col==col:
-                    value, operator = col, cls._operators[operator]
-            _str = "%s %s %s" % (col, operator, str(value))
-            _negation = "%s %s %s" % (col, cls._operators[operator],
-                                      str(value))
-        elif len(args) == 2:  # 2 args: expression, negation (internal use)
-            _str = str(args[0])
-            _negation = str(args[1])
-        else:  # 1 arg: expression (internal use)
-            _str = str(args[0])
-            _negation = args[0]._negation if isinstance(args[0], expr) \
-                else "~(%s)" % _str
-        _str, _negation = cls._final_check(_str, _negation)
-        ret = str.__new__(cls, _str)
-        # _negation is the logical negation of this expression. It makes
-        # composition more readable (and probably also more efficient when
-        # selecting with pytables): example: ~~expr('pga', '<', 9.5) (negate
-        # twice) will return the same expression "pga < 9.5" instead of
-        # "~(~(pga < 9.5))". The little memory overhead of storing an
-        # additional string is negligible
-        ret._negation = _negation  # pylint: disable=protected-access
-        return ret
-
-    @classmethod
-    def _getcolobj(cls, colname):
-        dbcolumns = GMDatabaseTable.columns  # pylint: disable=no-member
-        if colname not in dbcolumns:
-            raise ValueError("Unknown table field '%s'" % str(colname))
-        return dbcolumns[colname]
-
-    @classmethod
-    def _check_operator(cls, operator):
-        if operator not in cls._operators:
-            raise ValueError("Unknown operator '%s'" % str(operator))
-
-    @classmethod
-    def _final_check(cls, expression, negation):
-        if not expression or expression == 'None':
-            raise ValueError('empty expression')
-        if expression in ('True', 'true'):
-            expression, negation = 'True', 'False'
-        elif expression in ('False', 'false'):
-            expression, negation = 'False', 'True'
-        return expression, negation
-
-    def __and__(self, other):
-        '''Implements logical 'and' obtainable by means of the & operator'''
-        if other in (None, '', True, 'True', 'true'):
-            return self
-        if other in (False, 'False', 'false'):
-            return expr('False')
-        expr2 = expr(other)
-        neg = self._negation  # pylint: disable=no-member, protected-access
-        neg2 = expr2._negation  # pylint: disable=no-member, protected-access
-        return expr("(%s) & (%s)" % (self, expr2), "(%s) | (%s)" % (neg, neg2))
-
-    def __or__(self, other):
-        '''Implements logical 'or' obtainable by means of the | operator'''
-        if other in (None, '', False, 'False', 'false'):
-            return self
-        if other in (True, 'True', 'true'):
-            return expr('True')
-        expr2 = expr(other)
-        neg = self._negation  # pylint: disable=no-member, protected-access
-        neg2 = expr2._negation  # pylint: disable=no-member, protected-access
-        return expr("(%s) | (%s)" % (self, expr2), "(%s) & (%s)" % (neg, neg2))
-
-    def __invert__(self):
-        '''Implements logical negation obtainable by means of the ~ operator'''
-        return expr(self._negation, self)  # pylint: disable=no-member
-
-
-class _single_operator_expr(expr):  # pylint: disable=invalid-name
-    '''abstract-like class implementing a single operator expression.
-    Subclasses: gt (>), ge (>=), lt (<), le (<=)
+def _parse_condition(condition):
+    '''processes the given `condition` string (numexpr syntax) to be used
+    in record selection in order to handle some caveats when using numexpr
+    syntax in pytables selection:
+    1. expressions concatenated with & or | should be put into brakets:
+        "(pga <= 0.5) & (pgv > 9.5)". This function raises if the logical
+        operators are not preceeded by a ")" or not followed by a "("
+    2. NaNs should be compared like this:
+        "pga != pga"  (pga is nan)
+        "pga == pga"  (pga is not nan)
+        This method converts expression of the type "column != nan" to
+        "column == column"
+    3. String column types (e.g., 'event_country') should be compared with
+    bytes strings in Python 3:
+        "event_country == b'Germany'"
+    This method checks for quoted strings, unquotes them and converts to
+    bytes, if necessary (py3).
+    Note: The last conversion (reported in pytables documentation) is made for
+    safety **but** when tested in Python3.6.2 these work, so the claim is
+    false or incomplete. Maybe it works as long as `value` has ascii
+    characters only?).
     '''
-    operator = None
+    py3 = sys.version_info[0] >= 3
+    nan_operators = {'==': '!=', '!=': '=='}
+    nan_indices = []
+    strings_indices = []
+    result = []
 
-    def __new__(cls, col, value):  # pylint: disable=arguments-differ
-        '''forwards the super-constructor with the class-operator'''
-        return expr.__new__(cls, col, cls.operator, value)
+    def last_tokenstr():
+        return '' if not result else result[-1][1]
 
+    def raise_invalid_logical_op_if(bool_value):
+        if bool_value:
+            raise ValueError('Logical operators (&|~) allowed only with '
+                             'parenthezised expressions')
 
-class lt(_single_operator_expr):  # pylint: disable=invalid-name
-    '''Lower-than expression: lt('pga', 0.5) translates to "pga < 0.5" '''
-    operator = '<'
+    STRING, OP, NAME = tokenize.STRING, tokenize.OP, tokenize.NAME
+    try:
+        for token in generate_tokens(StringIO(condition).readline):
+            tokentype, tokenstr = token[0], token[1]
 
+            raise_invalid_logical_op_if(tokenstr in ('&', '|')
+                                        and last_tokenstr() != ')')
+            raise_invalid_logical_op_if(last_tokenstr() in ('~', '|', '&')
+                                        and tokenstr not in ('~', '('))
 
-class le(_single_operator_expr):  # pylint: disable=invalid-name
-    '''Lower-equal-to expression: le('pga', 0.5) translates to "pga <= 0.5" '''
-    operator = '<='
+            if tokentype == STRING and py3 and tokenstr[0] != 'b':
+                strings_indices.append(len(result))
+            elif tokentype == NAME and tokenstr in ('nan', 'NAN', 'NaN') \
+                    and len(result) > 1:
+                if result[-2][0] == NAME and result[-1][0] == OP:
+                    operator = result[-1][1]
+                    if operator not in nan_operators:
+                        raise ValueError('only != and == can be compared '
+                                         'with nan')
+                    nan_indices.append(len(result))
 
+            result.append(list(token))
 
-class gt(_single_operator_expr):  # pylint: disable=invalid-name
-    '''Greater-than expression: gt('pga', 0.5) translates to "pga > 0.5" '''
-    operator = '>'
+    except TokenError as terr:
+        # tokenizer seems to do some weird stuff at the end of the parsed
+        # stringas, raising TokenErrors for "unclosed string or brakets".
+        # We do not want to raise this kind of stuff, as the idea here is
+        # to check only for logical operatorsm, nans, and bytes conversion
+        if untokenize(result).strip() != condition.strip():
+            raise ValueError(str(terr))
 
+    raise_invalid_logical_op_if(last_tokenstr() in ('&', '|', '~'))
 
-class ge(_single_operator_expr):  # pylint: disable=invalid-name
-    '''Greater-equal-to expression: ge('pga', 0.5) translates to "pga >= 0.5"
-    '''
-    operator = '>='
+    # replace nans and strings at the real end:
+    for i in strings_indices:
+        tokenstr = result[i][1]
+        string = shlex.split(tokenstr)[0]
+        result[i][1] = str(string.encode('utf8'))
 
+    for i in nan_indices:
+        varname = result[i-2][1]
+        operator = result[i-1][1]
+        result[i-1][1] = nan_operators[operator]
+        result[i][1] = varname
 
-class _single_operator_expr_multi(_single_operator_expr):  # pylint: disable=invalid-name
-    '''abstract-like class implementing a single operator expression with
-    multiple values in the constructor. Subclasses: eq (==), ne (!=)
-    '''
-    mode = ''
-
-    def __new__(cls, col, *values):  # pylint: disable=arguments-differ
-        if not values:
-            raise TypeError('No values provided for %s' % cls.__name__)
-        exps = [expr(col, cls.operator, val) for val in values]
-        # we might simply concat each expression with & or |, but we want to
-        # avoid redundant brackets: E.g. build something like:
-        # (pga == 2) | (pga == 3) | (pga == 1) | (pga == 4)
-        # instead of
-        # (((pga == 2) | (pga == 3)) | (pga == 1)) | (pga == 4)
-        frmt = "%s" if len(exps) == 1 else "(%s)"
-        _swapper = {'&': '|', '|': '&'}
-        mode, negmode = " %s " % cls.mode, " %s " % _swapper[cls.mode]
-        return expr.__new__(cls, mode.join(frmt % e for e in exps),
-                            negmode.join(frmt % ~e for e in exps))
-
-
-class eq(_single_operator_expr_multi):  # pylint: disable=invalid-name
-    '''Equality expression: eq('pga', 0.5) translates to "pga == 0.5",
-    eq('pga', 0.5, 0.1) translates to "(pga == 0.5) | (pga == 0.1)"
-    eq('pga', 'nan') translates to "pga != pga"
-    '''
-    operator = '=='
-    mode = "|"
-
-
-class ne(_single_operator_expr_multi):  # pylint: disable=invalid-name
-    '''Inequality expression: ne('pga', 0.5) translates to "pga != 0.5",
-    ne('pga', 0.5, 0.1) translates to "(pga != 0.5) & (pga != 0.1)"
-    ne('pga', float('nan')) translates to"pga == pga" '''
-    operator = '!='
-    mode = "&"
-
-
-class isaval(expr):  # pylint: disable=invalid-name
-    '''available (i.e., not the default) expression: isaval('pga') translates
-    to: "(pga == pga)" (pga is not nan), ~isaval('event_time') translates to
-    "event_time == ''" (event_time empty), and so on.
-
-    Note: This function compares each value with the column default value,
-    which by convention means "missing" (pytables does not allow storing
-    Nones). This is fine for most types ("" is the default of string columns,
-    nan for float columns, etcetera). However, as booleans can be either True
-    or False and thus there can not be a clear missing value, for boolean
-    columns this expression always returns 'True'.
-    Use `eq(col, False)` or `eq(col, True)` in case
-    '''
-    def __new__(cls, col):  # pylint: disable=arguments-differ
-        colobj = GMDatabaseTable.columns[col]  # pylint: disable=no-member
-        if isinstance(colobj, BoolCol):
-            return expr.__new__(cls, "True")
-        return expr.__new__(cls, col, '!=', colobj.dflt)
-
-
-class between(expr):  # pylint: disable=invalid-name
-    '''between expression ("between" in SQL): between('pga', 1, 4.4) translates
-    to: "(pga >= 1) & (pga <= 4.4)"
-    '''
-    def __new__(cls, col, min_, max_):  # pylint: disable=arguments-differ
-        exp1 = expr(col, '>=', min_) if min_ is not None else None
-        exp2 = expr(col, '<=', max_) if max_ is not None else None
-        if exp1 and exp2:
-            exp = exp1 & exp2
-        elif exp1:
-            exp = exp1
-        elif exp2:
-            exp = exp2
-        else:
-            exp = 'True'
-        return expr.__new__(cls, exp)
+    return untokenize(result)
