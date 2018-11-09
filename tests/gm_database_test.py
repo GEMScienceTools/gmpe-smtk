@@ -32,7 +32,7 @@ from tables.description import Float32Col, Col, IsDescription, Float64Col, \
     StringCol, EnumCol
 
 from smtk.gm_database import GMDatabaseParser, GMDatabaseTable, records_where, \
-    get_table, read_where, get_dbnames, _parse_condition
+    get_table, read_where, get_dbnames, _normalize_condition
 
 BASE_DATA_PATH = os.path.join(
     os.path.join(os.path.dirname(__file__), "file_samples")
@@ -351,133 +351,137 @@ class GmDatabaseTestCase(unittest.TestCase):
             self.assertEqual(len(ids), 0)
 
 
-    def test_parse_condition(self):
-        ''' test the _parse_condition function'''
+    def test_normalize_condition(self):
+        ''' test the _normalize_condition function'''
         # these are ok because logical operators relative position is not ok
         with self.assertRaises(ValueError):
-            _parse_condition("& (")
+            _normalize_condition("& (")
         with self.assertRaises(ValueError):
-            _parse_condition("& (")
+            _normalize_condition("& (")
         with self.assertRaises(ValueError):
-            _parse_condition(" & ")
+            _normalize_condition(" & ")
         with self.assertRaises(ValueError):
-            _parse_condition("& (abc)")
+            _normalize_condition("& (abc)")
         with self.assertRaises(ValueError):
-            _parse_condition(") & (abc) | cfd")
+            _normalize_condition(") & (abc) | cfd")
         with self.assertRaises(ValueError):
-            _parse_condition(") & (abc) | (cdf) ~")
+            _normalize_condition(") & (abc) | (cdf) ~")
         with self.assertRaises(ValueError):
-            _parse_condition(") & (abc) | (cdf) ~ ~ ~")
+            _normalize_condition(") & (abc) | (cdf) ~ ~ ~")
 
         # these are ok because operators relative position is ok.
-        # Note that the string is not a valid selection, but _parse_condition
-        # does not do unnecessary work:
-        _parse_condition(") & (abc)")
-        _parse_condition(") & (abc) | (cdf) ~ ~ ~ (")
-        _parse_condition(") & (\"a\\\"&c\") | (cdf) ~ ~ ~ (")
+        # Strings are not valid python expression, but
+        # _normalize_condition is NOT a parser
+        _normalize_condition(") & (abc)")
+        _normalize_condition(") & (abc) | (cdf) ~ ~ ~ (")
+        _normalize_condition(") & (\"a\\\"&c\") | (cdf) ~ ~ ~ (")
+        # assert that we did not replace anything as the operator '='
+        # is not recognized as valid:
+        self.assertEqual(_normalize_condition("pga = nan"), "pga = nan")
+        # same as above, but because pry is not recognized as column:
+        self.assertEqual(_normalize_condition("pry = nan"), "pry = nan")
+        # test minor stuff: leading spaces preserved, trailing not:
+        self.assertEqual(_normalize_condition("(pkw != 0.5) "),
+                         "(pkw != 0.5)")
+        self.assertEqual(_normalize_condition(" (pkw != 0.5)"),
+                         " (pkw != 0.5)")
+        self.assertEqual(_normalize_condition(" (pkw != 0.5) "),
+                         " (pkw != 0.5)")
 
-        # raise ValueError because nan is compared with =:
-        with self.assertRaises(ValueError):
-            _parse_condition("pga = nan")
+        # set a series of types and the values you want to test:
+        # for ints, supply also a float, as _normalize_condition
+        # should not do this kind of conversion
+        values = {str: ['2006-01-01 01:02:03',
+                        # "b'2006-01-01 01:02:03'",
+                        '2006-01-01 01:02:03',
+                        '2006-01-01',
+                        '2006'],
+                  float: ["5", "0.5", "nan"],
+                  int: ["5", "6.5"],  
+                  bool: ["True"]}
 
-        for opr in ("==", "!=",  "<", ">", "<=", ">="):
-            cond = "pga %s 0.5" % opr
-            self.assertEqual(cond,  _parse_condition(cond))
-            # check that brackets are not an hindrance:
-            cond = "(pga %s 0.5)" % opr
-            self.assertEqual(cond, _parse_condition(cond))
-            # check that unbalanced brackets are not an hindrance:
-            cond = "((~(pga %s 0.5)" % opr
-            self.assertEqual(cond, _parse_condition(cond))
-            # test that strings unquoted are not an issue:
-            cond = "pga %s '0.5" % opr
-            self.assertEqual(cond, _parse_condition(cond))
-            # same as above but with different quote:
-            cond = "pga %s \"0.5" % opr
-            self.assertEqual(cond, _parse_condition(cond))
-            # same as above but with string quoted properly.
-            # Note that we do not care about unbalanced brackets:
-            cond = "(((pga %s '0.5'))" % opr
-            expected = cond.replace("'0.5", "b'0.5") if self.py3 else cond
-            self.assertEqual(expected, _parse_condition(cond))
-            # this works
-            cond = "(((pga %s 0.5a))" % opr
-            self.assertEqual(_parse_condition(cond), cond)
-            # this works
-            cond = "(((pga %s 0.5 a))" % opr
-            self.assertEqual(cond, _parse_condition(cond))
-            # this works, FIXME:
-            cond = "(pga %s 2006-01-01 04:03:59)" % opr
-            self.assertEqual(cond, _parse_condition(cond))
-            # expected nan, not 'nan':
-            cond = "(((pga %s 'nan')) | pga != nan" % opr
-            with self.assertRaises(ValueError):
-                _parse_condition(cond)
-            # no datetime (iso formatted string), expects string, it raises:
-            cond = "(event_time %s 2006-01-01 04:03:59)" % opr
-            self.assertEqual(cond, _parse_condition(cond))
-            # note: when properly quoted, bytes strings are
-            # recognized and not converted
-            cond = "(event_time %s b'2006-01-01 04:03:59')" % opr
-            self.assertEqual(cond,  _parse_condition(cond))
-            # same as above, no bytes but str:
-            cond = "(event_time %s \"2006-01-01 04:03:59\")" % opr
-            self.assertEqual("(event_time %s b'2006-01-01 04:03:59')" % opr,
-                             _parse_condition(cond))
-            # bad quotation raise an error:
-            cond = "(event_time %s b\"2006-01-01 04:03:59')" % opr
-            self.assertEqual(cond, _parse_condition(cond))
-            # same as above:
-            cond = "(event_time %s b\"2006-01-01 04:03:59)" % opr
-            self.assertEqual(cond, _parse_condition(cond))
-
-            cond = "(event_time %s \"2006-01-01T04:03:59\"   )" % opr
-            self.assertEqual(_parse_condition(cond),
-                             "(event_time %s b'2006-01-01T04:03:59'   )"
-                             % opr)
-            cond = "(event_country %s '0.5')" % opr
-            cond2 = _parse_condition(cond)
-            if self.py3:
-                self.assertEqual("(event_country %s b'0.5')" % opr, cond2)
-            else:
-                self.assertEqual(cond, cond2)
-            # note: trailing whitespaces are ermoved:
-            cond = "(event_country %s '0.5' abc ) " % opr
-            cond2 = _parse_condition(cond)
-            if self.py3:
-                self.assertEqual("(event_country %s b'0.5' abc )" % opr,
-                                 cond2)
-            else:
-                self.assertEqual(cond.strip(), cond2)
-
-            cond = "(((event_country %s True)" % opr
-            self.assertEqual(cond, _parse_condition(cond))
-
-            cond = "(event_country %s    )" % opr
-            self.assertEqual(cond,  _parse_condition(cond))
+        for key, vals in values.items():
+            for val in vals:
+                for opr in ("==", "!=",  "<", ">", "<=", ">="):
+                    if key == str:
+                        cond = 'event_country %s "%s"' % (opr, val)
+                        expected = cond
+                        if self.py3:
+                            expected = 'event_country %s b\'%s\'' % (opr, val)
+                        self.assertEqual(_normalize_condition(cond), expected)
+                        cond = 'event_time %s "%s"' % (opr, val)
+                        expected_val = GMDatabaseParser.normalize_dtime(val)
+                        expected = \
+                            expected.replace('event_country', 'event_time').\
+                            replace(val, expected_val)
+                        self.assertEqual(_normalize_condition(cond), expected)
+                        # now these cases should raise:
+                        for col in ['pga', 'vs30_measured', 'npass']:
+                            cond = '%s %s "%s"' % (col, opr, val)
+                            with self.assertRaises(ValueError):
+                                _normalize_condition(cond)
+                    elif cond == float:
+                        cond = 'pga %s %s' % (opr, val)
+                        self.assertEqual(_normalize_condition(cond), cond)
+                        # now these cases should raise:
+                        for col in ['event_country', 'event_time',
+                                    'vs30_measured', 'npass']:
+                            cond = '%s %s "%s"' % (col, opr, val)
+                            with self.assertRaises(ValueError):
+                                _normalize_condition(cond)
+                    elif cond == bool:
+                        cond = 'vs30_measured %s %s' % (opr, val)
+                        self.assertEqual(_normalize_condition(cond), cond)
+                        # now these cases should raise:
+                        for col in ['event_country', 'event_time', 'pga',
+                                    'npass']:
+                            cond = '%s %s "%s"' % (col, opr, val)
+                            with self.assertRaises(ValueError):
+                                _normalize_condition(cond)
+                    elif cond == int:
+                        cond = 'npass %s %s' % (opr, val)
+                        self.assertEqual(_normalize_condition(cond), cond)
+                        # now these cases should raise:
+                        for col in ['event_country', 'event_time', 'pga',
+                                    'vs30_measured']:
+                            cond = '%s %s "%s"' % (col, opr, val)
+                            with self.assertRaises(ValueError):
+                                _normalize_condition(cond)
 
         # check nan conversion (not string). Note trailing spaces stripped
         cond = "(((pga == 'nan')) | ( pga != nan)  "
-        expected = "(((pga == b'nan')) | ( pga == pga)" if self.py3 else \
-            "(((pga == 'nan')) | ( pga == pga)"
-        self.assertEqual(expected,  _parse_condition(cond))
+        #  'pga' values must be floats or nan:
+        with self.assertRaises(ValueError):
+            _normalize_condition(cond)
         # Parse both nans Note trailing spaces stripped
         cond = "(((pga == nan)) | ( pga != nan)  "
         self.assertEqual("(((pga != pga)) | ( pga == pga)",
-                         _parse_condition(cond))
-        # leading spaces are NOT stripped:
-        cond = "  (((event_time == 'nan')) | ( pga != nan)  "
-        expected = "  (((event_time == b'nan')) | ( pga == pga)" \
-            if self.py3 else "  (((event_time == 'nan')) | ( pga == pga)"
-        self.assertEqual(expected, _parse_condition(cond))
-
-        cond = "(((event_country == nan)) "
-        self.assertEqual("(((event_country != event_country))",
-                         _parse_condition(cond))
-
-        cond = "(((vs30_measured == nan)) "
-        self.assertEqual("(((vs30_measured != vs30_measured))",
-                         _parse_condition(cond))
+                         _normalize_condition(cond))
+        # test bytes stuff
+        # for datetimes:
+        for test in ['2006', '2006-12-31', '2016-12-31 00:01:02',
+                     '2016-12-31T01:02:03']:
+            cond = 'event_time == "%s"' % test
+            expected_val = GMDatabaseParser.normalize_dtime(test)
+            expected = 'event_time == b\'%s\'' % expected_val if self.py3\
+                 else 'event_time == \'%s\'' % expected_val
+            self.assertEqual(expected, _normalize_condition(cond))
+            cond = 'event_time == b"%s"' % test
+            self.assertEqual(expected, _normalize_condition(cond))
+        # for strings:
+#         test = "å"
+#         if self.py3:
+#             byte, text = test.encode('utf8'), test
+#         else:
+#             byte, text = test, test.decode('utf8')
+#         for test in [byte, text]:
+#             cond = 'event_time == "%s"' % str(test)
+#             expected_val = GMDatabaseParser.normalize_dtime(test)
+#             expected = 'event_time == b\'%s\'' % expected_val if self.py3\
+#                  else 'event_time == \'%s\'' % expected_val
+#             self.assertEqual(expected, _normalize_condition(cond))
+#             cond = 'event_time == b"%s"' % test
+#             self.assertEqual(expected, _normalize_condition(cond))
 
 
 if __name__ == "__main__":

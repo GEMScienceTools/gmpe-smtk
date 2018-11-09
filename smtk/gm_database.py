@@ -850,77 +850,35 @@ def records_where(table, condition, limit=None):
 
     Example:
     ```
-        # given a variable dtime representing a datetime object:
+        condition = ("(pga < 0.14) | (pga > 1.1) & (pgv != nan) &
+                      (event_time < '2006-01-01T00:00:00'")
 
-        condition = between('pga', 0.14, 1.1) & ne('pgv', 'nan') & \
-                    lt('event_time', dtime)
-
-        with get_table(...) as table:
-            for rec in records_where(table, condition):
-                # do your stuff with `rec`, e.g. access the fields:
-                sa = rec["sa"]
-                pga = rec['pga']  # and so on...
+        for record in records_where(tabke, condition):
+            # loop through matching records
     ```
-    The same can be obtained by specifying `condition` with the default
-    pytables string expression syntax (note however that
-    this approach has some caveats, see [1]):
+    For user trying to build expressions from input variables as python
+    objects, simply use the `str(object)` function which supports datetime's,
+    strings, boolean, floats and ints (note that datetimes and strings must be
+    "double" quoted: '"%s"' % str(object)):
     ```
-        condition = "(pga < 0.14) | (pga > 1.1) & (pgv == pgv) & \
-            (event_time < %s)" % \
-            dtime.strftime(''%Y-%m-%d %H:%M:%S').encode('utf8')
-
-        # the remainder of the code is the same as the example above
+        # given a datetime object `dtime` and two loats pgamin, pgamax:
+        condition = \
+            "(pga < %s) | (pga > %s) & (pgv != %s) & (event_time < '%s')" % \
+            (str(pgamin), str(pgamax), str(float('nan')), str(dtime))
     ```
 
     :param table: The pytables Table object. See module function `get_table`
     :param condition: a string expression denoting a selection condition.
         See https://www.pytables.org/usersguide/tutorials.html#reading-and-selecting-data-in-a-table
-
-        `condition` can be also given with the expression objects imoplemented
-        in this module, which handle some caveats (see note [1]) and also
-        ease the casting and construction of string expressions from python
-        variables. All expression objeects are actually enhanced Python strings
-        supporting also logical operators: negation ~, logical and & and or |.
-        They are:
-        ```
-        eq(column, *values)  # column value equal to any given value
-        ne(column, *values)  # column value differs from all given value(s)
-        lt(column, value)  # column value lower than the given value
-        gt(column, value)  # column value greater than the given value
-        le(column, value)  # column value lower or equal to the given value
-        ge(column, value)  # column value greater or equal to the given value
-        between(column, min, max)  # column between (or equal to) min and max
-        isaval(column)  # column value is available (i.e. not the default)
-            # (for boolean columns, isaval always returns all records)
-        ```
-        All values can be given as Python objects or strings (including
-        'nan' or float('nan')): the casting is automatically done according to
-        the column type
+        If None or the empty string, no filter is applied and all records are
+        yielded
 
     :param limit: integer (defaults: None) implements a SQL 'limit'
         when provided, yields only the first `limit` matching rows
-
-    --------------------------------------------------------------------------
-
-    [1] The use of the module level expression objects in the `condition`
-    handles some caveats that users implementing strings should be
-    aware of:
-    1. expressions concatenated with & or | should be put into brakets:
-        "(pga <= 0.5) & (pgv > 9.5)"
-    2. NaNs should be compared like this:
-        "pga != pga"  (pga is nan)
-        "pga == pga"  (pga is not nan)
-    3. String column types (e.g., 'event_country') should be compared with
-    quoted strings:
-        "event_country == 'Germany'" (or "Germany")
-    (in pytables documentation, they claim that in Python3 the above do not
-    work either, as they should be encoded into bytes:
-    "event_country == %s" % "Germany".encode('utf8')
-    **but** when tested in Python3.6.2 these work, so the claim is false or
-    incomplete. Maybe it works as long as `value` has ascii characters only?).
     '''
-    for count, row in enumerate(table.iterrows() if condition in ('', None)
-                                else table.where(_parse_condition(condition))):
+    iterator = enumerate(table.iterrows() if condition in ('', None)
+                         else table.where(_normalize_condition(condition)))
+    for count, row in iterator:
         if limit is None or count < limit:
             yield row
 
@@ -935,16 +893,21 @@ def read_where(table, condition, limit=None):
 
     All parameters are the same as :function:`records_where`
     '''
-    return table.read_where(_parse_condition(condition))[:limit]
+    return (table.read() if condition in ('', None)
+            else table.read_where(_normalize_condition(condition)))[:limit]
 
 
-def _parse_condition(condition):
-    '''processes the given `condition` string (numexpr syntax) to be used
+def _normalize_condition(condition):
+    '''normalizes the given `condition` string (numexpr syntax) to be used
     in record selection in order to handle some caveats when using numexpr
     syntax in pytables selection:
     1. expressions concatenated with & or | should be put into brakets:
         "(pga <= 0.5) & (pgv > 9.5)". This function raises if the logical
         operators are not preceeded by a ")" or not followed by a "("
+    1b. Can input date time **strings** (i.e. quoted) in any format recognized
+        by GmDatabase parser: 2006-12-31T00:00:00 (with or without T),
+        2006-12-31, or simply 2006.
+    1c. does a fast check on correct comparison types
     2. NaNs should be compared like this:
         "pga != pga"  (pga is nan)
         "pga == pga"  (pga is not nan)
@@ -960,10 +923,12 @@ def _parse_condition(condition):
     false or incomplete. Maybe it works as long as `value` has ascii
     characters only?).
     '''
+    dbcolumns = GMDatabaseTable.columns  # pylint: disable=no-member
     py3 = sys.version_info[0] >= 3
-    nan_operators = {'==': '!=', '!=': '=='}
+    oprs = {'==', '!=', '<=', '>=', '<', '>'}
     nan_indices = []
-    strings_indices = []
+    str_indices = []
+    dtime_indices = []
     result = []
 
     def last_tokenstr():
@@ -974,7 +939,9 @@ def _parse_condition(condition):
             raise ValueError('Logical operators (&|~) allowed only with '
                              'parenthezised expressions')
 
-    STRING, OP, NAME = tokenize.STRING, tokenize.OP, tokenize.NAME
+    ttypes = {'STR': tokenize.STRING, 'OP': tokenize.OP,
+              'NAME': tokenize.NAME, 'NUM': tokenize.NUMBER}
+    colname = None
     try:
         for token in generate_tokens(StringIO(condition).readline):
             tokentype, tokenstr = token[0], token[1]
@@ -984,16 +951,27 @@ def _parse_condition(condition):
             raise_invalid_logical_op_if(last_tokenstr() in ('~', '|', '&')
                                         and tokenstr not in ('~', '('))
 
-            if tokentype == STRING and py3 and tokenstr[0] != 'b':
-                strings_indices.append(len(result))
-            elif tokentype == NAME and tokenstr in ('nan', 'NAN', 'NaN') \
-                    and len(result) > 1:
-                if result[-2][0] == NAME and result[-1][0] == OP:
-                    operator = result[-1][1]
-                    if operator not in nan_operators:
-                        raise ValueError('only != and == can be compared '
-                                         'with nan')
-                    nan_indices.append(len(result))
+            if colname is not None:
+                if colname != tokenstr or tokentype != ttypes['NAME']:
+                    _type_check(tokentype, tokenstr, colname,
+                                dbcolumns[colname], ttypes['STR'],
+                                ttypes['NUM'])
+                    if tokentype == ttypes['STR']:
+                        if getattr(dbcolumns[colname], "is_datetime_str",
+                                   False):
+                            dtime_indices.append(len(result))
+                        elif py3:
+                            str_indices.append(len(result))
+                    elif tokentype == ttypes['NAME'] and \
+                            tokenstr in ('nan', 'NAN', 'NaN'):
+                        if result[-2][0] == ttypes['NAME'] and \
+                                result[-1][0] == ttypes['OP']:
+                            nan_indices.append(len(result))
+                colname = None
+            else:
+                if tokentype == ttypes['OP'] and tokenstr in oprs \
+                        and result and result[-1][1] in dbcolumns:
+                    colname = result[-1][1]
 
             result.append(list(token))
 
@@ -1006,17 +984,54 @@ def _parse_condition(condition):
             raise ValueError(str(terr))
 
     raise_invalid_logical_op_if(last_tokenstr() in ('&', '|', '~'))
-
-    # replace nans and strings at the real end:
-    for i in strings_indices:
-        tokenstr = result[i][1]
-        string = shlex.split(tokenstr)[0]
-        result[i][1] = str(string.encode('utf8'))
-
-    for i in nan_indices:
-        varname = result[i-2][1]
-        operator = result[i-1][1]
-        result[i-1][1] = nan_operators[operator]
-        result[i][1] = varname
+    # replace nans, datetimes and strings at the real end:
+    _normalize_tokens(result, dtime_indices, str_indices, nan_indices)
 
     return untokenize(result)
+
+
+def _type_check(tokentype, tokenstr,  # pylint: disable=too-many-arguments
+                colname, colobj,  str_code, num_code):
+    colobj_name = colobj.__class__.__name__
+    if colobj_name.startswith('String') and tokentype != str_code:
+        raise ValueError("'%s' value must be strings (quoted)" %
+                         colname)
+    elif (colobj_name.startswith('UInt')
+          or colobj_name.startswith('Int')) and \
+            tokentype != num_code:
+        raise ValueError("'%s' values must be integers" %
+                         colname)
+    elif colobj_name.startswith('Float'):
+        if tokentype != num_code and tokenstr != 'nan':
+            raise ValueError("'%s' values must be floats or nan" %
+                             colname)
+    elif colobj_name.startswith('Bool') and tokenstr not in \
+            ('True', 'False'):
+        raise ValueError("Boolean required with '%s'" %
+                         colname)
+
+
+def _normalize_tokens(tokens, dtime_indices, str_indices, nan_indices):
+    for i in dtime_indices:
+        tokenstr = tokens[i][1]  # it is quoted, e.g. '"string"', so use shlex:
+        if tokenstr[0:1] == 'b':
+            tokenstr = tokenstr[1:]
+        string = shlex.split(tokenstr)[0]
+        tokens[i][1] = str(GMDatabaseParser.normalize_dtime(string).
+                           encode('utf8'))
+
+    for i in str_indices:
+        tokenstr = tokens[i][1]  # it is quoted, e.g. '"string"', so use shlex:
+        if tokenstr[0:1] != 'b':
+            string = shlex.split(tokenstr)[0]
+            tokens[i][1] = str(string.encode('utf8'))
+
+    if nan_indices:
+        nan_operators = {'==': '!=', '!=': '=='}
+        for i in nan_indices:
+            varname = tokens[i-2][1]
+            operator = tokens[i-1][1]
+            if operator not in nan_operators:
+                raise ValueError('only != and == can be compared with nan')
+            tokens[i-1][1] = nan_operators[operator]
+            tokens[i][1] = varname
