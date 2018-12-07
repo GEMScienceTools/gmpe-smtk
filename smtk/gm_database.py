@@ -16,6 +16,10 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
+from openquake.hazardlib.contexts import SitesContext, DistancesContext, RuptureContext
+from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
+from openquake.hazardlib import imt
+from _collections import OrderedDict
 """
 Basic classes for the GMDatabase (HDF5 database) and parsers
 """
@@ -154,6 +158,25 @@ def _col(col_class, **kwargs):
     return ret
 
 
+# defines a mechanism type to be associated to a rake
+MECHANISM_TYPE = {"Normal": -90.0,
+                  "Strike-Slip": 0.0,
+                  "Reverse": 90.0,
+                  "Oblique": 0.0,
+                  "Unknown": 0.0,
+                  "N": -90.0,  # Flatfile conventions
+                  "S": 0.0,
+                  "R": 90.0,
+                  "U": 0.0,
+                  "NF": -90.,  # ESM flatfile conventions
+                  "SS": 0.,
+                  "TF": 90.,
+                  "NS": -45.,  # Normal with strike-slip component
+                  "TS": 45.,  # Reverse with strike-slip component
+                  "O": 0.0
+                  }
+
+
 class GMDatabaseTable(IsDescription):  # pylint: disable=too-few-public-methods
     """
     Implements a GMDatabase as `pytable.IsDescription` class.
@@ -187,7 +210,7 @@ class GMDatabaseTable(IsDescription):  # pylint: disable=too-few-public-methods
     dip_2 = _col(Float32Col)
     rake_1 = _col(Float32Col)
     rake_2 = _col(Float32Col)
-    style_of_faulting = _col(Float32Col)
+    style_of_faulting = _col(EnumCol, enum=MECHANISM_TYPE.keys())
     depth_top_of_rupture = _col(Float32Col)
     rupture_length = _col(Float32Col)
     rupture_width = _col(Float32Col)
@@ -256,22 +279,22 @@ class GMDatabaseParser(object):
     _accel_units = ["g", "m/s/s", "m/s**2", "m/s^2",
                     "cm/s/s", "cm/s**2", "cm/s^2"]
 
-    _ref_periods = [0.010, 0.020, 0.022, 0.025, 0.029, 0.030, 0.032,
-                    0.035, 0.036, 0.040, 0.042, 0.044, 0.045, 0.046,
-                    0.048, 0.050, 0.055, 0.060, 0.065, 0.067, 0.070,
-                    0.075, 0.080, 0.085, 0.090, 0.095, 0.100, 0.110,
-                    0.120, 0.130, 0.133, 0.140, 0.150, 0.160, 0.170,
-                    0.180, 0.190, 0.200, 0.220, 0.240, 0.250, 0.260,
-                    0.280, 0.290, 0.300, 0.320, 0.340, 0.350, 0.360,
-                    0.380, 0.400, 0.420, 0.440, 0.450, 0.460, 0.480,
-                    0.500, 0.550, 0.600, 0.650, 0.667, 0.700, 0.750,
-                    0.800, 0.850, 0.900, 0.950, 1.000, 1.100, 1.200,
-                    1.300, 1.400, 1.500, 1.600, 1.700, 1.800, 1.900,
-                    2.000, 2.200, 2.400, 2.500, 2.600, 2.800, 3.000,
-                    3.200, 3.400, 3.500, 3.600, 3.800, 4.000, 4.200,
-                    4.400, 4.600, 4.800, 5.000, 5.500, 6.000, 6.500,
-                    7.000, 7.500, 8.000, 8.500, 9.000, 9.500, 10.000,
-                    11.000, 12.000, 13.000, 14.000, 15.000, 20.000]
+#     _ref_periods = [0.010, 0.020, 0.022, 0.025, 0.029, 0.030, 0.032,
+#                     0.035, 0.036, 0.040, 0.042, 0.044, 0.045, 0.046,
+#                     0.048, 0.050, 0.055, 0.060, 0.065, 0.067, 0.070,
+#                     0.075, 0.080, 0.085, 0.090, 0.095, 0.100, 0.110,
+#                     0.120, 0.130, 0.133, 0.140, 0.150, 0.160, 0.170,
+#                     0.180, 0.190, 0.200, 0.220, 0.240, 0.250, 0.260,
+#                     0.280, 0.290, 0.300, 0.320, 0.340, 0.350, 0.360,
+#                     0.380, 0.400, 0.420, 0.440, 0.450, 0.460, 0.480,
+#                     0.500, 0.550, 0.600, 0.650, 0.667, 0.700, 0.750,
+#                     0.800, 0.850, 0.900, 0.950, 1.000, 1.100, 1.200,
+#                     1.300, 1.400, 1.500, 1.600, 1.700, 1.800, 1.900,
+#                     2.000, 2.200, 2.400, 2.500, 2.600, 2.800, 3.000,
+#                     3.200, 3.400, 3.500, 3.600, 3.800, 4.000, 4.200,
+#                     4.400, 4.600, 4.800, 5.000, 5.500, 6.000, 6.500,
+#                     7.000, 7.500, 8.000, 8.500, 9.000, 9.500, 10.000,
+#                     11.000, 12.000, 13.000, 14.000, 15.000, 20.000]
 
     # the regular expression used to parse SAs periods. Note capturing
     # group for the SA period:
@@ -444,7 +467,7 @@ class GMDatabaseParser(object):
         dictionary, after performing SA conversion and running custom code
         implemented in `cls.parse_row` (if overridden by
         subclasses). Yields empty dict in case of exceptions'''
-        ref_log_periods = np.log10(cls._ref_periods)
+        # ref_log_periods = np.log10(cls._ref_periods)
         mappings = getattr(cls, 'mappings', {})
         with cls._get_csv_reader(flatfile_path) as reader:
 
@@ -452,7 +475,7 @@ class GMDatabaseParser(object):
                              reader.fieldnames]
             # get spectra fieldnames and priods:
             try:
-                spectra_fieldnames, spectra_periods =\
+                sa_periods_names =\
                     cls._get_sa_columns(newfieldnames)
             except Exception as exc:
                 raise ValueError('Unable to parse SA columns: %s' % str(exc))
@@ -478,9 +501,12 @@ class GMDatabaseParser(object):
 
                 # assign values (sa, event time, pga):
                 try:
-                    rowdict['sa'] = cls._get_sa(rowdict, spectra_fieldnames,
-                                                ref_log_periods,
-                                                spectra_periods)
+                    sa_values = np.array([rowdict[p] for p in
+                                          sa_periods_names.values()],
+                                         dtype=float)
+#                     cls._get_sa(rowdict, spectra_fieldnames,
+#                                                 ref_log_periods,
+#                                                 spectra_periods)
                 except Exception as _:  # pylint: disable=broad-except
                     pass
 
@@ -507,7 +533,7 @@ class GMDatabaseParser(object):
                     rowdict = {}
 
                 # yield row as dict:
-                yield rowdict
+                yield sa_periods_names.keys(), sa_values, rowdict
 
     @classmethod
     def _sanity_check(cls, rowdict):
@@ -557,16 +583,20 @@ class GMDatabaseParser(object):
         """Returns the field names, the spectra fieldnames and the periods
         (numoy array) of e.g., a parsed csv reader's fieldnames
         """
-        spectra_fieldnames = []
-        periods = []
+        periods_names = []
+        # spectra_fieldnames = []
+        # periods = []
         reg = cls._sa_periods_re
         for fname in csv_fieldnames:
             match = reg.match(fname)
             if match:
-                periods.append(float(match.group(1)))
-                spectra_fieldnames.append(fname)
+                periods_names.append((float(match.group(1)), fname))
+#                 periods.append(float(match.group(1)))
+#                 spectra_fieldnames.append(fname)
 
-        return spectra_fieldnames, np.array(periods)
+        periods_names.sort(key=lambda item: item[0])
+        return OrderedDict(periods_names)
+        #        return spectra_fieldnames, np.array(periods)
 
     @staticmethod
     def _get_sa(rowdict, spectra_fieldnames, ref_log_periods, spectra_periods):
@@ -907,7 +937,7 @@ def _normalize_condition(condition):
     1b. Can input date time **strings** (i.e. quoted) in any format recognized
         by GmDatabase parser: 2006-12-31T00:00:00 (with or without T),
         2006-12-31, or simply 2006.
-    1c. does a fast check on correct comparison types
+    1c. does a fast check on correct comparison columns (fields) types
     2. NaNs should be compared like this:
         "pga != pga"  (pga is nan)
         "pga == pga"  (pga is not nan)
@@ -956,21 +986,18 @@ def _normalize_condition(condition):
                     _type_check(tokentype, tokenstr, colname,
                                 dbcolumns[colname], ttypes['STR'],
                                 ttypes['NUM'])
-                    if tokentype == ttypes['STR']:
-                        if getattr(dbcolumns[colname], "is_datetime_str",
-                                   False):
-                            dtime_indices.append(len(result))
-                        elif py3:
-                            str_indices.append(len(result))
-                    elif tokentype == ttypes['NAME'] and \
-                            tokenstr in ('nan', 'NAN', 'NaN'):
-                        if result[-2][0] == ttypes['NAME'] and \
-                                result[-1][0] == ttypes['OP']:
-                            nan_indices.append(len(result))
+                    if getattr(dbcolumns[colname], "is_datetime_str", False)\
+                            and tokentype == ttypes['STR']:
+                        dtime_indices.append(len(result))
+                    elif py3 and tokentype == ttypes['STR']:
+                        str_indices.append(len(result))
+                    elif tokenstr == 'nan' and tokentype == ttypes['NAME']:
+                        nan_indices.append(len(result))
                 colname = None
             else:
                 if tokentype == ttypes['OP'] and tokenstr in oprs \
-                        and result and result[-1][1] in dbcolumns:
+                        and result and result[-1][1] in dbcolumns and \
+                        result[-1][0] == ttypes['NAME']:
                     colname = result[-1][1]
 
             result.append(list(token))
@@ -986,7 +1013,8 @@ def _normalize_condition(condition):
     raise_invalid_logical_op_if(last_tokenstr() in ('&', '|', '~'))
     # replace nans, datetimes and strings at the real end:
     _normalize_tokens(result, dtime_indices, str_indices, nan_indices)
-
+    # return the new normalized string by untokenizing back: aside changed
+    # variables, spaces are preserved except trailing ones (a the end):
     return untokenize(result)
 
 
@@ -1035,3 +1063,359 @@ def _normalize_tokens(tokens, dtime_indices, str_indices, nan_indices):
                 raise ValueError('only != and == can be compared with nan')
             tokens[i-1][1] = nan_operators[operator]
             tokens[i][1] = varname
+
+
+########################################
+# Residuals calculation
+########################################
+
+class GMdb:
+    def __init__(self, filepath, dbname, condition):
+        self.filepath = filepath
+        self.dbname = dbname
+        self.condition = condition
+
+#     def get_contexts(self, nodal_plane_index=1):
+#         """
+#         Returns a list of dictionaries, each containing the site, distance
+#         and rupture contexts for individual records
+#         """
+#         wfid_list = np.array([rec.event.id for rec in self.records])
+#         eqid_list = self._get_event_id_list()
+#         context_dicts = []
+#         for eqid in eqid_list:
+#             idx = np.where(wfid_list == eqid)[0]
+#             context_dicts.append({
+#                 'EventID': eqid,
+#                 'EventIndex': idx.tolist(),
+#                 'Sites': self._get_sites_context_event(idx),
+#                 'Distances': self._get_distances_context_event(idx),
+#                 'Rupture': self._get_event_context(idx, nodal_plane_index)})
+#         return context_dicts
+# 
+#     @staticmethod
+#     def _get_event_id_list(self):
+#         """
+#         Returns the list of unique event keys from the database
+#         """
+#         event_list = []
+#         for record in self.records:
+#             if not record.event.id in event_list:
+#                 event_list.append(record.event.id)
+#         return np.array(event_list)
+
+    def get_contexts(self, nodal_plane_index=1):
+        """
+        Returns an iterable of dictionaries, each containing the site, distance
+        and rupture contexts for individual records
+        """
+        context_dicts = {}
+        with get_table(self.filepath, self.dbname) as table:
+            for rec in records_where(table, self.condition):
+                evt_id = rec['event_id']
+                dic = context_dicts.get(evt_id, None)
+                if dic is None:
+                    # we might use defaultdict, but like this is more readable
+                    dic = {'EventID': evt_id,
+                           'EventIndex': [],
+                           'Sites': SitesContext(),
+                           'Distances': DistancesContext()}
+                    # set Rupture only once:
+                    dic['Rupture'] = RuptureContext()
+                    self._set_event_context(rec, dic['Rupture'],
+                                            nodal_plane_index)
+                    context_dicts[evt_id] = dic
+                dic['EventIndex'].append(rec['record_id'].item())
+                self._set_sites_context_event(rec, dic['Sites'])
+                self._set_distances_context_event(rec, dic['Distances'])
+
+        # converts to numeric arrays (once at the end is faster, see
+        # https://stackoverflow.com/questions/7133885/fastest-way-to-grow-a-numpy-numeric-array
+        # get default attributes not to be changed:
+        site_context_def_attrs = set(dir(SitesContext()))
+        distances_attrs = set(dir(DistancesContext()))
+        for _ in context_dicts.values():
+            self._tonumpy(dic['Sites'],
+                          set(dir(dic['Sites'])) - site_context_def_attrs)
+            self._tonumpy(dic['Distances'],
+                          set(dir(dic['Distances'])) - distances_attrs)
+
+        return context_dicts.values()
+
+    @staticmethod
+    def _append(obj, att, value):
+        ret = getattr(obj, att, None)
+        if ret is None:
+            ret = []
+            setattr(obj, att, ret)
+        ret.append(value)
+
+    @staticmethod
+    def _tonumpy(obj, att_names):
+        for att_name in att_names:
+            att_val = getattr(obj, att_name, None)
+            if isinstance(att_val, list):
+                setattr(obj, att_name, np.array(att_val))
+
+    @staticmethod
+    def _set_sites_context_event(record, sctx):
+        """
+        Adds the record's data to the given site context
+
+        :param record: a pytable record usually representing a flatfile row
+        :param sctx: a :class:`SitesContext` object
+        """
+        # From:
+        # smtk.sm_database.GroundMotionDatabase._get_sites_context_event
+        # line: 1085
+
+        # Please remember that the method above is called ONCE PER DB and
+        # returns an openquake's SitesContext
+        # whereas this method is called ONCE PER RECORD and appends records
+        # data to an already created SitesContext
+
+        # Attributes attached to sctx in the OLD IMPLEMENTATION:
+        # setattr(sctx, 'vs30', np.array(vs30))
+        # if len(longs) > 0:
+        #     setattr(sctx, 'lons', np.array(longs))
+        # if len(lats) > 0:
+        #     setattr(sctx, 'lats', np.array(lats))
+        # if len(depths) > 0:
+        #     setattr(sctx, 'depths', np.array(depths))
+        # if len(vs30_measured) > 0:
+        #     setattr(sctx, 'vs30measured', np.array(vs30_measured))
+        # if len(z1pt0) > 0:
+        #     setattr(sctx, 'z1pt0', np.array(z1pt0))
+        # if len(z2pt5) > 0:
+        #     setattr(sctx, 'z2pt5', np.array(z2pt5))
+        # if len(backarc) > 0:
+        #     setattr(sctx, 'backarc', np.array(backarc))
+
+        # FIXME:
+        # backarc?
+        # deal with non attached attributes
+
+        append, isnan = GMdb._append, np.isnan
+
+        append(sctx, 'lons', record['station_longitude'])
+        append(sctx, 'lats', record['station_latitude'])
+        append(sctx, 'depths',  0.0 if isnan(record['station_elevation'])
+               else record['station_elevation'])
+        vs30 = record['vs30']
+        append(sctx, 'vs30', vs30)
+        append(sctx, 'vs30_measured', record['vs30_measured'])
+        append(sctx, 'z1pt0',  vs30_to_z1pt0_cy14(vs30)
+               if isnan(record['z1pt0']) else record['z1pt0'])
+        append(sctx, 'z2pt5',  vs30_to_z2pt5_cb14(vs30)
+               if isnan(record['z2pt5']) else record['z2pt5'])
+
+    @staticmethod
+    def _set_distances_context_event(record, dctx):
+        """
+        Adds the record's data to the given distance context
+
+        :param record: a pytable record usually representing a flatfile row
+        :param dctx: a :class:`DistancesContext` object
+        """
+        # From:
+        # smtk.sm_database.GroundMotionDatabase._get_distances_context_event
+        # line: 1141
+
+        # Please remember that the method above is called ONCE PER DB and
+        # returns an openquake's SitesContext
+        # whereas this method is called ONCE PER RECORD and appends records
+        # data to an already created SitesContext
+
+        # Attributes attached to sctx in the OLD IMPLEMENTATION:
+        # setattr(dctx, 'repi', np.array(repi))
+        # setattr(dctx, 'rhypo', np.array(rhypo))
+        # if len(rjb) > 0:
+        #     setattr(dctx, 'rjb', np.array(rjb))
+        # if len(rrup) > 0:
+        #     setattr(dctx, 'rrup', np.array(rrup))
+        # if len(r_x) > 0:
+        #     setattr(dctx, 'rx', np.array(r_x))
+        # if len(ry0) > 0:
+        #     setattr(dctx, 'ry0', np.array(ry0))
+        # if len(rcdpp) > 0:
+        #     setattr(dctx, 'rcdpp', np.array(rcdpp))
+        # if len(azimuth) > 0:
+        #     setattr(dctx, 'azimuth', np.array(azimuth))
+        # if len(hanging_wall) > 0:
+        #     setattr(dctx, 'hanging_wall', np.array(hanging_wall))
+        # if len(rvolc) > 0:
+        #     setattr(dctx, 'rvolc', np.array(rvolc))
+
+        # FIXME:
+        # 1) These three attributes are missing in current implementation!
+        # - append(dctx, 'rcdpp', rup['rcdpp'])
+        # - append(dctx, 'hanging_wall', rup['hanging_wall'])
+        # - append(dctx, 'rvolc', rup['rvolc'])
+        # 2) Old TODO maybe to be fixed NOW?
+
+        append, isnan = GMdb._append, np.isnan
+
+        # TODO Setting Rjb == Repi and Rrup == Rhypo when missing value
+        # is a hack! Need feedback on how to fix
+        if isnan(record['rjb']):
+            record['rjb'] = record['repi']
+        if isnan(record['rrup']):
+            record['rrup'] = record['rhypo']
+        append(dctx, 'repi', record['repi'])
+        append(dctx, 'rhypo', record['rhypo'])
+        append(dctx, 'rjb', record['rjb'])
+        append(dctx, 'rrup', record['rrup'])
+        append(dctx, 'rx', record['rx'])
+        append(dctx, 'ry0', record['ry0'])
+        append(dctx, 'azimuth', record['azimuth'])
+
+
+    def _set_event_context(self, record, rctx, nodal_plane_index=1):
+        """
+        Adds the record's data to the given distance context
+
+        :param record: a pytable record usually representing a flatfile row
+        :param rctx: a :class:`RuptureContext` object
+        """
+        # From:
+        # smtk.sm_database.GroundMotionDatabase._get_event_context
+        # line: 1208
+
+        # Please remember that the method above is called ONCE PER DB and
+        # returns an openquake's SitesContext
+        # whereas this method is called ONCE PER RECORD and appends records
+        # data to an already created SitesContext
+
+        # Attributes attached to sctx in the OLD IMPLEMENTATION:
+        # if nodal_plane_index == 2:
+        #     setattr(rctx, 'strike',
+        #         rup.event.mechanism.nodal_planes.nodal_plane_2['strike'])
+        #     setattr(rctx, 'dip',
+        #         rup.event.mechanism.nodal_planes.nodal_plane_2['dip'])
+        #     setattr(rctx, 'rake',
+        #         rup.event.mechanism.nodal_planes.nodal_plane_2['rake'])
+        # else:
+        #     setattr(rctx, 'strike', 0.0)
+        #     setattr(rctx, 'dip', 90.0)
+        #     rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
+        # if rup.event.rupture.surface:
+        #     setattr(rctx, 'ztor', rup.event.rupture.surface.get_top_edge_depth())
+        #     setattr(rctx, 'width', rup.event.rupture.surface.width)
+        #     setattr(rctx, 'hypo_loc', rup.event.rupture.surface.get_hypo_location(1000))
+        # else:
+        #     setattr(rctx, 'ztor', rup.event.depth)
+        #     # Use the PeerMSR to define the area and assuming an aspect ratio
+        #     # of 1 get the width
+        #     setattr(rctx, 'width',
+        #             np.sqrt(DEFAULT_MSR.get_median_area(rctx.mag, 0)))
+        #     # Default hypocentre location to the middle of the rupture
+        #     setattr(rctx, 'hypo_loc', (0.5, 0.5))
+        # setattr(rctx, 'hypo_depth', rup.event.depth)
+        # setattr(rctx, 'hypo_lat', rup.event.latitude)
+        # setattr(rctx, 'hypo_lon', rup.event.longitude)
+
+        # FIXME: is style_of_faulting only needed for n/a rake?
+        # Then I would remove style_of_faulting and create a rake for each
+        # specific flatfile case, when parsing
+        # Missing attributes: ztor, width
+
+        strike, dip, rake = \
+            record['strike_1'], record['dip_1'], record['rake_1']
+
+        if np.isnan([strike, dip, rake]).any():
+            strike, dip, rake = \
+                record['strike_2'], record['dip_2'], record['rake_2']
+
+        if np.isnan([strike, dip, rake]).any():
+            strike = 0.0
+            dip = 90.0
+            try:
+                rake = MECHANISM_TYPE[record['style_of_faulting']]
+            except KeyError:
+                rake = 0.0
+
+        setattr(rctx, 'mag', record['magnitude'])
+        setattr(rctx, 'strike', strike)
+        setattr(rctx, 'dip', dip)
+        setattr(rctx, 'rake', rake)
+        setattr(rctx, 'hypo_depth', record['event.depth'])
+        setattr(rctx, 'hypo_lat', record['event_latitude'])
+        setattr(rctx, 'hypo_lon', record['event_longitude'])
+
+
+    def get_observations(self, context, component="Geometric"):
+        """
+        Get the obsered ground motions from the database
+        """
+        select_records = self.database.select_from_event_id(context["EventID"])
+        observations = OrderedDict([(imtx, []) for imtx in self.imts])
+        selection_string = "IMS/H/Spectra/Response/Acceleration/"
+        for record in select_records:
+            fle = h5py.File(record.datafile, "r")
+            for imtx in self.imts:
+                if imtx in SCALAR_IMTS:
+                    if imtx == "PGA":
+                        observations[imtx].append(
+                            get_scalar(fle, imtx, component) / 981.0)
+                    else:
+                        observations[imtx].append(
+                            get_scalar(fle, imtx, component))
+
+                elif "SA(" in imtx:
+                    target_period = imt.from_string(imtx).period
+                    spectrum = fle[selection_string + component +
+                                   "/damping_05"].value
+                    periods = fle["IMS/H/Spectra/Response/Periods"].value
+                    observations[imtx].append(get_interpolated_period(
+                        target_period, periods, spectrum) / 981.0)
+                else:
+                    raise "IMT %s is unsupported!" % imtx
+            fle.close()
+        for imtx in self.imts:
+            observations[imtx] = np.array(observations[imtx])
+        context["Observations"] = observations
+        context["Num. Sites"] = len(select_records)
+        return context
+
+
+#     def get_observations(self, record, component="Geometric", observations):
+#         """
+#         Get the obsered ground motions from the database
+#         
+#         :param observations: a dict of imt (string) mapped to a list of values
+#         """
+#         # select_records = self.database.select_from_event_id(context["EventID"])
+#         # observations = OrderedDict([(imtx, []) for imtx in self.imts])
+#         # selection_string = "IMS/H/Spectra/Response/Acceleration/"
+#         # for record in select_records:
+#         # fle = h5py.File(record.datafile, "r")
+#         for imtx in self.imts:
+#             if "SA(" in imtx:
+#                 target_period = imt.from_string(imtx).period
+#                 spectrum = fle[selection_string + component +
+#                                "/damping_05"].value
+#                 periods = fle["IMS/H/Spectra/Response/Periods"].value
+#                 observations[imtx].append(get_interpolated_period(
+#                     target_period, periods, spectrum) / 981.0)
+#             elif imtx == "PGA":
+#                     observations[imtx].append(
+#                         get_scalar(fle, imtx, component) / 981.0)
+#             else:
+#                     observations[imtx].append(
+#                         get_scalar(fle, imtx, component))
+# 
+# #             elif "SA(" in imtx:
+# #                 target_period = imt.from_string(imtx).period
+# #                 spectrum = fle[selection_string + component +
+# #                                "/damping_05"].value
+# #                 periods = fle["IMS/H/Spectra/Response/Periods"].value
+# #                 observations[imtx].append(get_interpolated_period(
+# #                     target_period, periods, spectrum) / 981.0)
+# #             else:
+# #                 raise "IMT %s is unsupported!" % imtx
+# #            fle.close()
+#         for imtx in self.imts:
+#             observations[imtx] = np.array(observations[imtx])
+#         context["Observations"] = observations
+#         context["Num. Sites"] = len(select_records)
+#         return context

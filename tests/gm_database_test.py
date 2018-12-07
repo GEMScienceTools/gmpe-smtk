@@ -15,6 +15,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
+from smtk.residuals.gmpe_residuals import get_interpolated_period
 """
 Tests the GM database parsing and selection
 """
@@ -397,7 +398,7 @@ class GmDatabaseTestCase(unittest.TestCase):
                         '2006-01-01',
                         '2006'],
                   float: ["5", "0.5", "nan"],
-                  int: ["5", "6.5"],  
+                  int: ["5", "6.5"],
                   bool: ["True"]}
 
         for key, vals in values.items():
@@ -482,6 +483,42 @@ class GmDatabaseTestCase(unittest.TestCase):
 #             self.assertEqual(expected, _normalize_condition(cond))
 #             cond = 'event_time == b"%s"' % test
 #             self.assertEqual(expected, _normalize_condition(cond))
+
+
+    def test_interp_period(self):
+        values = np.linspace(0, 1.0, num=len(GMDatabaseParser._ref_periods),
+                             endpoint=True)
+        periods = GMDatabaseParser._ref_periods
+        for val in periods:
+            val1 = get_interpolated_period(val, np.array(periods),
+                                           np.array(values))
+            val2 = get_interpolated_periods(np.log10(val), np.log10(periods),
+                                            np.log10(values))
+            self.assertEqual(val1, val2)
+
+
+def get_interpolated_periods(target_periods, periods, values, sort=True,
+                             check_bounds=True):
+    """
+    Returns the spectra interpolated in loglog space
+    :param float target_period:
+        Period required for interpolation
+    :param np.ndarray periods:
+        Spectral Periods
+    :param np.ndarray values:
+        Ground motion values
+    """
+    target_periods, periods, values = np.asarray(target_periods),\
+        np.asarray(periods), np.asarray(values)
+
+    if check_bounds:
+        pmin, pmax = (target_periods, target_periods) \
+            if target_periods.ndim == 0 \
+            else (target_periods[0], target_periods[-1])
+        if pmin < periods[0] or pmax > periods[-1]:
+            raise ValueError("Period not within calculated range")
+
+    return np.interp(target_periods, periods, values)
 
 
 if __name__ == "__main__":
