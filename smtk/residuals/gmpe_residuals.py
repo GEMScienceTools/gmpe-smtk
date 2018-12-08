@@ -16,6 +16,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
+from smtk.gm_database import GMdb
 
 """
 Module to get GMPE residuals - total, inter and intra
@@ -408,7 +409,6 @@ class Residuals(object):
             self.modelled.append([gmpe, gmpe_dict_2])
         self.residuals = OrderedDict(self.residuals)
         self.modelled = OrderedDict(self.modelled)
-        self.database = None
         self.number_records = None
         self.contexts = None
 
@@ -417,13 +417,23 @@ class Residuals(object):
         """
         Calculate the residuals for a set of ground motion records
         """
-        # Contexts is a list of dictionaries
-        contexts = database.get_contexts(nodal_plane_index)
-        self.database = SMRecordSelector(database)
+        calculate_observations = True
+        if isinstance(database, GMdb):
+            contexts = database.get_contexts(self.imts,
+                                             nodal_plane_index,
+                                             component)
+            calculate_observations = False
+        else:
+            contexts = database.get_contexts(nodal_plane_index)
+        # Contexts is in either case a list of dictionaries
         self.contexts = []
         for context in contexts:
-            # Get the observed strong ground motions
-            context = self.get_observations(context, component)
+            # Get the observed strong ground motions if database is
+            # a Sm database (if a GM database, observtions are already
+            # calculated)
+            if calculate_observations:
+                context = self.get_observations(SMRecordSelector(database),
+                                                context, component)
             # Get the expected ground motions
             context = self.get_expected_motions(context)
             context = self.calculate_residuals(context, normalise)
@@ -473,11 +483,13 @@ class Residuals(object):
                 self.modelled[gmpe][imtx]["Mean"] = np.array(
                     self.modelled[gmpe][imtx]["Mean"])
 
-    def get_observations(self, context, component="Geometric"):
+    def get_observations(self, sm_record_selector, context,
+                         component="Geometric"):
         """
         Get the obsered ground motions from the database
         """
-        select_records = self.database.select_from_event_id(context["EventID"])
+        select_records = \
+            sm_record_selector.select_from_event_id(context["EventID"])
         observations = OrderedDict([(imtx, []) for imtx in self.imts])
         selection_string = "IMS/H/Spectra/Response/Acceleration/"
         for record in select_records:

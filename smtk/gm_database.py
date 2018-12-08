@@ -176,87 +176,83 @@ MECHANISM_TYPE = {"Normal": -90.0,
                   "O": 0.0
                   }
 
-
-class GMDatabaseTable(IsDescription):  # pylint: disable=too-few-public-methods
-    """
-    Implements a GMDatabase as `pytable.IsDescription` class.
-    This class is the skeleton of the data structure of HDF5 tables, which
-    map flatfiles data (in CSV) in an HDF5 file.
-
-    **Remember that, with the exception of `BoolCol`s, default values
-    are interpreted as 'missing'. Usually, no dflt argument has to be passed
-    here as it will be set by default (see `_col` function)
-    """
-    # id = UInt32Col()  # no default. Starts from 1 incrementally
+# Instead of implementing a static GMDatabase as `pytable.IsDescription` class.
+# which does not allow to dynamically set the length of array columns, write
+# a dict here of SCALAR values only. Array columns (i.e., 'sa') will be added
+# later. This also permits to have the scalar columns in one place, as scalar
+# columns only are selectable in pytables by default
+GMDatabaseTable = dict( 
+    # id=UInt32Col()  # no default. Starts from 1 incrementally
     # max id: 4,294,967,295
-    record_id = _col(StringCol, itemsize=20)
-    event_id = _col(StringCol, itemsize=20)
-    event_name = _col(StringCol, itemsize=40)
-    event_country = _col(StringCol, itemsize=30)
-    event_time = _col("DateTime")  # In ISO Format YYYY-MM-DDTHH:mm:ss
+    record_id=_col(UInt32Col),
+    event_id=_col(StringCol, itemsize=20),
+    event_name=_col(StringCol, itemsize=40),
+    event_country=_col(StringCol, itemsize=30),
+    event_time=_col("DateTime"),  # In ISO Format YYYY-MM-DDTHH:mm:ss
     # Note: if we want to support YYYY-MM-DD only be aware that:
     # YYYY-MM-DD == YYYY-MM-DDT00:00:00
     # Note2: no support for microseconds for the moment
-    event_latitude = _col(Float64Col, min=-90, max=90)
-    event_longitude = _col(Float64Col, min=-180, max=180)
-    hypocenter_depth = _col(Float32Col)
-    magnitude = _col(Float16Col)
-    magnitude_type = _col(StringCol, itemsize=5)
-    magnitude_uncertainty = _col(Float32Col)
-    tectonic_environment = _col(StringCol, itemsize=30)
-    strike_1 = _col(Float32Col)
-    strike_2 = _col(Float32Col)
-    dip_1 = _col(Float32Col)
-    dip_2 = _col(Float32Col)
-    rake_1 = _col(Float32Col)
-    rake_2 = _col(Float32Col)
-    style_of_faulting = _col(EnumCol, enum=MECHANISM_TYPE.keys())
-    depth_top_of_rupture = _col(Float32Col)
-    rupture_length = _col(Float32Col)
-    rupture_width = _col(Float32Col)
-    station_id = _col(StringCol, itemsize=20)
-    station_name = _col(StringCol, itemsize=40)
-    station_latitude = _col(Float64Col, min=-90, max=90)
-    station_longitude = _col(Float64Col, min=-180, max=180)
-    station_elevation = _col(Float32Col)
-    vs30 = _col(Float32Col)
-    vs30_measured = _col(BoolCol, dflt=True)
-    vs30_sigma = _col(Float32Col)
-    depth_to_basement = _col(Float32Col)
-    z1 = _col(Float32Col)
-    z2pt5 = _col(Float32Col)
-    repi = _col(Float32Col)  # epicentral_distance
-    rhypo = _col(Float32Col)  # Float32Col
-    rjb = _col(Float32Col)  # joyner_boore_distance
-    rrup = _col(Float32Col)  # rupture_distance
-    rx = _col(Float32Col)
-    ry0 = _col(Float32Col)
-    azimuth = _col(Float32Col)
-    digital_recording = _col(BoolCol, dflt=True)
-#     acceleration_unit = _col(EnumCol, enum=['cm/s/s', 'm/s/s', 'g'],
-#                              base='uint8')
-    type_of_filter = _col(StringCol, itemsize=25)
-    npass = _col(Int8Col)
-    nroll = _col(Float32Col)
-    hp_h1 = _col(Float32Col)
-    hp_h2 = _col(Float32Col)
-    lp_h1 = _col(Float32Col)
-    lp_h2 = _col(Float32Col)
-    factor = _col(Float32Col)
-    lowest_usable_frequency_h1 = _col(Float32Col)
-    lowest_usable_frequency_h2 = _col(Float32Col)
-    lowest_usable_frequency_avg = _col(Float32Col)
-    highest_usable_frequency_h1 = _col(Float32Col)
-    highest_usable_frequency_h2 = _col(Float32Col)
-    highest_usable_frequency_avg = _col(Float32Col)
-    pga = _col(Float64Col)
-    pgv = _col(Float64Col)
-    pgd = _col(Float64Col)
-    duration_5_75 = _col(Float64Col)
-    duration_5_95 = _col(Float64Col)
-    arias_intensity = _col(Float64Col)
-    cav = _col(Float64Col)
-    sa = _col(Float64Col, shape=(111,))
+    event_latitude=_col(Float64Col, min=-90, max=90),
+    event_longitude=_col(Float64Col, min=-180, max=180),
+    hypocenter_depth=_col(Float32Col),
+    magnitude=_col(Float16Col),
+    magnitude_type=_col(StringCol, itemsize=5),
+    magnitude_uncertainty=_col(Float32Col),
+    tectonic_environment=_col(StringCol, itemsize=30),
+    strike_1=_col(Float32Col),
+    strike_2=_col(Float32Col),
+    dip_1=_col(Float32Col),
+    dip_2=_col(Float32Col),
+    rake_1=_col(Float32Col),
+    rake_2=_col(Float32Col),
+    style_of_faulting=_col(EnumCol, base='uint8',
+                           enum=list(MECHANISM_TYPE.keys())),
+    depth_top_of_rupture=_col(Float32Col),
+    rupture_length=_col(Float32Col),
+    rupture_width=_col(Float32Col),
+    station_id=_col(StringCol, itemsize=20),
+    station_name=_col(StringCol, itemsize=40),
+    station_latitude=_col(Float64Col, min=-90, max=90),
+    station_longitude=_col(Float64Col, min=-180, max=180),
+    station_elevation=_col(Float32Col),
+    vs30=_col(Float32Col),
+    vs30_measured=_col(BoolCol, dflt=True),
+    vs30_sigma=_col(Float32Col),
+    depth_to_basement=_col(Float32Col),
+    z1=_col(Float32Col),
+    z2pt5=_col(Float32Col),
+    repi=_col(Float32Col),  # epicentral_distance
+    rhypo=_col(Float32Col),  # Float32Col
+    rjb=_col(Float32Col),  # joyner_boore_distance
+    rrup=_col(Float32Col),  # rupture_distance
+    rx=_col(Float32Col),
+    ry0=_col(Float32Col),
+    azimuth=_col(Float32Col),
+    digital_recording=_col(BoolCol, dflt=True),
+    #     acceleration_unit=_col(EnumCol, enum=['cm/s/s', 'm/s/s', 'g'],
+    #                              base='uint8')
+    type_of_filter=_col(StringCol, itemsize=25),
+    npass=_col(Int8Col),
+    nroll=_col(Float32Col),
+    hp_h1=_col(Float32Col),
+    hp_h2=_col(Float32Col),
+    lp_h1=_col(Float32Col),
+    lp_h2=_col(Float32Col),
+    factor=_col(Float32Col),
+    lowest_usable_frequency_h1=_col(Float32Col),
+    lowest_usable_frequency_h2=_col(Float32Col),
+    lowest_usable_frequency_avg=_col(Float32Col),
+    highest_usable_frequency_h1=_col(Float32Col),
+    highest_usable_frequency_h2=_col(Float32Col),
+    highest_usable_frequency_avg=_col(Float32Col),
+    pga=_col(Float64Col),
+    pgv=_col(Float64Col),
+    pgd=_col(Float64Col),
+    duration_5_75=_col(Float64Col),
+    duration_5_95=_col(Float64Col),
+    arias_intensity=_col(Float64Col),
+    cav=_col(Float64Col)
+)
 
 
 class GMDatabaseParser(object):
@@ -265,36 +261,19 @@ class GMDatabaseParser(object):
     GmDatabase files in HDF5 format. The latter are Table-like heterogeneous
     datasets (each representing a flatfile) organized in subfolders-like
     structures called groups.
-    See the :class:`GmDatabaseTable` for a description of the Table columns
+    See the :class:`GMDatabaseTable` for a description of the Table columns
     and types.
 
     The parsing is done in the `parse` method. The typical workflow
     is to implement a new subclass for each new flatfile released.
     Subclasses should override the `mapping` dict where flatfile
-    specific column names are mapped to :class:`GmDatabaseTable` column names
+    specific column names are mapped to :class:`GMDatabaseTable` column names
     and optionally the `parse_row` method where additional operation
     is performed in-place on each flatfile row. For more details, see
     the :method:`parse_row` method docstring
     '''
     _accel_units = ["g", "m/s/s", "m/s**2", "m/s^2",
                     "cm/s/s", "cm/s**2", "cm/s^2"]
-
-#     _ref_periods = [0.010, 0.020, 0.022, 0.025, 0.029, 0.030, 0.032,
-#                     0.035, 0.036, 0.040, 0.042, 0.044, 0.045, 0.046,
-#                     0.048, 0.050, 0.055, 0.060, 0.065, 0.067, 0.070,
-#                     0.075, 0.080, 0.085, 0.090, 0.095, 0.100, 0.110,
-#                     0.120, 0.130, 0.133, 0.140, 0.150, 0.160, 0.170,
-#                     0.180, 0.190, 0.200, 0.220, 0.240, 0.250, 0.260,
-#                     0.280, 0.290, 0.300, 0.320, 0.340, 0.350, 0.360,
-#                     0.380, 0.400, 0.420, 0.440, 0.450, 0.460, 0.480,
-#                     0.500, 0.550, 0.600, 0.650, 0.667, 0.700, 0.750,
-#                     0.800, 0.850, 0.900, 0.950, 1.000, 1.100, 1.200,
-#                     1.300, 1.400, 1.500, 1.600, 1.700, 1.800, 1.900,
-#                     2.000, 2.200, 2.400, 2.500, 2.600, 2.800, 3.000,
-#                     3.200, 3.400, 3.500, 3.600, 3.800, 4.000, 4.200,
-#                     4.400, 4.600, 4.800, 5.000, 5.500, 6.000, 6.500,
-#                     7.000, 7.500, 8.000, 8.500, 9.000, 9.500, 10.000,
-#                     11.000, 12.000, 13.000, 14.000, 15.000, 20.000]
 
     # the regular expression used to parse SAs periods. Note capturing
     # group for the SA period:
@@ -378,19 +357,18 @@ class GMDatabaseParser(object):
             possible value for integers, the empty string for strings
         '''
         dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
-        with cls.get_table(output_path, dbname, mode) as table:
+        with GMdb(output_path, dbname, mode) as gmdb:
 
             i, error, missing, outofbound = \
                 -1, [], defaultdict(int), defaultdict(int)
 
-            for i, rowdict in enumerate(cls._rows(flatfile_path)):
+            for i, (rowdict, sa_periods) in \
+                    enumerate(cls._rows(flatfile_path)):
 
+                # write sa_periods only the first time
                 if rowdict:
-                    tablerow = table.row
                     missingcols, outofboundcols = \
-                        cls._writerow(rowdict, tablerow, dbname)
-                    tablerow.append()  # pylint: disable=no-member
-                    table.flush()
+                        gmdb.write_record(rowdict, sa_periods)
                 else:
                     missingcols, outofboundcols = [], []
                     error.append(i)
@@ -401,65 +379,8 @@ class GMDatabaseParser(object):
                 for col in outofboundcols:
                     outofbound[col] += 1
 
-            return {'total': i+1, 'written': i+1-len(error), 'error': error,
-                    'missing_values': missing, 'outofbound_values': outofbound}
-
-    @staticmethod
-    @contextmanager
-    def get_table(filepath, name, mode='r'):
-        '''Yields a pytable Table object representing a Gm database
-        in the given hdf5 file `filepath`. Creates such a table if mode != 'r'
-        and the table does not exists.
-
-        Example:
-        ```
-            with GmDatabaseParser.get_table(filepath, name, 'r') as table:
-                # ... do your operation here
-        ```
-
-        :param filepath: the string denoting the path to the hdf file
-            previously created with this method. If `mode`
-            is 'r', the file must exist
-        :param name: the name of the database table
-        :param mode: the mode ('a', 'r', 'w') whereby the **table** is opened.
-            I.e., 'w' does not overwrites the whole file, but the table data.
-            More specifically:
-            'r': opens file in 'r' mode, raises if the file or the table in
-                the file content where not found
-            'w': opens file in 'a' mode, creates the table if it does not
-                exists, clears all table data if it exists. Eventually it
-                returns the table
-            'a': open file in 'a' mode, creates the table if it does not
-                exists, does nothing otherwise. Eventually it returns the table
-
-        :raises: :class:`tables.exceptions.NoSuchNodeError` if mode is 'r'
-            and the table was not found in `filepath`, IOError if the
-            file does not exist
-        '''
-        with tables.open_file(filepath, mode if mode == 'r' else 'a') \
-                as h5file:
-            table = None
-            tablename = 'table'
-            tablepath = '/%s/%s' % (name, tablename)
-            try:
-                table = h5file.get_node(tablepath, classname=Table.__name__)
-                if mode == 'w':
-                    h5file.remove_node(tablepath, recursive=True)
-                    table = None
-            except NoSuchNodeError as _:
-                if mode == 'r':
-                    raise
-                table = None
-                # create parent group node
-                try:
-                    h5file.get_node("/%s" % name, classname=Group.__name__)
-                except NoSuchNodeError as _:
-                    h5file.create_group(h5file.root, name)
-
-            if table is None:
-                table = h5file.create_table("/%s" % name, tablename,
-                                            description=GMDatabaseTable)
-            yield table
+        return {'total': i+1, 'written': i+1-len(error), 'error': error,
+                'missing_values': missing, 'outofbound_values': outofbound}
 
     @classmethod
     def _rows(cls, flatfile_path):  # pylint: disable=too-many-locals
@@ -475,8 +396,9 @@ class GMDatabaseParser(object):
                              reader.fieldnames]
             # get spectra fieldnames and priods:
             try:
-                sa_periods_names =\
+                sa_periods_odict =\
                     cls._get_sa_columns(newfieldnames)
+                sa_periods = list(sa_periods_odict.values())
             except Exception as exc:
                 raise ValueError('Unable to parse SA columns: %s' % str(exc))
 
@@ -501,12 +423,9 @@ class GMDatabaseParser(object):
 
                 # assign values (sa, event time, pga):
                 try:
-                    sa_values = np.array([rowdict[p] for p in
-                                          sa_periods_names.values()],
-                                         dtype=float)
-#                     cls._get_sa(rowdict, spectra_fieldnames,
-#                                                 ref_log_periods,
-#                                                 spectra_periods)
+                    rowdict['sa'] = np.array([rowdict[p] for p in
+                                              sa_periods_odict.keys()],
+                                             dtype=float)
                 except Exception as _:  # pylint: disable=broad-except
                     pass
 
@@ -533,7 +452,7 @@ class GMDatabaseParser(object):
                     rowdict = {}
 
                 # yield row as dict:
-                yield sa_periods_names.keys(), sa_values, rowdict
+                yield rowdict, sa_periods
 
     @classmethod
     def _sanity_check(cls, rowdict):
@@ -590,22 +509,12 @@ class GMDatabaseParser(object):
         for fname in csv_fieldnames:
             match = reg.match(fname)
             if match:
-                periods_names.append((float(match.group(1)), fname))
+                periods_names.append((fname, float(match.group(1))))
 #                 periods.append(float(match.group(1)))
 #                 spectra_fieldnames.append(fname)
 
-        periods_names.sort(key=lambda item: item[0])
+        periods_names.sort(key=lambda item: item[1])
         return OrderedDict(periods_names)
-        #        return spectra_fieldnames, np.array(periods)
-
-    @staticmethod
-    def _get_sa(rowdict, spectra_fieldnames, ref_log_periods, spectra_periods):
-        '''gets sa values with log log interpolation if needed'''
-        sa_values = np.array([rowdict.get(key) for key in spectra_fieldnames],
-                             dtype=float)
-        logx = np.log10(spectra_periods)
-        logy = np.log10(sa_values)
-        return np.power(10.0, np.interp(ref_log_periods, logx, logy))
 
     @classmethod
     def _get_event_time_columns(cls, csv_fieldnames, default_colname):
@@ -729,106 +638,6 @@ class GMDatabaseParser(object):
         '''
         pass
 
-    @classmethod
-    def _writerow(cls, csvrow, tablerow, dbname):
-        '''writes the content of csvrow into tablerow. Returns two lists:
-        The missing column names (a missing column is also a column for which
-        the csv value is invalid, i.e. it raised during assignement), and
-        the out-of-bounds column names (in case bounds were provided in the
-        column class. In this case, the default of that column will be set
-        in `tablerow`)'''
-        missing_colnames, outofbounds_colnames = [], []
-        for col, colobj in tablerow.table.coldescrs.items():
-            if col not in csvrow:
-                missing_colnames.append(col)
-                continue
-            try:
-                # remember: if val is a castable string -> ok
-                #   (e.g. table column float, val is '5.5')
-                # if val is out of bounds for the specific type, -> ok
-                #   (casted to the closest value)
-                # if val is scalar and the table column is a N length array,
-                # val it is broadcasted
-                #   (val= 5, then tablerow will have a np.array of N 5s)
-                # TypeError is raised when there is a non castable element
-                #   (e.g. 'abc' for a Float column): in this case pass
-                tablerow[col] = csvrow[col]
-
-                bound = getattr(colobj, 'min_value', None)
-                if bound is not None and \
-                        (np.asarray(tablerow[col]) < bound).any():
-                    tablerow[col] = colobj.dflt
-                    outofbounds_colnames.append(col)
-                    continue
-
-                bound = getattr(colobj, 'max_value', None)
-                if bound is not None and \
-                        (np.asarray(tablerow[col]) > bound).any():
-                    tablerow[col] = colobj.dflt
-                    outofbounds_colnames.append(col)
-                    continue  # actually useless, but if we add code below ...
-
-            except (ValueError, TypeError):
-                missing_colnames.append(col)
-
-        # build a record hashes as ids:
-        evid, staid, recid = cls.get_ids(tablerow, dbname)
-        tablerow['event_id'] = evid
-        tablerow['station_id'] = staid
-        tablerow['record_id'] = recid
-
-        return missing_colnames, outofbounds_colnames
-
-    @classmethod
-    def get_ids(cls, tablerow, dbname):
-        '''Returns the tuple record_id, event_id and station_id from
-        the given HDF5 row `tablerow`'''
-        toint = cls._toint
-        ids = (dbname,
-               toint(tablerow['pga'], 0),  # (first two decimals of pga in g)
-               toint(tablerow['event_longitude'], 5),
-               toint(tablerow['event_latitude'], 5),
-               toint(tablerow['hypocenter_depth'], 3),
-               tablerow['event_time'],
-               toint(tablerow['station_longitude'], 5),
-               toint(tablerow['station_latitude'], 5))
-        # return event_id, station_id, record_id:
-        return cls._hash(*ids[2:6]), cls._hash(*ids[6:]), cls._hash(*ids)
-
-    @classmethod
-    def _toint(cls, value, decimals):
-        '''returns an integer by multiplying value * 10^decimals
-        and rounding the result to int. Returns nan if value is nan'''
-        return value if np.isnan(value) else \
-            int(round((10**decimals)*value))
-
-    @classmethod
-    def _hash(cls, *values):
-        '''generates a 160bit (20bytes) hash bytestring which uniquely
-        identifies the given tuple of `values`.
-        The returned string is assured to be the same for equal `values`
-        tuples (note that the order of values matters).
-        Conversely, the probability of colliding hashes, i.e., returning
-        the same bytestring for two different tuples of values, is 1 in
-        100 billion for roughly 19000 hashes (roughly 10 flatfiles with
-        all different records), and apporaches 50% for for 1.42e24 hashes
-        generated (for info, see
-        https://preshing.com/20110504/hash-collision-probabilities/#small-collision-probabilities)
-
-        :param values: a list of values, either bytes, str or numeric
-            (no support for other values sofar)
-        '''
-        hashalg = hashlib.sha1()
-        # use the slash as separator as it is unlikely to be in value(s):
-        hashalg.update(b'/'.join(cls._tobytestr(v) for v in values))
-        return hashalg.digest()
-
-    @classmethod
-    def _tobytestr(cls, value):
-        '''converts a value to bytes. value can be bytes, str or numeric'''
-        if not isinstance(value, bytes):
-            value = str(value).encode('utf8')
-        return value
 
 #########################################
 # Database selection / maniuplation
@@ -846,7 +655,7 @@ def get_dbnames(filepath):
     with tables.open_file(filepath, 'r') as h5file:
         root = h5file.get_node('/')
         return [group._v_name for group in  # pylint: disable=protected-access
-                h5file.list_nodes(root, classname='Group')]
+                h5file.list_nodes(root, classname=Group.__name__)]
         # note: h5file.walk_groups() might raise a ClosedNodeError.
         # This error is badly documented (as much pytables styff),
         # the only mention is (pytables pdf doc): "CloseNodeError: The
@@ -855,17 +664,6 @@ def get_dbnames(filepath):
         # I suspect it deals with groups deleted / overwritten and the way
         # hdf5 files mark portions of files to be "empty". However,
         # the list_nodes above seems not to raise anymore
-
-
-def get_table(filepath, dbname):
-    '''Returns a Gm database table from the given database name `dbname`
-    located in the specific HDF5 file with path `filepath`. To be used within
-    a "with" statement:
-    ```
-    with get_table(filepath, dbname):
-        # do your stuff here
-    '''
-    return GMDatabaseParser.get_table(filepath, dbname, 'r')
 
 
 def records_where(table, condition, limit=None):
@@ -953,7 +751,7 @@ def _normalize_condition(condition):
     false or incomplete. Maybe it works as long as `value` has ascii
     characters only?).
     '''
-    dbcolumns = GMDatabaseTable.columns  # pylint: disable=no-member
+    dbcolumns = GMDatabaseTable
     py3 = sys.version_info[0] >= 3
     oprs = {'==', '!=', '<=', '>=', '<', '>'}
     nan_indices = []
@@ -1070,10 +868,346 @@ def _normalize_tokens(tokens, dtime_indices, str_indices, nan_indices):
 ########################################
 
 class GMdb:
-    def __init__(self, filepath, dbname, condition):
+
+    def __init__(self, filepath, dbname, mode='r'):
+        '''
+        Creates a new database for reading or writing to be usually used
+        inside a with statement:
+        ```
+            with GMdb(filepath, name, 'r') as dbase:
+                # ... do your operation here
+                for record in dbase.records:
+                    ...
+        ```
+
+        :param filepath: the string denoting the path to the hdf file
+            previously created with this method. If `mode`
+            is 'r', the file must exist
+        :param dbname: the name of the database table. It will be the name
+            of the group (kind of sub-folder) of the underlying HDF file
+        :param mode: the mode ('a', 'r', 'w') whereby the **table** is opened.
+            I.e., 'w' does not overwrite the whole file, but the table data.
+            More specifically:
+            'r': opens file in 'r' mode, raises if the file or the table in
+                the file content where not found
+            'w': opens file in 'a' mode, creates the table if it does not
+                exists, clears all table data if it exists. Eventually it
+                returns the table
+            'a': open file in 'a' mode, creates the table if it does not
+                exists, does nothing otherwise. Eventually it returns the table
+        '''
         self.filepath = filepath
         self.dbname = dbname
-        self.condition = condition
+        self.mode = mode
+        self._root = '/%s' % dbname
+        self._condition = None
+        self.__h5file = None
+        self._table = None
+
+    @property
+    def is_open(self):
+        return self.__h5file is not None
+
+    def filter(self, condition):
+        '''Returns a read-only copy of this database filtered according to
+        the given condition (numexpr expression on the database scalar
+        columns, see :class:`GMDatabaseTable`). Raises ValueError if this
+        method is accessed while the underlying HDF file is open (e.g.,
+        inside a with statement).
+
+        See module's function `func`:`records_where` and :func:`read_where`
+
+        Example (given a database named `gmdb`)
+        ```
+            condition = ("(pga < 0.14) | (pga > 1.1) & (pgv != nan) &
+                          (event_time < '2006-01-01T00:00:00'")
+
+            filtered_gmdb = gmdb.filter(condition)
+        ```
+        For user trying to build expressions from input variables as python
+        objects, simply use the `str(object)` function which supports
+        datetime's, strings, boolean, floats and ints (note that datetimes
+        and strings must be "double" quoted: '"%s"' % str(object)):
+        ```
+            # given a datetime object `dtime` and two loats pgamin, pgamax:
+            condition = \
+                "(pga < %s) | (pga > %s) & (pgv != %s) & \
+                (event_time < '%s')" % \
+                (str(pgamin), str(pgamax), str(float('nan')), str(dtime))
+
+            filtered_gmdb = gmdb.filter(condition)
+        ```
+        '''
+        if self.is_open:
+            raise ValueError('Cannot filter, underlying HDF5 file is open. '
+                             'Please close the db first')
+        gmdb = GMdb(self.filepath, self.dbname, 'r')
+        gmdb._condition = condition
+        return gmdb
+
+    def __enter__(self):
+        '''Yields a pytable Group object representing a Gm database
+        in the given hdf5 file `filepath`. If such a group does not exist
+        and mode is either 'a' or 'w', creates the group. In any other case
+        where such  a group does not exist, raises a :class:`NoSuchNodeError`
+
+        Example:
+        ```
+            with GMdb(filepath, name, 'r') as dbase:
+                # ... do your operation here
+        ```
+
+        :raises: :class:`tables.exceptions.NoSuchNodeError` if mode is 'r'
+            and the table was not found in `filepath`, IOError if the
+            file does not exist
+        '''
+        filepath, mode, name = self.filepath, self.mode, self.dbname
+        h5file = self.__h5file = \
+            tables.open_file(filepath, mode if mode == 'r' else 'a')
+        grouppath = self._root
+        try:
+            group = h5file.get_node(grouppath, classname=Group.__name__)
+            if mode == 'w':
+                # empty node of all children:
+                for node in group:
+                    h5file.remove_node(node, recursive=True)
+                # h5file.remove_node(grouppath, recursive=True)
+        except NoSuchNodeError as _:
+            if mode == 'r':
+                raise
+            # create group node
+            group = h5file.create_group(h5file.root, name)
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # make sure the dbconnection gets closed
+        if self.__h5file is not None:
+            self.__h5file.close()
+        self.__h5file = None
+        self._table = None
+
+    def get_array(self, relative_path):
+        '''
+        Returns a saved array saved on the
+        undelrying HDF file, which must be open (i.e., the user must be
+        inside a with statement). Raises a :class:`NoSuchNode` if the
+        path does not exist
+
+        :param relative_path: string, the path of the group relative to
+            the path of the undelrying database storage.
+            E.g. 'my/arrays/array_1'
+        '''
+        path = self._fullpath(relative_path)
+        return self._h5file.get_node("/".join(path[:-1]), path[-1]).read()
+
+    def write_array(self, relative_path, values, create_path=True):
+        '''
+        Writes the given array on the
+        undelrying HDF file, which must be open (i.e., the user must be
+        inside a with statement)
+
+        :param relative_path: string, the path of the group relative to
+            the path of the undelrying database storage.
+            E.g. 'my/arrays/array_1'
+        :param values: the array to be saved. The value saved to the HDF
+            file will be `numpy.asarray(values)`
+        :param create_path: boolean (defaault: True) whether to create the
+            array path (and all its ancestors) if it does not exists. If False,
+            and the path does not exists, a :class:`NoSuchNode` exception is
+            raised
+        '''
+        _splitpath = relative_path.split('/')
+        group = self.get_group("/".join(_splitpath[:-1]), create_path)
+        self._h5file.create_array(group, _splitpath[-1],
+                                  obj=np.asarray(values))
+
+    def get_group(self, relative_path, create=True):
+        '''
+        Returns the given Group (HDF directory-like structure) from the
+        undelrying HDF file, which must be open (i.e., the user must be
+        inside a with statement)
+
+        :param relative_path: string, the path of the group relative to
+            the path of the undelrying database storage. E.g. 'my/arrays'
+        :param create: boolean (defaault: True) whether to create the group
+            (and all its ancestors) if it does not exists. If False, and
+            the group does not exists, a :class:`NoSuchNode` exception is
+            raised
+        '''
+        try:
+            fullpath = self._fullpath(relative_path)
+            return self._h5file.get_node(fullpath,
+                                         Group.__name__)
+        except NoSuchNodeError:
+            if not create:
+                raise
+            node = self._h5file.get_node(self._root,
+                                         classname=Group.__name__)
+            for path in relative_path.split('/'):
+                if path not in node:
+                    node = self._h5file.create_group(node, path)
+                else:
+                    node = self._h5file.get_node(node, path,
+                                                 classname=Group.__name__)
+            return node
+
+    def write_record(self, csvrow, sa_periods):
+        '''writes the content of csvrow into tablerow. Returns two lists:
+        The missing column names (a missing column is also a column for which
+        the csv value is invalid, i.e. it raised during assignement), and
+        the out-of-bounds column names (in case bounds were provided in the
+        column class. In this case, the default of that column will be set
+        in `tablerow`)'''
+        try:
+            table = self.table
+        except NoSuchNodeError:
+            table = self._create_table(len(sa_periods))
+
+        # build a record hashes as ids:
+        evid, staid, recid = self._get_ids(csvrow)
+        csvrow['event_id'] = evid
+        csvrow['station_id'] = staid
+        # do not use record id, rather an incremental integer:
+        csvrow['record_id'] = self._table.attrs._current_row_id
+        self._table.attrs._current_row_id += 1
+
+        # write sa periods (if not already written):
+        try:
+            table.attrs.sa_periods
+        except AttributeError:
+            table.attrs.sa_periods = np.asarray(sa_periods, dtype=float)
+
+        dbname = self.dbname
+        tablerow = table.row
+
+        missing_colnames, outofbounds_colnames = [], []
+        for col, colobj in tablerow.table.coldescrs.items():
+            if col not in csvrow:
+                missing_colnames.append(col)
+                continue
+            try:
+                # remember: if val is a castable string -> ok
+                #   (e.g. table column float, val is '5.5')
+                # if val is out of bounds for the specific type, -> ok
+                #   (casted to the closest value)
+                # if val is scalar and the table column is a N length array,
+                # val it is broadcasted
+                #   (val= 5, then tablerow will have a np.array of N 5s)
+                # TypeError is raised when there is a non castable element
+                #   (e.g. 'abc' for a Float column): in this case pass
+                tablerow[col] = csvrow[col]
+
+                bound = getattr(colobj, 'min_value', None)
+                if bound is not None and \
+                        (np.asarray(tablerow[col]) < bound).any():
+                    tablerow[col] = colobj.dflt
+                    outofbounds_colnames.append(col)
+                    continue
+
+                bound = getattr(colobj, 'max_value', None)
+                if bound is not None and \
+                        (np.asarray(tablerow[col]) > bound).any():
+                    tablerow[col] = colobj.dflt
+                    outofbounds_colnames.append(col)
+                    continue  # actually useless, but if we add code below ...
+
+            except (ValueError, TypeError):
+                missing_colnames.append(col)
+
+        tablerow.append()  # pylint: disable=no-member
+        table.flush()
+
+        return missing_colnames, outofbounds_colnames
+
+    @property
+    def table(self):
+        tab = self._table
+        if self._table is None:
+            tablepath = "%s/%s" % (self._root, "table")
+            tab = self._table = self._h5file.get_node(tablepath,
+                                                      classname=Table.__name__)
+        return tab
+
+    ## IO PRIVATE METHODS ##
+
+    def _create_table(self, sa_length):
+        desc = dict(GMDatabaseTable, sa=_col(Float64Col, shape=(sa_length,)))
+        self._table = self._h5file.create_table(self._root, "table",
+                                                description=desc)
+        self._table.attrs._current_row_id = 1
+        return self._table
+
+    @property
+    def _h5file(self):
+        _ = self.__h5file
+        if _ is None:
+            raise ValueError('The underlying HDF5 file is not open. '
+                             'Are you inside a "with" statement?')
+        return _
+
+    def _fullpath(self, path):
+        return "%s/%s" % (self._root, path)
+
+    def _get_ids(self, csvrow):
+        '''Returns the tuple record_id, event_id and station_id from
+        the given HDF5 row `csvrow`'''
+        dbname = self.dbname
+        toint = self._toint
+        ids = (dbname,
+               toint(csvrow['pga'], 0),  # (first two decimals of pga in g)
+               toint(csvrow['event_longitude'], 5),
+               toint(csvrow['event_latitude'], 5),
+               toint(csvrow['hypocenter_depth'], 3),
+               csvrow['event_time'],
+               toint(csvrow['station_longitude'], 5),
+               toint(csvrow['station_latitude'], 5))
+        # return event_id, station_id, record_id:
+        evid, staid, recid = \
+            self._hash(*ids[2:6]), self._hash(*ids[6:]), self._hash(*ids)
+        return evid, staid, recid
+
+    @classmethod
+    def _toint(cls, value, decimals):
+        '''returns an integer by multiplying value * 10^decimals
+        and rounding the result to int. Returns nan if value is nan'''
+        try:
+            value = float(value)
+        except ValueError:
+            value = float('nan')
+        return value if np.isnan(value) else \
+            int(round((10**decimals)*value))
+
+    @classmethod
+    def _hash(cls, *values):
+        '''generates a 160bit (20bytes) hash bytestring which uniquely
+        identifies the given tuple of `values`.
+        The returned string is assured to be the same for equal `values`
+        tuples (note that the order of values matters).
+        Conversely, the probability of colliding hashes, i.e., returning
+        the same bytestring for two different tuples of values, is 1 in
+        100 billion for roughly 19000 hashes (roughly 10 flatfiles with
+        all different records), and apporaches 50% for for 1.42e24 hashes
+        generated (for info, see
+        https://preshing.com/20110504/hash-collision-probabilities/#small-collision-probabilities)
+
+        :param values: a list of values, either bytes, str or numeric
+            (no support for other values sofar)
+        '''
+        hashalg = hashlib.sha1()
+        # use the slash as separator as it is unlikely to be in value(s):
+        hashalg.update(b'/'.join(cls._tobytestr(v) for v in values))
+        return hashalg.digest()
+
+    @classmethod
+    def _tobytestr(cls, value):
+        '''converts a value to bytes. value can be bytes, str or numeric'''
+        if not isinstance(value, bytes):
+            value = str(value).encode('utf8')
+        return value
+
+    ## RESIDUALS STUFF ##
+
 
 #     def get_contexts(self, nodal_plane_index=1):
 #         """
@@ -1104,14 +1238,31 @@ class GMdb:
 #                 event_list.append(record.event.id)
 #         return np.array(event_list)
 
-    def get_contexts(self, nodal_plane_index=1):
+    @property
+    def records(self):
+        '''Yields an iterator of the records according to the specified filter
+        `condition`. The underlying HDF file (including each yielded record)
+        must not be modified while accessing this property, and thus must
+        be opened in read mode.
+        ```
+            with GMdb(filepath, name, 'r').filter(condition) as dbase:
+                # ... do your operation here
+                for record in dbase.records:
+                    ...
+        ```
+        '''
+        return records_where(self.table, self._condition)
+
+    def get_contexts(self, imts, nodal_plane_index=1, component="Geometric"):
         """
         Returns an iterable of dictionaries, each containing the site, distance
         and rupture contexts for individual records
         """
+        # FIXME: nodal_plane_index and component not used. Remove?
         context_dicts = {}
-        with get_table(self.filepath, self.dbname) as table:
-            for rec in records_where(table, self.condition):
+        with self:
+            sa_periods = self.table.sa_periods
+            for rec in self.records:
                 evt_id = rec['event_id']
                 dic = context_dicts.get(evt_id, None)
                 if dic is None:
@@ -1119,7 +1270,10 @@ class GMdb:
                     dic = {'EventID': evt_id,
                            'EventIndex': [],
                            'Sites': SitesContext(),
-                           'Distances': DistancesContext()}
+                           'Distances': DistancesContext(),
+                           "Observations": OrderedDict([(imtx, []) for imtx
+                                                        in imts]),
+                           "Num. Sites": 0}
                     # set Rupture only once:
                     dic['Rupture'] = RuptureContext()
                     self._set_event_context(rec, dic['Rupture'],
@@ -1128,19 +1282,25 @@ class GMdb:
                 dic['EventIndex'].append(rec['record_id'].item())
                 self._set_sites_context_event(rec, dic['Sites'])
                 self._set_distances_context_event(rec, dic['Distances'])
+                self._add_observations(rec, imts, dic['Observations'],
+                                       sa_periods)
+                dic["Num. Sites"] += 1
 
         # converts to numeric arrays (once at the end is faster, see
         # https://stackoverflow.com/questions/7133885/fastest-way-to-grow-a-numpy-numeric-array
         # get default attributes not to be changed:
         site_context_def_attrs = set(dir(SitesContext()))
         distances_attrs = set(dir(DistancesContext()))
-        for _ in context_dicts.values():
-            self._tonumpy(dic['Sites'],
-                          set(dir(dic['Sites'])) - site_context_def_attrs)
-            self._tonumpy(dic['Distances'],
-                          set(dir(dic['Distances'])) - distances_attrs)
+        for dic in context_dicts.values():
+            self._lists2numpy(dic['Sites'],
+                              set(dir(dic['Sites'])) - site_context_def_attrs)
+            self._lists2numpy(dic['Distances'],
+                              set(dir(dic['Distances'])) - distances_attrs)
+            observations = dic['Observations']
+            for key, val in observations.items():
+                observations[key] = np.asarray(val, dtype=float)
 
-        return context_dicts.values()
+        return list(context_dicts.values())
 
     @staticmethod
     def _append(obj, att, value):
@@ -1151,7 +1311,7 @@ class GMdb:
         ret.append(value)
 
     @staticmethod
-    def _tonumpy(obj, att_names):
+    def _lists2numpy(obj, att_names):
         for att_name in att_names:
             att_val = getattr(obj, att_name, None)
             if isinstance(att_val, list):
@@ -1342,78 +1502,77 @@ class GMdb:
         setattr(rctx, 'hypo_lat', record['event_latitude'])
         setattr(rctx, 'hypo_lon', record['event_longitude'])
 
+    def _add_observations(self, record, observations, sa_periods,
+                          component="Geometric"):
+        hundred_g = 100.0 * g  # for convertion from/to cm s ^2
+        for imtx in observations.keys():
+            value = np.nan
+            if imtx == "PGA":
+                value = record["pga"] / hundred_g
+            elif "SA(" in imtx:
+                target_period = imt.from_string(imtx).period
+                spectrum = record['sa']
+                observations[imtx].append(get_interpolated_period(
+                    target_period, sa_periods, spectrum) / hundred_g)
+            else:
+                value = record[imtx.lower()]
 
-    def get_observations(self, context, component="Geometric"):
-        """
-        Get the obsered ground motions from the database
-        """
-        select_records = self.database.select_from_event_id(context["EventID"])
-        observations = OrderedDict([(imtx, []) for imtx in self.imts])
-        selection_string = "IMS/H/Spectra/Response/Acceleration/"
-        for record in select_records:
-            fle = h5py.File(record.datafile, "r")
-            for imtx in self.imts:
-                if imtx in SCALAR_IMTS:
-                    if imtx == "PGA":
-                        observations[imtx].append(
-                            get_scalar(fle, imtx, component) / 981.0)
-                    else:
-                        observations[imtx].append(
-                            get_scalar(fle, imtx, component))
-
-                elif "SA(" in imtx:
-                    target_period = imt.from_string(imtx).period
-                    spectrum = fle[selection_string + component +
-                                   "/damping_05"].value
-                    periods = fle["IMS/H/Spectra/Response/Periods"].value
-                    observations[imtx].append(get_interpolated_period(
-                        target_period, periods, spectrum) / 981.0)
-                else:
-                    raise "IMT %s is unsupported!" % imtx
-            fle.close()
-        for imtx in self.imts:
-            observations[imtx] = np.array(observations[imtx])
-        context["Observations"] = observations
-        context["Num. Sites"] = len(select_records)
-        return context
+            observations[imtx].append(value)
 
 
-#     def get_observations(self, record, component="Geometric", observations):
+def get_interpolated_period(target_period, periods, values):
+    """
+    Returns the spectra interpolated in loglog space
+    :param float target_period:
+        Period required for interpolation
+    :param np.ndarray periods:
+        Spectral Periods
+    :param np.ndarray values:
+        Ground motion values
+    """
+    # FIXME: copied from gmpe_residuals in order to avoid circular
+    # imports
+    if (target_period < np.min(periods)) or (target_period > np.max(periods)):
+        return None, "Period not within calculated range %s"
+    lval = np.where(periods <= target_period)[0][-1]
+    uval = np.where(periods >= target_period)[0][0]
+    if (uval - lval) == 0:
+        return values[lval]
+    dy = np.log10(values[uval]) - np.log10(values[lval])
+    dx = np.log10(periods[uval]) - np.log10(periods[lval])
+    return 10.0 ** (
+        np.log10(values[lval]) +
+        (np.log10(target_period) - np.log10(periods[lval])) * dy / dx
+        )
+
+#     def get_observations(self, context, component="Geometric"):
 #         """
 #         Get the obsered ground motions from the database
-#         
-#         :param observations: a dict of imt (string) mapped to a list of values
 #         """
-#         # select_records = self.database.select_from_event_id(context["EventID"])
-#         # observations = OrderedDict([(imtx, []) for imtx in self.imts])
-#         # selection_string = "IMS/H/Spectra/Response/Acceleration/"
-#         # for record in select_records:
-#         # fle = h5py.File(record.datafile, "r")
-#         for imtx in self.imts:
-#             if "SA(" in imtx:
-#                 target_period = imt.from_string(imtx).period
-#                 spectrum = fle[selection_string + component +
-#                                "/damping_05"].value
-#                 periods = fle["IMS/H/Spectra/Response/Periods"].value
-#                 observations[imtx].append(get_interpolated_period(
-#                     target_period, periods, spectrum) / 981.0)
-#             elif imtx == "PGA":
-#                     observations[imtx].append(
-#                         get_scalar(fle, imtx, component) / 981.0)
-#             else:
-#                     observations[imtx].append(
-#                         get_scalar(fle, imtx, component))
+#         select_records = self.database.select_from_event_id(context["EventID"])
+#         observations = OrderedDict([(imtx, []) for imtx in self.imts])
+#         selection_string = "IMS/H/Spectra/Response/Acceleration/"
+#         for record in select_records:
+#             fle = h5py.File(record.datafile, "r")
+#             for imtx in self.imts:
+#                 if imtx in SCALAR_IMTS:
+#                     if imtx == "PGA":
+#                         observations[imtx].append(
+#                             get_scalar(fle, imtx, component) / 981.0)
+#                     else:
+#                         observations[imtx].append(
+#                             get_scalar(fle, imtx, component))
 # 
-# #             elif "SA(" in imtx:
-# #                 target_period = imt.from_string(imtx).period
-# #                 spectrum = fle[selection_string + component +
-# #                                "/damping_05"].value
-# #                 periods = fle["IMS/H/Spectra/Response/Periods"].value
-# #                 observations[imtx].append(get_interpolated_period(
-# #                     target_period, periods, spectrum) / 981.0)
-# #             else:
-# #                 raise "IMT %s is unsupported!" % imtx
-# #            fle.close()
+#                 elif "SA(" in imtx:
+#                     target_period = imt.from_string(imtx).period
+#                     spectrum = fle[selection_string + component +
+#                                    "/damping_05"].value
+#                     periods = fle["IMS/H/Spectra/Response/Periods"].value
+#                     observations[imtx].append(get_interpolated_period(
+#                         target_period, periods, spectrum) / 981.0)
+#                 else:
+#                     raise "IMT %s is unsupported!" % imtx
+#             fle.close()
 #         for imtx in self.imts:
 #             observations[imtx] = np.array(observations[imtx])
 #         context["Observations"] = observations

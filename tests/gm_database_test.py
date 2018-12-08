@@ -33,7 +33,7 @@ from tables.description import Float32Col, Col, IsDescription, Float64Col, \
     StringCol, EnumCol
 
 from smtk.gm_database import GMDatabaseParser, GMDatabaseTable, records_where, \
-    get_table, read_where, get_dbnames, _normalize_condition
+    read_where, get_dbnames, _normalize_condition, GMdb
 
 BASE_DATA_PATH = os.path.join(
     os.path.join(os.path.dirname(__file__), "file_samples")
@@ -176,8 +176,8 @@ class GmDatabaseTestCase(unittest.TestCase):
         '''parses sample flatfile and perfomrs some tests'''
         # test a file not found
         with self.assertRaises(IOError):
-            with GMDatabaseParser.get_table(self.output_file + 'what',
-                                            name='whatever', mode='r') as tbl:
+            with GMdb(self.output_file + 'what',
+                      dbname='whatever', mode='r') as gmdb:
                 pass
 
         log = GMDatabaseParser.parse(self.input_file,
@@ -216,7 +216,8 @@ class GmDatabaseTestCase(unittest.TestCase):
         test_col = 'event_name'
         test_col_oldval, test_col_newval = None, b'dummy'
         test_cols_found = 0
-        with GMDatabaseParser.get_table(self.output_file, dbname, 'a') as tbl:
+        with GMdb(self.output_file, dbname, 'a') as gmdb:
+            tbl = gmdb.table
             ids = list(r['event_id'] for r in tbl.iterrows())
             # assert record ids are the number of rows
             self.assertTrue(len(ids) == written)
@@ -235,7 +236,8 @@ class GmDatabaseTestCase(unittest.TestCase):
             self.assertTrue(test_cols_found == 1)
 
         # assert that we modified the event name
-        with GMDatabaseParser.get_table(self.output_file, dbname, 'r') as tbl:
+        with GMdb(self.output_file, dbname, 'r') as gmdb:
+            tbl = gmdb.table
             count = 0
             for row in tbl.where('%s == %s' % (test_col, test_col_oldval)):
                 # we should never be here (no row with the old value):
@@ -251,7 +253,8 @@ class GmDatabaseTestCase(unittest.TestCase):
                                      output_path=self.output_file)
         # open HDF5 with append='a' (the default)
         # and check that wewrote stuff twice
-        with GMDatabaseParser.get_table(self.output_file, dbname, 'r') as tbl:
+        with GMdb(self.output_file, dbname, 'r') as gmdb:
+            tbl = gmdb.table
             self.assertTrue(tbl.nrows == written * 2)
             # assert the old rows are there
             oldrows = list(row[test_col] for row in
@@ -266,7 +269,8 @@ class GmDatabaseTestCase(unittest.TestCase):
         log = GMDatabaseParser.parse(self.input_file,
                                      output_path=self.output_file,
                                      mode='w')
-        with GMDatabaseParser.get_table(self.output_file, dbname, 'r') as tbl:
+        with GMdb(self.output_file, dbname, 'r') as gmdb:
+            tbl = gmdb.table
             self.assertTrue(tbl.nrows == written)
             # assert the old rows are not there anymore
             oldrows = list(row[test_col] for row in
@@ -288,7 +292,8 @@ class GmDatabaseTestCase(unittest.TestCase):
         log = GMDatabaseParser.parse(self.input_file,
                                      output_path=self.output_file)
         dbname = os.path.splitext(os.path.basename(self.output_file))[0]
-        with get_table(self.output_file, dbname) as table:
+        with GMdb(self.output_file, dbname) as gmdb:
+            table = gmdb.table
             total = table.nrows
             selection = 'pga <= %s' % 100.75
             ids = [r['record_id'] for r in records_where(table, selection)]
@@ -485,7 +490,7 @@ class GmDatabaseTestCase(unittest.TestCase):
 #             self.assertEqual(expected, _normalize_condition(cond))
 
 
-    def test_interp_period(self):
+    def tst_interp_period(self):
         values = np.linspace(0, 1.0, num=len(GMDatabaseParser._ref_periods),
                              endpoint=True)
         periods = GMDatabaseParser._ref_periods
