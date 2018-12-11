@@ -16,16 +16,13 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
-from openquake.hazardlib.contexts import SitesContext, DistancesContext, RuptureContext
-from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
-from openquake.hazardlib import imt
-from _collections import OrderedDict
 """
 Basic classes for the GMDatabase (HDF5 database) and parsers
 """
 
 import os
 import sys
+from collections import OrderedDict
 import re
 import csv
 import hashlib
@@ -36,126 +33,96 @@ from io import StringIO
 from datetime import datetime
 from contextlib import contextmanager
 from collections import defaultdict
+import numpy as np
+from scipy.constants import g
 import tables
-from tables.file import File
+# from tables.file import File
 from tables.table import Table
 from tables.group import Group
 from tables.exceptions import NoSuchNodeError
-import numpy as np
-from scipy.constants import g
-
-from tables.description import IsDescription, Int64Col, StringCol, \
-    Int16Col, UInt16Col, Float32Col, Float16Col, TimeCol, BoolCol, \
-    UInt8Col, Float64Col, Int8Col, UInt64Col, UInt32Col, EnumCol
+from tables.description import StringCol as _StringCol, \
+    Float32Col as _Float32Col, Float16Col as _Float16Col, BoolCol, \
+    Float64Col as _Float64Col, UInt32Col, EnumCol as _EnumCol, Int8Col
+from openquake.hazardlib.contexts import SitesContext, DistancesContext, \
+    RuptureContext
+from openquake.hazardlib import imt
 from smtk import sm_utils
-
-# custom defaults. Defaults will be considered equal to "missing":
-COLUMN_DEFAULTS = {
-    "StringCol": b'',
-    # 'BoolCol': False
-    "EnumCol": b'',
-    "IntCol": np.iinfo(np.int).min,
-    "Int8Col": np.iinfo(np.int8).min,
-    "Int16Col": np.iinfo(np.int16).min,
-    "Int32Col": np.iinfo(np.int32).min,
-    "Int64Col": np.iinfo(np.int64).min,
-    "UIntCol": 0,
-    "UInt8Col": 0,
-    "UInt16Col": 0,
-    "UInt32Col": 0,
-    "UInt64Col": 0,
-    "FloatCol": float('nan'),
-    "Float16Col": float('nan'),
-    "Float32Col": float('nan'),
-    "Float64Col": float('nan'),
-    "Float96Col": float('nan'),
-    "Float128Col": float('nan'),
-    "ComplexCol": complex(float('nan'), float('nan')),
-    "Complex32Col": complex(float('nan'), float('nan')),
-    "Complex64Col": complex(float('nan'), float('nan')),
-    "Complex128Col": complex(float('nan'), float('nan')),
-    "Complex192Col": complex(float('nan'), float('nan')),
-    "Complex256Col": complex(float('nan'), float('nan')),
-    # "TimeCol": 0,
-    # "Time32Col": 0,
-    # "Time64Col": 0
-}
+from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 
 
-# rewrite pytables description column types to account for default
-# values meaning MISSING, and bounds (min and max)
-def _col(col_class, **kwargs):
-    '''utility function returning a pytables Column. The rationale behind
-    this simple wrapper (`_col(StringCol, ...)` equals `StringCol(...)`)
-    is twofold:
+# implements subclasses to account for dflt = nan, plus min and max and
+# allowing other custom attributes in the future. Note that the way Col
+# classes are implemented in pytables is tricky and full of abstraction
+# layers, so we have to manually subclass each specific type of interest,
+# with some "hacks":
+class Float64Col(_Float64Col):
+    '''subclasses pytables Float64Col, with nan as default and optional min/max
+    attributes'''
+    def __init__(self, shape=(), min=None, max=None):  # @ReservedAssignment
+        super(Float64Col, self).__init__(shape=shape, dflt=np.nan)
+        self.min_value, self.max_value = min, max
 
-    1. Pytables columns do not allow bounds (min, max), which can be
-    specified here as 'min' and 'max' arguments. None or missing values will
-    mean: no check on the relative bound (any value allowed)
 
-    2. When inserting/updating records, each missing value will be set as the
-    relative column's default (attribute "dflt") defined for the column.
-    This value is not always distinguishable from a value input from the user.
-    Therefore, when not explicitly provided as 'dflt' argument in `kwargs`,
-    this function sets a value which can interpreted as "missing", whenever
-    possible, and will be (column types not listed below - e.g. TimeColumns -
-    will not change their default):
+class Float32Col(_Float32Col):
+    '''subclasses pytables Float32Col, with nan as default and optional min/max
+    attributes'''
+    def __init__(self, shape=(), min=None, max=None):  # @ReservedAssignment
+        super(Float32Col, self).__init__(shape=shape, dflt=np.nan)
+        self.min_value, self.max_value = min, max
 
-    -----------------------+----------------------------------------
-    column's type          | dflt
-    -----------------------+----------------------------------------
-    string                 | "" (same as pytables)
-    -----------------------+----------------------------------------
-    unsigned integer       |
-    (uint8, uint16, ...)   | 0 (same as pytables)
-    -----------------------+----------------------------------------
-    float                  | nan
-    (float8, float16, ...) |
-    -----------------------+----------------------------------------
-    int (int8, int16, ...) | the type minimum value
-    -----------------------+----------------------------------------
-    Enum                   | "" (if not in the enum list of values,
-                           |     it will be added)
-    -----------------------+----------------------------------------
-    bool                   | False (same as pytables). Note that having
-                           | booleans only two possible values, they
-                           | can not have a default interpretable as
-                           | missing
-    -----------------------+----------------------------------------
 
-    :param: col_class: the pytables column class, e.g. StringCol. You can
-        also supply the String "DateTime" which will set default to StringCol
-        adding the default 'itemsize' to `kwargs` and a custom attribute
-        'is_datetime_str' to the returned object. The attribute will be used
-        in the `expr` class to properly cast passed values into the correct
-        date-time ISO-formatted string
-    :param kwargs: keyword argument to be passed to `col_class` during
-        initialization. Note thtat the `dflt` parameter, if provided
-        will be overridden. See the `atom` module of pytables for a list
-        of arguments for each Column class
-    '''
-    is_iso_dtime = col_class == 'DateTime'
-    if is_iso_dtime:
-        col_class = StringCol
-        if 'itemsize' not in kwargs:
-            kwargs['itemsize'] = 19  # '1999-31-12T01:02:59'
+class Float16Col(_Float16Col):
+    '''subclasses pytables Float16Col, with nan as default and optional min/max
+    attributes'''
+    def __init__(self, shape=(), min=None, max=None):  # @ReservedAssignment
+        super(Float16Col, self).__init__(shape=shape, dflt=np.nan)
+        self.min_value, self.max_value = min, max
 
-    if 'dflt' not in kwargs:
-        if col_class.__name__ in COLUMN_DEFAULTS:
-            dflt = COLUMN_DEFAULTS[col_class.__name__]
-            if col_class == EnumCol:
-                dflt = ''
-                if dflt not in kwargs['enum']:
-                    kwargs['enum'].insert(0, dflt)
-            kwargs['dflt'] = dflt
 
-    min_, max_ = kwargs.pop('min', None), kwargs.pop('max', None)
-    ret = col_class(**kwargs)
-    ret.min_value, ret.max_value = min_, max_
-    if is_iso_dtime:
-        ret.is_datetime_str = True  # will be used in selection syntax to
-        # convert string values in the correct format %Y-%m-%dT%H:%M:%s
-    return ret
+class DateTimeCol(_StringCol):
+    '''subclasses pytables StringCol, to provide a storage class for date
+    times in iso format. Use :function:`normalize_dtime` before writing
+    an element under this column (this is done by default for 'event_time'
+    flat files column). Also implements optional min max attributes
+    (to be given as byte strings in ISO format, in case)'''
+    def __init__(self, shape=(), min=None, max=None):  # @ReservedAssignment
+        super(DateTimeCol, self).__init__(itemsize=19, shape=shape, dflt=b'')
+        self.min_value, self.max_value = min, max
+        # needed when parsing a numexpr to distinguish from
+        # StringCol:
+        self.is_datetime_str = True
+
+    def prefix(self):  # make pytables happy. See description.py line 2013
+        return 'String'
+
+
+class StringCol(_StringCol):
+    '''subclasses pytables StringCol to allow optional min/max attributes'''
+    def __init__(self, itemsize, shape=(),
+                 min=None, max=None):  # @ReservedAssignment
+        super(StringCol, self).__init__(itemsize, shape, dflt=b'')
+        self.min_value, self.max_value = min, max
+
+
+class EnumCol(_EnumCol):
+    '''subclasses pytables EnumCol: accepts a list of strings, inserts the
+    empty string (if not present) and sets it as default'''
+    def __init__(self, values):
+        dflt = ''
+        if dflt not in values:
+            values = [''] + list(values)
+        # decide the type automatically according to the size of elements:
+        type_ = 'uint64'
+        if len(values) <= 255:
+            type_ = 'uint8'
+        elif len(values) <= 65535:
+            type_ = 'uint16'
+        elif len(values) <= 4294967295:
+            type_ = 'uint32'
+        super(EnumCol, self).__init__(values, dflt, type_)
+
+    def prefix(self):  # make pytables happy. See description.py line 2013
+        return 'Enum'
 
 
 # defines a mechanism type to be associated to a rake
@@ -181,77 +148,76 @@ MECHANISM_TYPE = {"Normal": -90.0,
 # a dict here of SCALAR values only. Array columns (i.e., 'sa') will be added
 # later. This also permits to have the scalar columns in one place, as scalar
 # columns only are selectable in pytables by default
-GMDatabaseTable = dict( 
+GMDatabaseTable = dict(
     # id=UInt32Col()  # no default. Starts from 1 incrementally
     # max id: 4,294,967,295
-    record_id=_col(UInt32Col),
-    event_id=_col(StringCol, itemsize=20),
-    event_name=_col(StringCol, itemsize=40),
-    event_country=_col(StringCol, itemsize=30),
-    event_time=_col("DateTime"),  # In ISO Format YYYY-MM-DDTHH:mm:ss
+    record_id=UInt32Col(),
+    event_id=StringCol(20),
+    event_name=StringCol(itemsize=40),
+    event_country=StringCol(itemsize=30),
+    event_time=DateTimeCol(),  # In ISO Format YYYY-MM-DDTHH:mm:ss
     # Note: if we want to support YYYY-MM-DD only be aware that:
     # YYYY-MM-DD == YYYY-MM-DDT00:00:00
     # Note2: no support for microseconds for the moment
-    event_latitude=_col(Float64Col, min=-90, max=90),
-    event_longitude=_col(Float64Col, min=-180, max=180),
-    hypocenter_depth=_col(Float32Col),
-    magnitude=_col(Float16Col),
-    magnitude_type=_col(StringCol, itemsize=5),
-    magnitude_uncertainty=_col(Float32Col),
-    tectonic_environment=_col(StringCol, itemsize=30),
-    strike_1=_col(Float32Col),
-    strike_2=_col(Float32Col),
-    dip_1=_col(Float32Col),
-    dip_2=_col(Float32Col),
-    rake_1=_col(Float32Col),
-    rake_2=_col(Float32Col),
-    style_of_faulting=_col(EnumCol, base='uint8',
-                           enum=list(MECHANISM_TYPE.keys())),
-    depth_top_of_rupture=_col(Float32Col),
-    rupture_length=_col(Float32Col),
-    rupture_width=_col(Float32Col),
-    station_id=_col(StringCol, itemsize=20),
-    station_name=_col(StringCol, itemsize=40),
-    station_latitude=_col(Float64Col, min=-90, max=90),
-    station_longitude=_col(Float64Col, min=-180, max=180),
-    station_elevation=_col(Float32Col),
-    vs30=_col(Float32Col),
-    vs30_measured=_col(BoolCol, dflt=True),
-    vs30_sigma=_col(Float32Col),
-    depth_to_basement=_col(Float32Col),
-    z1=_col(Float32Col),
-    z2pt5=_col(Float32Col),
-    repi=_col(Float32Col),  # epicentral_distance
-    rhypo=_col(Float32Col),  # Float32Col
-    rjb=_col(Float32Col),  # joyner_boore_distance
-    rrup=_col(Float32Col),  # rupture_distance
-    rx=_col(Float32Col),
-    ry0=_col(Float32Col),
-    azimuth=_col(Float32Col),
-    digital_recording=_col(BoolCol, dflt=True),
+    event_latitude=Float64Col(min=-90, max=90),
+    event_longitude=Float64Col(min=-180, max=180),
+    hypocenter_depth=Float32Col(),
+    magnitude=Float16Col(),
+    magnitude_type=StringCol(itemsize=5),
+    magnitude_uncertainty=Float32Col(),
+    tectonic_environment=StringCol(itemsize=30),
+    strike_1=Float32Col(),
+    strike_2=Float32Col(),
+    dip_1=Float32Col(),
+    dip_2=Float32Col(),
+    rake_1=Float32Col(),
+    rake_2=Float32Col(),
+    style_of_faulting=EnumCol(list(MECHANISM_TYPE.keys())),
+    depth_top_of_rupture=Float32Col(),
+    rupture_length=Float32Col(),
+    rupture_width=Float32Col(),
+    station_id=StringCol(itemsize=20),
+    station_name=StringCol(itemsize=40),
+    station_latitude=Float64Col(min=-90, max=90),
+    station_longitude=Float64Col(min=-180, max=180),
+    station_elevation=Float32Col(),
+    vs30=Float32Col(),
+    vs30_measured=BoolCol(dflt=True),
+    vs30_sigma=Float32Col(),
+    depth_to_basement=Float32Col(),
+    z1=Float32Col(),
+    z2pt5=Float32Col(),
+    repi=Float32Col(),  # epicentral_distance
+    rhypo=Float32Col(),  # Float32Col
+    rjb=Float32Col(),  # joyner_boore_distance
+    rrup=Float32Col(),  # rupture_distance
+    rx=Float32Col(),
+    ry0=Float32Col(),
+    azimuth=Float32Col(),
+    digital_recording=BoolCol(dflt=True),
     #     acceleration_unit=_col(EnumCol, enum=['cm/s/s', 'm/s/s', 'g'],
     #                              base='uint8')
-    type_of_filter=_col(StringCol, itemsize=25),
-    npass=_col(Int8Col),
-    nroll=_col(Float32Col),
-    hp_h1=_col(Float32Col),
-    hp_h2=_col(Float32Col),
-    lp_h1=_col(Float32Col),
-    lp_h2=_col(Float32Col),
-    factor=_col(Float32Col),
-    lowest_usable_frequency_h1=_col(Float32Col),
-    lowest_usable_frequency_h2=_col(Float32Col),
-    lowest_usable_frequency_avg=_col(Float32Col),
-    highest_usable_frequency_h1=_col(Float32Col),
-    highest_usable_frequency_h2=_col(Float32Col),
-    highest_usable_frequency_avg=_col(Float32Col),
-    pga=_col(Float64Col),
-    pgv=_col(Float64Col),
-    pgd=_col(Float64Col),
-    duration_5_75=_col(Float64Col),
-    duration_5_95=_col(Float64Col),
-    arias_intensity=_col(Float64Col),
-    cav=_col(Float64Col)
+    type_of_filter=StringCol(itemsize=25),
+    npass=Int8Col(),
+    nroll=Float32Col(),
+    hp_h1=Float32Col(),
+    hp_h2=Float32Col(),
+    lp_h1=Float32Col(),
+    lp_h2=Float32Col(),
+    factor=Float32Col(),
+    lowest_usable_frequency_h1=Float32Col(),
+    lowest_usable_frequency_h2=Float32Col(),
+    lowest_usable_frequency_avg=Float32Col(),
+    highest_usable_frequency_h1=Float32Col(),
+    highest_usable_frequency_h2=Float32Col(),
+    highest_usable_frequency_avg=Float32Col(),
+    pga=Float64Col(),
+    pgv=Float64Col(),
+    pgd=Float64Col(),
+    duration_5_75=Float64Col(),
+    duration_5_95=Float64Col(),
+    arias_intensity=Float64Col(),
+    cav=Float64Col()
 )
 
 
@@ -272,6 +238,9 @@ class GMDatabaseParser(object):
     is performed in-place on each flatfile row. For more details, see
     the :method:`parse_row` method docstring
     '''
+    # the csv delimiter:
+    csv_delimiter = ';'
+
     _accel_units = ["g", "m/s/s", "m/s**2", "m/s^2",
                     "cm/s/s", "cm/s**2", "cm/s^2"]
 
@@ -318,7 +287,8 @@ class GMDatabaseParser(object):
     mappings = {}
 
     @classmethod
-    def parse(cls, flatfile_path, output_path, mode='a'):
+    def parse(cls, flatfile_path, output_path, mode='a',
+              delimiter=None):
         '''Parses a flat file and writes its content in the GM database file
         `output_path`, which is a HDF5 organized hierarchically in groups
         (sort of sub-directories) each of which identifies a parsed
@@ -337,6 +307,9 @@ class GMDatabaseParser(object):
             'w' means write (i.e. overwrite the existing table, if any).
             In case of 'a' and the table exists, it is up to the user not to
             add duplicated entries
+        :param delimiter: the delimiter used to parse the csv. If None
+            (the default when missing) it is the class-attribute
+            `csv_delimiter` (';' by default when not subclassed)
         :return: a dictionary holding information with keys:
             'total': the total number of csv rows
             'written': the number of parsed rows written on the db table
@@ -363,7 +336,7 @@ class GMDatabaseParser(object):
                 -1, [], defaultdict(int), defaultdict(int)
 
             for i, (rowdict, sa_periods) in \
-                    enumerate(cls._rows(flatfile_path)):
+                    enumerate(cls._rows(flatfile_path, delimiter)):
 
                 # write sa_periods only the first time
                 if rowdict:
@@ -383,14 +356,14 @@ class GMDatabaseParser(object):
                 'missing_values': missing, 'outofbound_values': outofbound}
 
     @classmethod
-    def _rows(cls, flatfile_path):  # pylint: disable=too-many-locals
+    def _rows(cls, flatfile_path, delimiter=None):  # pylint: disable=too-many-locals
         '''Yields each row from the CSV file `flatfile_path` as
         dictionary, after performing SA conversion and running custom code
         implemented in `cls.parse_row` (if overridden by
         subclasses). Yields empty dict in case of exceptions'''
         # ref_log_periods = np.log10(cls._ref_periods)
         mappings = getattr(cls, 'mappings', {})
-        with cls._get_csv_reader(flatfile_path) as reader:
+        with cls._get_csv_reader(flatfile_path, delimiter=delimiter) as reader:
 
             newfieldnames = [mappings[f] if f in mappings else f for f in
                              reader.fieldnames]
@@ -485,16 +458,19 @@ class GMDatabaseParser(object):
             pass
         return True
 
-    @staticmethod
+    @classmethod
     @contextmanager
-    def _get_csv_reader(filepath, dict_reader=True):
+    def _get_csv_reader(cls, filepath, dict_reader=True, delimiter=None):
         '''opends a csv file and yields the relative reader. To be used
         in a with statement to properly close the csv file'''
         # according to the docs, py3 needs the newline argument
+        if delimiter is None:
+            delimiter = cls.csv_delimiter
         kwargs = {'newline': ''} if sys.version_info[0] >= 3 else {}
         with open(filepath, **kwargs) as csvfile:
-            reader = csv.DictReader(csvfile) if dict_reader else \
-                csv.reader(csvfile)
+            reader = csv.DictReader(csvfile, delimiter=delimiter) \
+                if dict_reader else \
+                csv.reader(csvfile, delimiter=delimiter)
             yield reader
 
     @classmethod
@@ -727,29 +703,25 @@ def read_where(table, condition, limit=None):
 
 def _normalize_condition(condition):
     '''normalizes the given `condition` string (numexpr syntax) to be used
-    in record selection in order to handle some caveats when using numexpr
-    syntax in pytables selection:
+    in record selection in order to handle some caveats:
     1. expressions concatenated with & or | should be put into brakets:
         "(pga <= 0.5) & (pgv > 9.5)". This function raises if the logical
         operators are not preceeded by a ")" or not followed by a "("
-    1b. Can input date time **strings** (i.e. quoted) in any format recognized
+    1b. Recognizes date time **strings** (i.e. quoted) in any format recognized
         by GmDatabase parser: 2006-12-31T00:00:00 (with or without T),
         2006-12-31, or simply 2006.
-    1c. does a fast check on correct comparison columns (fields) types
-    2. NaNs should be compared like this:
+    1c. Does a fast check on correct comparison columns (fields) types
+    2. Accepts expressions like 'col_name != nan' or 'col_name == nan' by
+        converting it to the numexpr correct syntax:
         "pga != pga"  (pga is nan)
         "pga == pga"  (pga is not nan)
-        This method converts expression of the type "column != nan" to
-        "column == column"
-    3. String column types (e.g., 'event_country') should be compared with
-    bytes strings in Python 3:
+    3. Converts string column type values (e.g., 'event_country') to
+       bytes, as expected by numexpr syntax:
         "event_country == b'Germany'"
-    This method checks for quoted strings, unquotes them and converts to
-    bytes, if necessary (py3).
-    Note: The last conversion (reported in pytables documentation) is made for
-    safety **but** when tested in Python3.6.2 these work, so the claim is
-    false or incomplete. Maybe it works as long as `value` has ascii
-    characters only?).
+        Note: This conversion (reported in pytables documentation) is made for
+        safety **but** when tested in Python3.6.2 these work, so the claim is
+        false or incomplete. Maybe it works as long as `value` has ascii
+        characters only?).
     '''
     dbcolumns = GMDatabaseTable
     py3 = sys.version_info[0] >= 3
@@ -868,11 +840,29 @@ def _normalize_tokens(tokens, dtime_indices, str_indices, nan_indices):
 ########################################
 
 class GMdb:
-
+    '''Implements a Ground motion database. This class differs from
+    :class:`smtk.sm_database.GroundMotionDatabase` in that flat files are
+    stored as pytables tables in a single HDF file container. This should in
+    principle have more efficient IO operations, exploit numexpr syntax for
+    efficient and simpler record selection, and allow the integration of
+    customized flat-files (via pytables pre-defined column classes).
+    Support for time-series (non-scalar) data is still possible although this
+    functionality has not been not tested. From
+    :class:`smtk.residuals.gmpe_residuals.Residuals.get_residuals`, both
+    databses can be passed as `database` argument.
+    (FIXME: in the future the two databases should be merged into a single
+    class providing the functionalities of both)
+    '''
     def __init__(self, filepath, dbname, mode='r'):
         '''
-        Creates a new database for reading or writing to be usually used
-        inside a with statement:
+        Creates a new database. The main functionality of a GMdb is to
+        provide the contexts for the residuals calculations:
+        ```
+            contexts = GMdb(...).get_contexts(...)
+        ```
+        For all other records manipulation tasks, note that this object
+        needs to be accessed inside a with statement like a normal Python
+        file-like object, which opens and closes the underlying HDF file:
         ```
             with GMdb(filepath, name, 'r') as dbase:
                 # ... do your operation here
@@ -885,16 +875,17 @@ class GMdb:
             is 'r', the file must exist
         :param dbname: the name of the database table. It will be the name
             of the group (kind of sub-folder) of the underlying HDF file
-        :param mode: the mode ('a', 'r', 'w') whereby the **table** is opened.
-            I.e., 'w' does not overwrite the whole file, but the table data.
-            More specifically:
+        :param mode: string (default: 'r'). The mode ('a', 'r', 'w') whereby
+            the underlying hdf file will be opened **when this object
+            is used in a with statement**.
+            Note that 'w' does not overwrite the whole file, but the table
+            data only. More specifically:
             'r': opens file in 'r' mode, raises if the file or the table in
                 the file content where not found
             'w': opens file in 'a' mode, creates the table if it does not
-                exists, clears all table data if it exists. Eventually it
-                returns the table
+                exists, clears all table data if it exists.
             'a': open file in 'a' mode, creates the table if it does not
-                exists, does nothing otherwise. Eventually it returns the table
+                exists, does nothing otherwise
         '''
         self.filepath = filepath
         self.dbname = dbname
@@ -917,12 +908,12 @@ class GMdb:
 
         See module's function `func`:`records_where` and :func:`read_where`
 
-        Example (given a database named `gmdb`)
+        Example
         ```
             condition = ("(pga < 0.14) | (pga > 1.1) & (pgv != nan) &
                           (event_time < '2006-01-01T00:00:00'")
 
-            filtered_gmdb = gmdb.filter(condition)
+            filtered_gmdb = GMdb(...).filter(condition)
         ```
         For user trying to build expressions from input variables as python
         objects, simply use the `str(object)` function which supports
@@ -935,14 +926,14 @@ class GMdb:
                 (event_time < '%s')" % \
                 (str(pgamin), str(pgamax), str(float('nan')), str(dtime))
 
-            filtered_gmdb = gmdb.filter(condition)
+            filtered_gmdb = GMdb(...).filter(condition)
         ```
         '''
         if self.is_open:
             raise ValueError('Cannot filter, underlying HDF5 file is open. '
-                             'Please close the db first')
+                             'Do not call this method inside a with statement')
         gmdb = GMdb(self.filepath, self.dbname, 'r')
-        gmdb._condition = condition
+        gmdb._condition = condition  # pylint: disable=protected-access
         return gmdb
 
     def __enter__(self):
@@ -968,10 +959,8 @@ class GMdb:
         try:
             group = h5file.get_node(grouppath, classname=Group.__name__)
             if mode == 'w':
-                # empty node of all children:
-                for node in group:
+                for node in group:  # make node empty
                     h5file.remove_node(node, recursive=True)
-                # h5file.remove_node(grouppath, recursive=True)
         except NoSuchNodeError as _:
             if mode == 'r':
                 raise
@@ -1069,8 +1058,8 @@ class GMdb:
         csvrow['event_id'] = evid
         csvrow['station_id'] = staid
         # do not use record id, rather an incremental integer:
-        csvrow['record_id'] = self._table.attrs._current_row_id
-        self._table.attrs._current_row_id += 1
+        csvrow['record_id'] = table.attrs._current_row_id
+        table.attrs._current_row_id += 1
 
         # write sa periods (if not already written):
         try:
@@ -1078,7 +1067,6 @@ class GMdb:
         except AttributeError:
             table.attrs.sa_periods = np.asarray(sa_periods, dtype=float)
 
-        dbname = self.dbname
         tablerow = table.row
 
         missing_colnames, outofbounds_colnames = [], []
@@ -1122,6 +1110,7 @@ class GMdb:
 
     @property
     def table(self):
+        '''Returns the underlying hdf file's table'''
         tab = self._table
         if self._table is None:
             tablepath = "%s/%s" % (self._root, "table")
@@ -1129,10 +1118,10 @@ class GMdb:
                                                       classname=Table.__name__)
         return tab
 
-    ## IO PRIVATE METHODS ##
+    # ----- IO PRIVATE METHODS  ----- #
 
     def _create_table(self, sa_length):
-        desc = dict(GMDatabaseTable, sa=_col(Float64Col, shape=(sa_length,)))
+        desc = dict(GMDatabaseTable, sa=Float64Col(shape=(sa_length,)))
         self._table = self._h5file.create_table(self._root, "table",
                                                 description=desc)
         self._table.attrs._current_row_id = 1
@@ -1140,11 +1129,11 @@ class GMdb:
 
     @property
     def _h5file(self):
-        _ = self.__h5file
-        if _ is None:
+        h5file = self.__h5file
+        if h5file is None:
             raise ValueError('The underlying HDF5 file is not open. '
                              'Are you inside a "with" statement?')
-        return _
+        return h5file
 
     def _fullpath(self, path):
         return "%s/%s" % (self._root, path)
@@ -1206,8 +1195,7 @@ class GMdb:
             value = str(value).encode('utf8')
         return value
 
-    ## RESIDUALS STUFF ##
-
+    # ---- RESIDUALS ANALYSIS ---- #
 
 #     def get_contexts(self, nodal_plane_index=1):
 #         """
@@ -1226,7 +1214,7 @@ class GMdb:
 #                 'Distances': self._get_distances_context_event(idx),
 #                 'Rupture': self._get_event_context(idx, nodal_plane_index)})
 #         return context_dicts
-# 
+#
 #     @staticmethod
 #     def _get_event_id_list(self):
 #         """
@@ -1429,7 +1417,6 @@ class GMdb:
         append(dctx, 'ry0', record['ry0'])
         append(dctx, 'azimuth', record['azimuth'])
 
-
     def _set_event_context(self, record, rctx, nodal_plane_index=1):
         """
         Adds the record's data to the given distance context
@@ -1504,7 +1491,11 @@ class GMdb:
 
     def _add_observations(self, record, observations, sa_periods,
                           component="Geometric"):
-        hundred_g = 100.0 * g  # for convertion from/to cm s ^2
+        '''Fetches the given observations (IMTs) from `record` into
+        the `observations` dict'''
+        # FIXME: unused parameter component (obviously, but how to dealt
+        # with it?)
+        hundred_g = 100.0 * g  # for convertion from/to cm s^2
         for imtx in observations.keys():
             value = np.nan
             if imtx == "PGA":
@@ -1538,11 +1529,11 @@ def get_interpolated_period(target_period, periods, values):
     uval = np.where(periods >= target_period)[0][0]
     if (uval - lval) == 0:
         return values[lval]
-    dy = np.log10(values[uval]) - np.log10(values[lval])
-    dx = np.log10(periods[uval]) - np.log10(periods[lval])
+    deltay = np.log10(values[uval]) - np.log10(values[lval])
+    deltax = np.log10(periods[uval]) - np.log10(periods[lval])
     return 10.0 ** (
         np.log10(values[lval]) +
-        (np.log10(target_period) - np.log10(periods[lval])) * dy / dx
+        (np.log10(target_period) - np.log10(periods[lval])) * deltay / deltax
         )
 
 #     def get_observations(self, context, component="Geometric"):
@@ -1562,7 +1553,7 @@ def get_interpolated_period(target_period, periods, values):
 #                     else:
 #                         observations[imtx].append(
 #                             get_scalar(fle, imtx, component))
-# 
+#
 #                 elif "SA(" in imtx:
 #                     target_period = imt.from_string(imtx).period
 #                     spectrum = fle[selection_string + component +

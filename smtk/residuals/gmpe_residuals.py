@@ -16,8 +16,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
-from smtk.gm_database import GMdb
-
 """
 Module to get GMPE residuals - total, inter and intra
 {'GMPE': {'IMT1': {'Total': [], 'Inter event': [], 'Intra event': []},
@@ -43,6 +41,7 @@ import smtk.intensity_measures as ims
 from openquake.hazardlib import imt
 from smtk.strong_motion_selector import SMRecordSelector
 from smtk.trellis.trellis_plots import _get_gmpe_name
+from smtk.gm_database import GMdb
 
 
 GSIM_LIST = get_available_gsims()
@@ -417,6 +416,8 @@ class Residuals(object):
         """
         Calculate the residuals for a set of ground motion records
         """
+        # FIXME: this is hacky. One should merge sm and gm databases into
+        # a single storage interface backed by a common storage type:
         calculate_observations = True
         if isinstance(database, GMdb):
             contexts = database.get_contexts(self.imts,

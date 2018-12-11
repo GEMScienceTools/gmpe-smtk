@@ -39,12 +39,61 @@ BASE_DATA_PATH = os.path.join(
     os.path.join(os.path.dirname(__file__), "file_samples")
     )
 
+class Mixin(object):
+
+    def __init__(self, **kwargs):
+        self._min = kwargs.pop('min_value', None)
+        self._max = kwargs.pop('max_value', None)
+
+
+class Float64C(Float64Col):
+
+    def __init__(self, shape=(), min_value=None, max_value=None):
+        super(Float64C, self).__init__(shape=shape, dflt=np.nan)
+        self._min, self._max = min_value, max_value
+
+
+class DTimeCol(StringCol):
+
+    def __init__(self, min_val=None, max_val=None):
+        super(DTimeCol, self).__init__(itemsize=19)
+        self._min, self._max = min_val, max_val
+
+    def prefix(self):  # make pytables happy. See description line 2013
+        return 'String'
+
+
+class ECol(EnumCol):
+
+    def __init__(self, values):
+        dflt = ''
+        if dflt not in values:
+            values = [''] + list(values)
+        type_ = 'uint64'
+        if len(values) <= 255:
+            type_ = 'uint8'
+        elif len(values) <= 65535:
+            type_ = 'uint16'
+        elif len(values) <= 4294967295:
+            type_ = 'uint32'
+        super(ECol, self).__init__(values, dflt, type_)
+
+    def prefix(self):  # make pytables happy. See description line 2013
+        return 'Enum'
+
+class ColTestCase(unittest.TestCase):
+
+    def test_scol(self):
+        scol = DTimeCol()
+        fcol = Float64C()
+        sdf = 9
 
 class DummyTable(IsDescription):
     '''dummy table class used for testing pytables'''
     floatcol = Float32Col()
     arraycol = Float32Col(shape=(10,))
     stringcol = StringCol(5)
+    ecol = ECol(['a', 'b', 'c'])
 #    ballColor = EnumCol(['orange'], 'black', base='uint8')
 
 
@@ -181,7 +230,8 @@ class GmDatabaseTestCase(unittest.TestCase):
                 pass
 
         log = GMDatabaseParser.parse(self.input_file,
-                                     output_path=self.output_file)
+                                     output_path=self.output_file,
+                                     delimiter=',')
         dbname = os.path.splitext(os.path.basename(self.output_file))[0]
         # the flatfile parsed has:
         # 1. an event latitude out of bound (row 0)
@@ -250,7 +300,8 @@ class GmDatabaseTestCase(unittest.TestCase):
 
         # now re-write, with append mode
         log = GMDatabaseParser.parse(self.input_file,
-                                     output_path=self.output_file)
+                                     output_path=self.output_file,
+                                     delimiter=',')
         # open HDF5 with append='a' (the default)
         # and check that wewrote stuff twice
         with GMdb(self.output_file, dbname, 'r') as gmdb:
@@ -268,7 +319,7 @@ class GmDatabaseTestCase(unittest.TestCase):
         # now re-write, with no mode='w'
         log = GMDatabaseParser.parse(self.input_file,
                                      output_path=self.output_file,
-                                     mode='w')
+                                     mode='w', delimiter=',')
         with GMdb(self.output_file, dbname, 'r') as gmdb:
             tbl = gmdb.table
             self.assertTrue(tbl.nrows == written)
@@ -289,8 +340,16 @@ class GmDatabaseTestCase(unittest.TestCase):
 
     def test_template_basic_file_selection(self):
         '''parses a sample flatfile and tests some selection syntax on it'''
+        # the test file has a comma delimiter. Test that we raise with
+        # the default semicolon:
+        with self.assertRaises(ValueError):
+            log = GMDatabaseParser.parse(self.input_file,
+                                         output_path=self.output_file)
+        # now should be ok:
         log = GMDatabaseParser.parse(self.input_file,
-                                     output_path=self.output_file)
+                                     output_path=self.output_file,
+                                     delimiter=',')
+
         dbname = os.path.splitext(os.path.basename(self.output_file))[0]
         with GMdb(self.output_file, dbname) as gmdb:
             table = gmdb.table
