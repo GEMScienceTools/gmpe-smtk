@@ -140,7 +140,6 @@ MECHANISM_TYPE = {"Normal": -90.0,
                   "TF": 90.,
                   "NS": -45.,  # Normal with strike-slip component
                   "TS": 45.,  # Reverse with strike-slip component
-                  "O": 0.0
                   }
 
 # Instead of implementing a static GMDatabase as `pytable.IsDescription` class.
@@ -149,75 +148,82 @@ MECHANISM_TYPE = {"Normal": -90.0,
 # later. This also permits to have the scalar columns in one place, as scalar
 # columns only are selectable in pytables by default
 GMDatabaseTable = dict(
-    # id=UInt32Col()  # no default. Starts from 1 incrementally
-    # max id: 4,294,967,295
-    record_id=UInt32Col(),
+    record_id=UInt32Col(), # max id: 4,294,967,295
     event_id=StringCol(20),
     event_name=StringCol(itemsize=40),
-    event_country=StringCol(itemsize=30),
-    event_time=DateTimeCol(),  # In ISO Format YYYY-MM-DDTHH:mm:ss
+#    event_country=StringCol(itemsize=30),
+#     event_time=DateTimeCol(),  # In ISO Format YYYY-MM-DDTHH:mm:ss
     # Note: if we want to support YYYY-MM-DD only be aware that:
     # YYYY-MM-DD == YYYY-MM-DDT00:00:00
     # Note2: no support for microseconds for the moment
-    event_latitude=Float64Col(min=-90, max=90),
-    event_longitude=Float64Col(min=-180, max=180),
-    hypocenter_depth=Float32Col(),
-    magnitude=Float16Col(),
-    magnitude_type=StringCol(itemsize=5),
-    magnitude_uncertainty=Float32Col(),
-    tectonic_environment=StringCol(itemsize=30),
-    strike_1=Float32Col(),
-    strike_2=Float32Col(),
-    dip_1=Float32Col(),
-    dip_2=Float32Col(),
-    rake_1=Float32Col(),
-    rake_2=Float32Col(),
+#    event_latitude=Float64Col(min=-90, max=90),
+#    event_longitude=Float64Col(min=-180, max=180),
+#    hypocenter_depth=Float32Col(),
+#    magnitude=Float16Col(),
+#    magnitude_type=StringCol(itemsize=5),
+#    magnitude_uncertainty=Float32Col(),
+#    tectonic_environment=StringCol(itemsize=30),
+#    strike_1=Float32Col(),
+#    strike_2=Float32Col(),
+#    dip_1=Float32Col(),
+#    dip_2=Float32Col(),
+#    rake_1=Float32Col(),
+#    rake_2=Float32Col(),
     style_of_faulting=EnumCol(list(MECHANISM_TYPE.keys())),
-    depth_top_of_rupture=Float32Col(),
-    rupture_length=Float32Col(),
-    rupture_width=Float32Col(),
+#    depth_top_of_rupture=Float32Col(),
+#    rupture_length=Float32Col(),
+#    rupture_width=Float32Col(),
     station_id=StringCol(itemsize=20),
-    station_name=StringCol(itemsize=40),
-    station_latitude=Float64Col(min=-90, max=90),
-    station_longitude=Float64Col(min=-180, max=180),
-    station_elevation=Float32Col(),
-    vs30=Float32Col(),
-    vs30_measured=BoolCol(dflt=True),
-    vs30_sigma=Float32Col(),
-    depth_to_basement=Float32Col(),
-    z1=Float32Col(),
-    z2pt5=Float32Col(),
-    repi=Float32Col(),  # epicentral_distance
-    rhypo=Float32Col(),  # Float32Col
-    rjb=Float32Col(),  # joyner_boore_distance
-    rrup=Float32Col(),  # rupture_distance
-    rx=Float32Col(),
-    ry0=Float32Col(),
-    azimuth=Float32Col(),
-    digital_recording=BoolCol(dflt=True),
-    #     acceleration_unit=_col(EnumCol, enum=['cm/s/s', 'm/s/s', 'g'],
-    #                              base='uint8')
-    type_of_filter=StringCol(itemsize=25),
-    npass=Int8Col(),
-    nroll=Float32Col(),
-    hp_h1=Float32Col(),
-    hp_h2=Float32Col(),
-    lp_h1=Float32Col(),
-    lp_h2=Float32Col(),
-    factor=Float32Col(),
-    lowest_usable_frequency_h1=Float32Col(),
-    lowest_usable_frequency_h2=Float32Col(),
-    lowest_usable_frequency_avg=Float32Col(),
-    highest_usable_frequency_h1=Float32Col(),
-    highest_usable_frequency_h2=Float32Col(),
-    highest_usable_frequency_avg=Float32Col(),
-    pga=Float64Col(),
-    pgv=Float64Col(),
-    pgd=Float64Col(),
-    duration_5_75=Float64Col(),
-    duration_5_95=Float64Col(),
-    arias_intensity=Float64Col(),
-    cav=Float64Col()
+    # station_name=StringCol(itemsize=40),
+#    station_country=StringCol(itemsize=30),
+#    station_latitude=Float64Col(min=-90, max=90),
+#    station_longitude=Float64Col(min=-180, max=180),
+#    station_elevation=Float32Col(),
+#    vs30=Float32Col(),
+#    vs30_measured=BoolCol(dflt=True),
+#    vs30_sigma=Float32Col(),
+#    depth_to_basement=Float32Col(),
+#    z1=Float32Col(),
+#    z2pt5=Float32Col(),
+#    repi=Float32Col(),  # epicentral_distance
+#    rhypo=Float32Col(),  # Float32Col
+#    rjb=Float32Col(),  # joyner_boore_distance
+#    rrup=Float32Col(),  # rupture_distance
+#    rx=Float32Col(),
+#    ry0=Float32Col(),
+#    azimuth=Float32Col(),
+#    digital_recording=BoolCol(dflt=True),
+#    type_of_filter=StringCol(itemsize=25),
+#    npass=Int8Col(),
+#    nroll=Float32Col(),
+#     hp_h1=Float32Col(),
+#     hp_h2=Float32Col(),
+#     lp_h1=Float32Col(),
+#     lp_h2=Float32Col(),
+#    factor=Float32Col(),
+#    lowest_usable_frequency_h1=Float32Col(),
+#    lowest_usable_frequency_h2=Float32Col(),
+#    lowest_usable_frequency_avg=Float32Col(),
+#    highest_usable_frequency_h1=Float32Col(),
+#    highest_usable_frequency_h2=Float32Col(),
+#    highest_usable_frequency_avg=Float32Col(),
+#     backarc=BoolCol(dflt=False)
+#    pga=Float64Col(),
+#    _pga_components=Float64Col(shape=(3,)),
+#    pgv=Float64Col(),
+#    _pgv_components=Float64Col(shape=(3,)),
+    sa=Float64Col(),
+    _sa_components=Float64Col(shape=(3,)),
+#    pgd=Float64Col(),
+#    _pgd_components=Float64Col(shape=(3,)),
+#    duration_5_75=Float64Col(),
+#    _duration_5_75_components=Float64Col(shape=(3,)),
+#    duration_5_95=Float64Col(),
+#    _duration_5_95_components=Float64Col(shape=(3,)),
+#    arias_intensity=Float64Col(),
+#    _arias_intensity_components=Float64Col(shape=(3,)),
+#    cav=Float64Col(),
+#    _cav_component=Float64Col(shape=(3,))
 )
 
 
@@ -1340,7 +1346,6 @@ class GMdb:
         #     setattr(sctx, 'backarc', np.array(backarc))
 
         # FIXME:
-        # backarc?
         # deal with non attached attributes
 
         append, isnan = GMdb._append, np.isnan
@@ -1356,6 +1361,7 @@ class GMdb:
                if isnan(record['z1pt0']) else record['z1pt0'])
         append(sctx, 'z2pt5',  vs30_to_z2pt5_cb14(vs30)
                if isnan(record['z2pt5']) else record['z2pt5'])
+        append(sctx, 'backarc', record['backarc'])
 
     @staticmethod
     def _set_distances_context_event(record, dctx):
@@ -1409,6 +1415,14 @@ class GMdb:
             record['rjb'] = record['repi']
         if isnan(record['rrup']):
             record['rrup'] = record['rhypo']
+        if isnan(record['r_x']):
+            record['r_x'] = -record['repi']
+        if isnan(record['ry0']):
+            record['ry0'] = record['repi']
+        if isnan(record['rcdpp']):
+            record['rcdpp'] = 0
+        if isnan(record['rcdpp']):
+            record['rcdpp'] = 0
         append(dctx, 'repi', record['repi'])
         append(dctx, 'rhypo', record['rhypo'])
         append(dctx, 'rjb', record['rjb'])
@@ -1416,6 +1430,7 @@ class GMdb:
         append(dctx, 'rx', record['rx'])
         append(dctx, 'ry0', record['ry0'])
         append(dctx, 'azimuth', record['azimuth'])
+        append(dctx, 'rvolc', 0)
 
     def _set_event_context(self, record, rctx, nodal_plane_index=1):
         """
@@ -1466,6 +1481,8 @@ class GMdb:
         # specific flatfile case, when parsing
         # Missing attributes: ztor, width
 
+        isnan = np.isnan
+
         strike, dip, rake = \
             record['strike_1'], record['dip_1'], record['rake_1']
 
@@ -1486,6 +1503,9 @@ class GMdb:
         setattr(rctx, 'dip', dip)
         setattr(rctx, 'rake', rake)
         setattr(rctx, 'hypo_depth', record['event.depth'])
+        _ = record['depth_top_of_rupture']
+        setattr(rctx, 'ztor', rctx.hypo_depth if isnan(_) else _)
+        setattr(rctx, 'width', record['rupture_width'])
         setattr(rctx, 'hypo_lat', record['event_latitude'])
         setattr(rctx, 'hypo_lon', record['event_longitude'])
 
@@ -1510,6 +1530,7 @@ class GMdb:
 
             observations[imtx].append(value)
 
+sm_database, sm_table
 
 def get_interpolated_period(target_period, periods, values):
     """
