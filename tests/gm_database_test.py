@@ -15,7 +15,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
-from smtk.residuals.gmpe_residuals import get_interpolated_period
 """
 Tests the GM database parsing and selection
 """
@@ -29,72 +28,36 @@ import unittest
 import numpy as np
 # import smtk.gm_database
 from tables.file import open_file
-from tables.description import Float32Col, Col, IsDescription, Float64Col, \
-    StringCol, EnumCol
+from tables.description import IsDescription, Time64Col
 
-from smtk.gm_database import GMDatabaseParser, GMDatabaseTable, records_where, \
-    read_where, get_dbnames, _normalize_condition, GMdb
+
+from smtk.residuals.gmpe_residuals import get_interpolated_period
+from smtk.gm_database import GMDatabaseParser, GMDatabaseTable, \
+    records_where, read_where, get_dbnames, _normalize_condition, GMdb, \
+    DateTimeCol, Float64Col, Float32Col, EnumCol, StringCol
 
 BASE_DATA_PATH = os.path.join(
     os.path.join(os.path.dirname(__file__), "file_samples")
     )
 
-class Mixin(object):
-
-    def __init__(self, **kwargs):
-        self._min = kwargs.pop('min_value', None)
-        self._max = kwargs.pop('max_value', None)
-
-
-class Float64C(Float64Col):
-
-    def __init__(self, shape=(), min_value=None, max_value=None):
-        super(Float64C, self).__init__(shape=shape, dflt=np.nan)
-        self._min, self._max = min_value, max_value
-
-
-class DTimeCol(StringCol):
-
-    def __init__(self, min_val=None, max_val=None):
-        super(DTimeCol, self).__init__(itemsize=19)
-        self._min, self._max = min_val, max_val
-
-    def prefix(self):  # make pytables happy. See description line 2013
-        return 'String'
-
-
-class ECol(EnumCol):
-
-    def __init__(self, values):
-        dflt = ''
-        if dflt not in values:
-            values = [''] + list(values)
-        type_ = 'uint64'
-        if len(values) <= 255:
-            type_ = 'uint8'
-        elif len(values) <= 65535:
-            type_ = 'uint16'
-        elif len(values) <= 4294967295:
-            type_ = 'uint32'
-        super(ECol, self).__init__(values, dflt, type_)
-
-    def prefix(self):  # make pytables happy. See description line 2013
-        return 'Enum'
-
 class ColTestCase(unittest.TestCase):
 
     def test_scol(self):
-        scol = DTimeCol()
-        fcol = Float64C()
+        scol = DateTimeCol()
+        fcol = Float64Col()
         sdf = 9
+
 
 class DummyTable(IsDescription):
     '''dummy table class used for testing pytables'''
     floatcol = Float32Col()
     arraycol = Float32Col(shape=(10,))
     stringcol = StringCol(5)
-    ecol = ECol(['a', 'b', 'c'])
+    ecol = EnumCol(['a', 'b', 'c'])
+    tcol = Time64Col(dflt=np.nan)
 #    ballColor = EnumCol(['orange'], 'black', base='uint8')
+
+
 
 
 class GmDatabaseTestCase(unittest.TestCase):
@@ -121,7 +84,66 @@ class GmDatabaseTestCase(unittest.TestCase):
         if os.path.isfile(cls.output_file):
             os.remove(cls.output_file)
 
-    def test_pytables(self):
+    def test_timestamp(self):
+        timestamp = GMDatabaseParser.timestamp
+        d = datetime(2006, 3, 31, 11, 12, 34)
+        prevval = None
+        for val in [d, d.isoformat(), [d, d], [d.isoformat(), d.isoformat()]]:
+            _ = timestamp(val)
+            if prevval is None:
+                prevval = _
+            else:
+                if hasattr(_, '__len__'):
+                    self.assertTrue((_ == prevval).all())
+                else:
+                    self.assertEqual(prevval, _)
+
+        ddd = b''
+        self.assertTrue(np.isnan(timestamp(ddd)))
+
+        ddd = datetime(1970, 1, 1)
+        self.assertEqual(0, timestamp(ddd))
+
+        ddd = datetime(1969, 12, 31, 23, 59, 59)
+        self.assertEqual(-1.0, timestamp(ddd))
+
+        ddd = datetime(1969, 12, 31, 23, 59, 59, 500000)
+        self.assertEqual(-.5, timestamp(ddd))
+
+        dd = [d, b'', 'abc', d]
+        _ = timestamp(dd)
+        self.assertEqual(_[0], prevval)
+        self.assertTrue(np.isnan(_[1]))
+        self.assertTrue(np.isnan(_[2]))
+        self.assertEqual(_[3], prevval)
+
+        val1 = timestamp('2006')
+        val2 = timestamp('2006-01-01')
+        val3 = timestamp('2006-01-01 00:00:00')
+        val4 = timestamp('2006-01-01T00:00:00')
+        self.assertTrue(val1 == val2 == val3 ==val4)
+
+    def test_float64(self):
+        float64 = GMDatabaseParser.float
+        d = 0.357
+        for val in [d, str(d), [d, d], [str(d), str(d)]]:
+            _ = float64(val)
+            if hasattr(_, '__len__'):
+                self.assertTrue((_ == d).all())
+            else:
+                self.assertEqual(d, _)
+
+        ddd = b''
+        self.assertTrue(np.isnan(float64(ddd)))
+
+        ddd = [d, 'abc', b'']
+        _ = float64(ddd)
+        self.assertEqual(d, ddd[0])
+        self.assertTrue(np.isnan(_[1]))
+        self.assertTrue(np.isnan(_[2]))
+
+
+    def test_pytables_dummytable(self):
         '''Test some pytable casting stuff NOT clearly documented :( '''
 
         with open_file(self.output_file, 'a') as h5file:
@@ -141,19 +163,36 @@ class GmDatabaseTestCase(unittest.TestCase):
                 return row[field]  # pylint: disable=unsubscriptable-object
 
             # assert the value is the default:
-            self.assertEqual(get('floatcol'), 0)
+            self.assertTrue(np.isnan(get('floatcol')))
             # what if we supply a string? TypeError
             with self.assertRaises(TypeError):
                 set('floatcol', 'a')
+            # same if string empty: TypeError
+            with self.assertRaises(TypeError):
+                set('floatcol', '')
             # assert the value is still the default:
-            self.assertEqual(get('floatcol'), 0)
+            self.assertTrue(np.isnan(get('floatcol')))
             # what if we supply a castable string instead? it is casted
             set('floatcol', '5.5')
             self.assertEqual(get('floatcol'), 5.5)
+            # what if we supply a castable string instead WITH SPACES? casted
+            set('floatcol', '1.0 ')
+            self.assertEqual(get('floatcol'), 1.0)
             # what if we supply a scalr instead of an array?
             # the value is broadcasted:
             set('arraycol', 5)
             self.assertTrue(np.allclose([5] * 10, get('arraycol')))
+            # what if arraycol string?
+            set('arraycol', '5')
+            self.assertTrue(np.allclose([5] * 10, get('arraycol')))
+            # what if arraycol array of strings?
+            set('arraycol', [str(_) for _ in [5] * 10])
+            self.assertTrue(np.allclose([5] * 10, get('arraycol')))
+            # what if arraycol array of strings with one nan?
+            aaa = [str(_) for _ in [5] * 10]
+            aaa[3] = 'asd'
+            with self.assertRaises(ValueError):
+                set('arraycol', aaa)
             # what if we supply a float out of bound? no error
             # but value is saved differently!
             maxfloat32 = 3.4028235e+38
@@ -172,6 +211,21 @@ class GmDatabaseTestCase(unittest.TestCase):
             set('arraycol', [1, 2, 3, 4, float('nan'), 6.6, 7.7, 8.8, 9.9,
                              10.00045])
             set('stringcol', "abc")
+
+            #test time64 col:
+            tme = get('tcol')
+            self.assertTrue(np.isnan(tme))
+            dtime = datetime.utcnow()
+            with self.assertRaises(TypeError):
+                set('tcol', dtime)
+            tme = get('tcol')
+            self.assertTrue(np.isnan(tme))
+            # now set a numpy datetim64. ERROR! WTF!
+            tme = np.datetime64('2007-02-01T00:01:04')
+            with self.assertRaises(TypeError):
+                set('tcol', tme)
+            # OK conclusion: pytables TimeCol is absolutely USELESS
+
             row.append()  # pylint: disable=no-member
             table.flush()
 
@@ -475,10 +529,8 @@ class GmDatabaseTestCase(unittest.TestCase):
                             expected = 'event_country %s b\'%s\'' % (opr, val)
                         self.assertEqual(_normalize_condition(cond), expected)
                         cond = 'event_time %s "%s"' % (opr, val)
-                        expected_val = GMDatabaseParser.normalize_dtime(val)
-                        expected = \
-                            expected.replace('event_country', 'event_time').\
-                            replace(val, expected_val)
+                        expected_val = str(GMDatabaseParser.timestamp(val))
+                        expected = 'event_time %s %s' % (opr, expected_val)
                         self.assertEqual(_normalize_condition(cond), expected)
                         # now these cases should raise:
                         for col in ['pga', 'vs30_measured', 'npass']:
@@ -527,9 +579,8 @@ class GmDatabaseTestCase(unittest.TestCase):
         for test in ['2006', '2006-12-31', '2016-12-31 00:01:02',
                      '2016-12-31T01:02:03']:
             cond = 'event_time == "%s"' % test
-            expected_val = GMDatabaseParser.normalize_dtime(test)
-            expected = 'event_time == b\'%s\'' % expected_val if self.py3\
-                 else 'event_time == \'%s\'' % expected_val
+            expected_val = str(GMDatabaseParser.timestamp(test))
+            expected = 'event_time == %s' % expected_val
             self.assertEqual(expected, _normalize_condition(cond))
             cond = 'event_time == b"%s"' % test
             self.assertEqual(expected, _normalize_condition(cond))

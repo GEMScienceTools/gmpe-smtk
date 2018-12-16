@@ -79,21 +79,29 @@ class Float16Col(_Float16Col):
         self.min_value, self.max_value = min, max
 
 
-class DateTimeCol(_StringCol):
+class DateTimeCol(_Float64Col):
     '''subclasses pytables StringCol, to provide a storage class for date
-    times in iso format. Use :function:`normalize_dtime` before writing
-    an element under this column (this is done by default for 'event_time'
-    flat files column). Also implements optional min max attributes
-    (to be given as byte strings in ISO format, in case)'''
+    times in iso format. Use :method:`GmDatabaseParser.timestamp` before
+    writing an element under this column (this is done by default for
+    'event_time' flat files column). Also implements optional min max
+    attributes (to be given as byte strings in ISO format, in case)'''
     def __init__(self, shape=(), min=None, max=None):  # @ReservedAssignment
-        super(DateTimeCol, self).__init__(itemsize=19, shape=shape, dflt=b'')
+        super(DateTimeCol, self).__init__(shape=shape, dflt=np.nan)
+        if min is not None:
+            min = GMDatabaseParser.timestamp(min)
+            if np.isnan(min):
+                raise ValueError('"%s" is not a date-time' % str(min))
+        if max is not None:
+            max = GMDatabaseParser.timestamp(max)
+            if np.isnan(max):
+                raise ValueError('"%s" is not a date-time' % str(max))
         self.min_value, self.max_value = min, max
         # needed when parsing a numexpr to distinguish from
-        # StringCol:
+        # _Float64Col:
         self.is_datetime_str = True
 
     def prefix(self):  # make pytables happy. See description.py line 2013
-        return 'String'
+        return 'Float64'
 
 
 class StringCol(_StringCol):
@@ -148,82 +156,79 @@ MECHANISM_TYPE = {"Normal": -90.0,
 # later. This also permits to have the scalar columns in one place, as scalar
 # columns only are selectable in pytables by default
 GMDatabaseTable = dict(
-    record_id=UInt32Col(), # max id: 4,294,967,295
+    record_id=UInt32Col(),  # max id: 4,294,967,295
     event_id=StringCol(20),
     event_name=StringCol(itemsize=40),
-#    event_country=StringCol(itemsize=30),
-#     event_time=DateTimeCol(),  # In ISO Format YYYY-MM-DDTHH:mm:ss
-    # Note: if we want to support YYYY-MM-DD only be aware that:
-    # YYYY-MM-DD == YYYY-MM-DDT00:00:00
-    # Note2: no support for microseconds for the moment
-#    event_latitude=Float64Col(min=-90, max=90),
-#    event_longitude=Float64Col(min=-180, max=180),
-#    hypocenter_depth=Float32Col(),
-#    magnitude=Float16Col(),
-#    magnitude_type=StringCol(itemsize=5),
-#    magnitude_uncertainty=Float32Col(),
-#    tectonic_environment=StringCol(itemsize=30),
-#    strike_1=Float32Col(),
-#    strike_2=Float32Col(),
-#    dip_1=Float32Col(),
-#    dip_2=Float32Col(),
-#    rake_1=Float32Col(),
-#    rake_2=Float32Col(),
+    event_country=StringCol(itemsize=30),
+    event_time=DateTimeCol(),  # In ISO Format YYYY-MM-DDTHH:mm:ss
+    event_latitude=Float64Col(min=-90, max=90),
+    event_longitude=Float64Col(min=-180, max=180),
+    hypocenter_depth=Float32Col(),
+    magnitude=Float16Col(),
+    magnitude_type=StringCol(itemsize=5),
+    magnitude_uncertainty=Float32Col(),
+    tectonic_environment=StringCol(itemsize=30),
+    strike_1=Float32Col(),
+    strike_2=Float32Col(),
+    dip_1=Float32Col(),
+    dip_2=Float32Col(),
+    rake_1=Float32Col(),
+    rake_2=Float32Col(),
     style_of_faulting=EnumCol(list(MECHANISM_TYPE.keys())),
-#    depth_top_of_rupture=Float32Col(),
-#    rupture_length=Float32Col(),
-#    rupture_width=Float32Col(),
+    depth_top_of_rupture=Float32Col(),
+    rupture_length=Float32Col(),
+    rupture_width=Float32Col(),
     station_id=StringCol(itemsize=20),
-    # station_name=StringCol(itemsize=40),
-#    station_country=StringCol(itemsize=30),
-#    station_latitude=Float64Col(min=-90, max=90),
-#    station_longitude=Float64Col(min=-180, max=180),
-#    station_elevation=Float32Col(),
-#    vs30=Float32Col(),
-#    vs30_measured=BoolCol(dflt=True),
-#    vs30_sigma=Float32Col(),
-#    depth_to_basement=Float32Col(),
-#    z1=Float32Col(),
-#    z2pt5=Float32Col(),
-#    repi=Float32Col(),  # epicentral_distance
-#    rhypo=Float32Col(),  # Float32Col
-#    rjb=Float32Col(),  # joyner_boore_distance
-#    rrup=Float32Col(),  # rupture_distance
-#    rx=Float32Col(),
-#    ry0=Float32Col(),
-#    azimuth=Float32Col(),
-#    digital_recording=BoolCol(dflt=True),
-#    type_of_filter=StringCol(itemsize=25),
-#    npass=Int8Col(),
-#    nroll=Float32Col(),
-#     hp_h1=Float32Col(),
-#     hp_h2=Float32Col(),
-#     lp_h1=Float32Col(),
-#     lp_h2=Float32Col(),
-#    factor=Float32Col(),
-#    lowest_usable_frequency_h1=Float32Col(),
-#    lowest_usable_frequency_h2=Float32Col(),
-#    lowest_usable_frequency_avg=Float32Col(),
-#    highest_usable_frequency_h1=Float32Col(),
-#    highest_usable_frequency_h2=Float32Col(),
-#    highest_usable_frequency_avg=Float32Col(),
-#     backarc=BoolCol(dflt=False)
-#    pga=Float64Col(),
-#    _pga_components=Float64Col(shape=(3,)),
-#    pgv=Float64Col(),
-#    _pgv_components=Float64Col(shape=(3,)),
+    station_name=StringCol(itemsize=40),
+    station_country=StringCol(itemsize=30),
+    station_latitude=Float64Col(min=-90, max=90),
+    station_longitude=Float64Col(min=-180, max=180),
+    station_elevation=Float32Col(),
+    vs30=Float32Col(),
+    vs30_measured=BoolCol(dflt=True),
+    vs30_sigma=Float32Col(),
+    depth_to_basement=Float32Col(),
+    z1=Float32Col(),
+    z2pt5=Float32Col(),
+    repi=Float32Col(),  # epicentral_distance
+    rhypo=Float32Col(),  # Float32Col
+    rjb=Float32Col(),  # joyner_boore_distance
+    rrup=Float32Col(),  # rupture_distance
+    rx=Float32Col(),
+    ry0=Float32Col(),
+    azimuth=Float32Col(),
+    digital_recording=BoolCol(dflt=True),
+    type_of_filter=StringCol(itemsize=25),
+    npass=Int8Col(),
+    nroll=Float32Col(),
+    hp_h1=Float32Col(),
+    hp_h2=Float32Col(),
+    lp_h1=Float32Col(),
+    lp_h2=Float32Col(),
+    factor=Float32Col(),
+    lowest_usable_frequency_h1=Float32Col(),
+    lowest_usable_frequency_h2=Float32Col(),
+    lowest_usable_frequency_avg=Float32Col(),
+    highest_usable_frequency_h1=Float32Col(),
+    highest_usable_frequency_h2=Float32Col(),
+    highest_usable_frequency_avg=Float32Col(),
+    backarc=BoolCol(dflt=False),
+    pga=Float64Col(),
+    _pga_components=Float64Col(shape=(3,)),
+    pgv=Float64Col(),
+    _pgv_components=Float64Col(shape=(3,)),
     sa=Float64Col(),
     _sa_components=Float64Col(shape=(3,)),
-#    pgd=Float64Col(),
-#    _pgd_components=Float64Col(shape=(3,)),
-#    duration_5_75=Float64Col(),
-#    _duration_5_75_components=Float64Col(shape=(3,)),
-#    duration_5_95=Float64Col(),
-#    _duration_5_95_components=Float64Col(shape=(3,)),
-#    arias_intensity=Float64Col(),
-#    _arias_intensity_components=Float64Col(shape=(3,)),
-#    cav=Float64Col(),
-#    _cav_component=Float64Col(shape=(3,))
+    pgd=Float64Col(),
+    _pgd_components=Float64Col(shape=(3,)),
+    duration_5_75=Float64Col(),
+    _duration_5_75_components=Float64Col(shape=(3,)),
+    duration_5_95=Float64Col(),
+    _duration_5_95_components=Float64Col(shape=(3,)),
+    arias_intensity=Float64Col(),
+    _arias_intensity_components=Float64Col(shape=(3,)),
+    cav=Float64Col(),
+    _cav_component=Float64Col(shape=(3,))
 )
 
 
@@ -460,7 +465,8 @@ class GMDatabaseParser(object):
         except Exception as _:  # disable=broad-except
             # it might seem weird to return true on exceptions, but this method
             # should only check wheather there is certainly a unit
-            # mismatch between sa and pga, and int that case only return True
+            # mismatch between sa and pga, when they are given (i.e., not in
+            # this case)
             pass
         return True
 
@@ -527,32 +533,93 @@ class GMDatabaseParser(object):
                     for i, fieldname in enumerate(evtime_fieldnames)]
             dtime = datetime(*args)
 
-        return cls.normalize_dtime(dtime)
+        return cls.timestamp(dtime)
+
+#     @staticmethod
+#     def normalize_dtime(dtime):
+#         '''Returns a **string** representing the argument in ISO 8061 format:
+#             '%Y-%m-%dT%H:%M:%S'
+# 
+#         :param dtime: string or datetime. In the former case, it must be
+#             in any of these formats:
+#             '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%Y'
+#         :return: ISO formatted string representing `dtime`
+#         :raises: ValueError (string not parsable) or TypeError (`dtime`
+#             neither datetime not string)
+#         '''
+#         base_format = '%Y-%m-%dT%H:%M:%S'
+#         if not isinstance(dtime, datetime):
+#             formats_ = [base_format, '%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%Y']
+#             for frmt in formats_:
+#                 try:
+#                     dtime = datetime.strptime(dtime, frmt)
+#                     break
+#                 except ValueError:
+#                     pass
+#             else:
+#                 raise ValueError('Unparsable as date-time: "%s"' % str(dtime))
+#         return dtime.strftime(base_format)
 
     @staticmethod
-    def normalize_dtime(dtime):
-        '''Returns a datetime *string* in ISO format ('%Y-%m-%dT%H:%M:%S')
-        representing `dtime`
+    def timestamp(value):
+        '''converts value to timestamp (numpy float64). Silently coerces
+            erros to NaN(s) when needed
 
-        :param dtime: string or datetime. In the former case, it must be
-            in any of these formats:
+        :param value: string representing a datetime in iso-8601 format,
+            or datetime, or any list/tuple of the above two types.
+            If string, the formats can be:
             '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%Y'
-        :return: ISO formatted string representing `dtime`
-        :raises: ValueError (string not parsable) or TypeError (`dtime`
-            neither datetime not string)
+            '%Y' (e.g. '2006' == '2006-01-01T00:00:00')
+            '%Y-%m-%d' (e.g., '2006-01-01' == '2006-01-01T00:00:00')
+            '%Y-%m-%dT%H:%M:%S' or
+            '%Y-%m-%d %H:%M:%S'
+
+        :return: a numpy float64 (array or scalar depending on the input type)
         '''
-        base_format = '%Y-%m-%dT%H:%M:%S'
-        if not isinstance(dtime, datetime):
-            formats_ = [base_format, '%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%Y']
-            for frmt in formats_:
-                try:
-                    dtime = datetime.strptime(dtime, frmt)
-                    break
-                except ValueError:
-                    pass
-            else:
-                raise ValueError('Unparsable as date-time: "%s"' % str(dtime))
-        return dtime.strftime(base_format)
+        def dtime(val):
+            '''np.datetime64('') -> np.datetime64('NaT') ok, but
+            we want also np.datetime64('abc') to be np.datetime64('NaT')'''
+            try:
+                return np.datetime64(val)
+            except ValueError:
+                return np.datetime64('NaT')
+
+        isarray = (hasattr(value, '__len__') and
+                   not isinstance(value, (bytes, str)))
+        # did not find any better way to make array case and scalar case
+        # behave the same: np.array(value, dtype='datetime64') does not
+        # produce the same result as below (and numpy doc are nebulous)
+        newvalue = np.array([dtime(_) for _ in value]) if isarray \
+            else dtime(value)
+        unix_epoch = \
+            np.datetime64(0, 's')  # pylint: disable=too-many-function-args
+        one_second = \
+            np.timedelta64(1, 's')  # pylint: disable=too-many-function-args
+        seconds_since_epoch = (newvalue - unix_epoch) / one_second
+        return seconds_since_epoch
+
+    @staticmethod
+    def float(value):
+        '''Converts value to float (numpy float64). Silently coerces
+            erros to NaN(s) when needed
+
+        :param value: number, string representing a number, or any list/tuple
+            of the above two types.
+
+        :return: a numpy float64 (array or scalar depending on the input type)
+        '''
+        def _float64(val):
+            '''np.asarray(.. dtype=float) fails if any value is not castable.
+            We want silently return an array with nan in case'''
+            try:
+                return np.float64(val)
+            except ValueError:
+                return np.nan
+
+        isarray = (hasattr(value, '__len__') and
+                   not isinstance(value, (bytes, str)))
+        return np.array([_float64(_) for _ in value]) if isarray \
+            else _float64(value)
 
     @classmethod
     def _get_pga_column(cls, csv_fieldnames):
@@ -759,11 +826,13 @@ def _normalize_condition(condition):
 
             if colname is not None:
                 if colname != tokenstr or tokentype != ttypes['NAME']:
-                    _type_check(tokentype, tokenstr, colname,
-                                dbcolumns[colname], ttypes['STR'],
-                                ttypes['NUM'])
-                    if getattr(dbcolumns[colname], "is_datetime_str", False)\
-                            and tokentype == ttypes['STR']:
+                    is_dtime_col = getattr(dbcolumns[colname],
+                                           "is_datetime_str", False)
+                    if not is_dtime_col:
+                        _type_check(tokentype, tokenstr, colname,
+                                    dbcolumns[colname], ttypes['STR'],
+                                    ttypes['NUM'])
+                    if is_dtime_col and tokentype == ttypes['STR']:
                         dtime_indices.append(len(result))
                     elif py3 and tokentype == ttypes['STR']:
                         str_indices.append(len(result))
@@ -821,8 +890,10 @@ def _normalize_tokens(tokens, dtime_indices, str_indices, nan_indices):
         if tokenstr[0:1] == 'b':
             tokenstr = tokenstr[1:]
         string = shlex.split(tokenstr)[0]
-        tokens[i][1] = str(GMDatabaseParser.normalize_dtime(string).
-                           encode('utf8'))
+        value = GMDatabaseParser.timestamp(string)
+        if np.isnan(value):
+            raise ValueError('not a date-time: %s' % string)
+        tokens[i][1] = str(value)
 
     for i in str_indices:
         tokenstr = tokens[i][1]  # it is quoted, e.g. '"string"', so use shlex:
@@ -1082,14 +1153,14 @@ class GMdb:
                 continue
             try:
                 # remember: if val is a castable string -> ok
-                #   (e.g. table column float, val is '5.5')
+                #   (e.g. table column float, val is '5.5' or '5.5 ')
                 # if val is out of bounds for the specific type, -> ok
                 #   (casted to the closest value)
                 # if val is scalar and the table column is a N length array,
                 # val it is broadcasted
                 #   (val= 5, then tablerow will have a np.array of N 5s)
                 # TypeError is raised when there is a non castable element
-                #   (e.g. 'abc' for a Float column): in this case pass
+                #   (e.g. 'abc' or '' for a Float column): in this case pass
                 tablerow[col] = csvrow[col]
 
                 bound = getattr(colobj, 'min_value', None)
@@ -1277,7 +1348,7 @@ class GMdb:
                 self._set_sites_context_event(rec, dic['Sites'])
                 self._set_distances_context_event(rec, dic['Distances'])
                 self._add_observations(rec, imts, dic['Observations'],
-                                       sa_periods)
+                                       sa_periods, component)
                 dic["Num. Sites"] += 1
 
         # converts to numeric arrays (once at the end is faster, see
@@ -1530,7 +1601,7 @@ class GMdb:
 
             observations[imtx].append(value)
 
-sm_database, sm_table
+# sm_database, sm_table
 
 def get_interpolated_period(target_period, periods, values):
     """
