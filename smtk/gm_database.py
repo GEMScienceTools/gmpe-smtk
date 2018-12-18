@@ -233,7 +233,7 @@ GMDatabaseTable = dict(
 )
 
 
-class GMDatabaseParser(object):
+class GMDatabaseParser(object):  # pylint: disable=useless-object-inheritance
     '''
     Implements a base class for parsing flatfiles in csv format into
     GmDatabase files in HDF5 format. The latter are Table-like heterogeneous
@@ -252,30 +252,6 @@ class GMDatabaseParser(object):
     '''
     # the csv delimiter:
     csv_delimiter = ';'
-
-    _accel_units = ["g", "m/s/s", "m/s**2", "m/s^2",
-                    "cm/s/s", "cm/s**2", "cm/s^2"]
-
-    # the regular expression used to parse SAs periods. Note capturing
-    # group for the SA period:
-    _sa_periods_re = re.compile(r'^\s*sa\s*\((.*)\)\s*$',
-                                re.IGNORECASE)  # @UndefinedVariable
-
-    # the regular expression used to parse PGA periods. Note capturing
-    # group for the PGA unit
-    _pga_unit_re = re.compile(r'^\s*pga\s*\((.*)\)\s*$',
-                              re.IGNORECASE)  # @UndefinedVariable
-
-    # this field is a list of strings telling which are the column names
-    # of the event time. If:
-    # 1. A list of a single item => trivial case, it denotes the event time
-    # column, which must be supplied as ISO format
-    # 2. A list of length 3: => then it denotes the column names of the year,
-    # month and day, respectively, all three int-parsable strings
-    # 3. A list of length 6: then it denotes the column names of the
-    # year, month, day hour minutes seconds, repsectively, all six int-parsable
-    # strings
-    _event_time_colnames = ['year', 'month', 'day', 'hour', 'minute', 'second']
 
     # The csv column names will be then converted according to the
     # `mappings` dict below, where a csv flatfile column is mapped to its
@@ -422,8 +398,9 @@ class GMDatabaseParser(object):
         # there is something wrong and the units of the PGA and SA are not
         # in agreement and an error should be raised.
         try:
-            pga, sa0 = float(rowdict['pga']) / (100*g),\
-                float(rowdict['sa'][0])
+            pga, sa0 = float(rowdict['pga']), float(rowdict['sa'][0])
+#             pga, sa0 = float(rowdict['pga']) / (100*g),\
+#                 float(rowdict['sa'][0])
             retol = abs(max(pga, sa0) / min(pga, sa0))
             if not np.isnan(retol) and round(retol) >= 10:
                 return False
@@ -1201,7 +1178,7 @@ class GMdb:
         # FIXME: nodal_plane_index and component not used. Remove?
         context_dicts = {}
         with self:
-            sa_periods = self.table.sa_periods
+            sa_periods = self.table.attrs.sa_periods
             for rec in self.records:
                 evt_id = rec['event_id']
                 dic = context_dicts.get(evt_id, None)
@@ -1219,7 +1196,7 @@ class GMdb:
                     self._set_event_context(rec, dic['Rupture'],
                                             nodal_plane_index)
                     context_dicts[evt_id] = dic
-                dic['EventIndex'].append(rec['record_id'].item())
+                dic['EventIndex'].append(rec['record_id'])
                 self._set_sites_context_event(rec, dic['Sites'])
                 self._set_distances_context_event(rec, dic['Distances'])
                 self._add_observations(rec, dic['Observations'],
@@ -1257,6 +1234,7 @@ class GMdb:
             if isinstance(att_val, list):
                 setattr(obj, att_name, np.array(att_val))
 
+
     @staticmethod
     def _set_sites_context_event(record, sctx):
         """
@@ -1274,23 +1252,6 @@ class GMdb:
         # whereas this method is called ONCE PER RECORD and appends records
         # data to an already created SitesContext
 
-        # Attributes attached to sctx in the OLD IMPLEMENTATION:
-        # setattr(sctx, 'vs30', np.array(vs30))
-        # if len(longs) > 0:
-        #     setattr(sctx, 'lons', np.array(longs))
-        # if len(lats) > 0:
-        #     setattr(sctx, 'lats', np.array(lats))
-        # if len(depths) > 0:
-        #     setattr(sctx, 'depths', np.array(depths))
-        # if len(vs30_measured) > 0:
-        #     setattr(sctx, 'vs30measured', np.array(vs30_measured))
-        # if len(z1pt0) > 0:
-        #     setattr(sctx, 'z1pt0', np.array(z1pt0))
-        # if len(z2pt5) > 0:
-        #     setattr(sctx, 'z2pt5', np.array(z2pt5))
-        # if len(backarc) > 0:
-        #     setattr(sctx, 'backarc', np.array(backarc))
-
         # FIXME:
         # deal with non attached attributes
 
@@ -1302,12 +1263,68 @@ class GMdb:
                else record['station_elevation'])
         vs30 = record['vs30']
         append(sctx, 'vs30', vs30)
-        append(sctx, 'vs30_measured', record['vs30_measured'])
+        append(sctx, 'vs30measured', record['vs30_measured'])
         append(sctx, 'z1pt0',  vs30_to_z1pt0_cy14(vs30)
-               if isnan(record['z1pt0']) else record['z1pt0'])
+               if isnan(record['z1']) else record['z1'])
         append(sctx, 'z2pt5',  vs30_to_z2pt5_cb14(vs30)
                if isnan(record['z2pt5']) else record['z2pt5'])
         append(sctx, 'backarc', record['backarc'])
+
+    # def _get_sites_context_event(self, idx):
+    #     """
+    #     Returns the site context for a particular event
+    #     """
+    #     sctx = SitesContext()
+    #     longs = []
+    #     lats = []
+    #     depths = []
+    #     vs30 = []
+    #     vs30_measured = []
+    #     z1pt0 = []
+    #     z2pt5 = []
+    #     backarc = []
+    #     azimuth = []
+    #     hanging_wall = []
+    #     for idx_j in idx:
+    #         # Site parameters
+    #         rup = self.records[idx_j]
+    #         longs.append(rup.site.longitude)
+    #         lats.append(rup.site.latitude)
+    #         if rup.site.altitude:
+    #             depths.append(rup.site.altitude * -1.0E-3)
+    #         else:
+    #             depths.append(0.0)
+    #         vs30.append(rup.site.vs30)
+    #         if rup.site.vs30_measured is not None:
+    #             vs30_measured.append(rup.site.vs30_measured)
+    #         else:
+    #             vs30_measured.append(0)
+    #         if rup.site.z1pt0 is not None:
+    #             z1pt0.append(rup.site.z1pt0)
+    #         else:
+    #             z1pt0.append(vs30_to_z1pt0_cy14(rup.site.vs30))
+    #         if rup.site.z2pt5 is not None:
+    #             z2pt5.append(rup.site.z2pt5)
+    #         else:
+    #             z2pt5.append(vs30_to_z2pt5_cb14(rup.site.vs30))
+    #         if ("backarc" in dir(rup.site)) and rup.site.backarc is not None:
+    #             backarc.append(rup.site.backarc)
+    #     setattr(sctx, 'vs30', np.array(vs30))
+    #     if len(longs) > 0:
+    #         setattr(sctx, 'lons', np.array(longs))
+    #     if len(lats) > 0:
+    #         setattr(sctx, 'lats', np.array(lats))
+    #     if len(depths) > 0:
+    #         setattr(sctx, 'depths', np.array(depths))
+    #     if len(vs30_measured) > 0:
+    #         setattr(sctx, 'vs30measured', np.array(vs30_measured))
+    #     if len(z1pt0) > 0:
+    #         setattr(sctx, 'z1pt0', np.array(z1pt0))
+    #     if len(z2pt5) > 0:
+    #         setattr(sctx, 'z2pt5', np.array(z2pt5))
+    #     if len(backarc) > 0:
+    #         setattr(sctx, 'backarc', np.array(backarc))
+    #     return sctx
 
     @staticmethod
     def _set_distances_context_event(record, dctx):
@@ -1327,6 +1344,30 @@ class GMdb:
         # data to an already created SitesContext
 
         # Attributes attached to sctx in the OLD IMPLEMENTATION:
+        # if rup.distance.rjb is not None:
+        #     rjb.append(rup.distance.rjb)
+        # else:
+        #     rjb.append(rup.distance.repi)
+        # if rup.distance.rrup is not None:
+        #     rrup.append(rup.distance.rrup)
+        # else:
+        #     rrup.append(rup.distance.rhypo)
+        # if rup.distance.r_x is not None:
+        #     r_x.append(rup.distance.r_x)
+        # else:
+        #     r_x.append(rup.distance.repi)
+        # if ("ry0" in dir(rup.distance)) and rup.distance.ry0 is not None:
+        #     ry0.append(rup.distance.ry0)
+        # if ("rcdpp" in dir(rup.distance)) and\
+        #     rup.distance.rcdpp is not None:
+        #     rcdpp.append(rup.distance.rcdpp)
+        # if rup.distance.azimuth is not None:
+        #     azimuth.append(rup.distance.azimuth)
+        # if rup.distance.hanging_wall is not None:
+        #     hanging_wall.append(rup.distance.hanging_wall)
+        # if "rvolc" in dir(rup.distance) and\
+        #     rup.distance.rvolc is not None:
+        #     rvolc.append(rup.distance.rvolc)
         # setattr(dctx, 'repi', np.array(repi))
         # setattr(dctx, 'rhypo', np.array(rhypo))
         # if len(rjb) > 0:
@@ -1357,26 +1398,20 @@ class GMdb:
 
         # TODO Setting Rjb == Repi and Rrup == Rhypo when missing value
         # is a hack! Need feedback on how to fix
-        if isnan(record['rjb']):
-            record['rjb'] = record['repi']
-        if isnan(record['rrup']):
-            record['rrup'] = record['rhypo']
-        if isnan(record['r_x']):
-            record['r_x'] = -record['repi']
-        if isnan(record['ry0']):
-            record['ry0'] = record['repi']
-        if isnan(record['rcdpp']):
-            record['rcdpp'] = 0
-        if isnan(record['rcdpp']):
-            record['rcdpp'] = 0
         append(dctx, 'repi', record['repi'])
         append(dctx, 'rhypo', record['rhypo'])
-        append(dctx, 'rjb', record['rjb'])
-        append(dctx, 'rrup', record['rrup'])
-        append(dctx, 'rx', record['rx'])
-        append(dctx, 'ry0', record['ry0'])
+        append(dctx, 'rjb',
+               record['repi'] if isnan(record['rjb']) else record['rjb'])
+        append(dctx, 'rrup',
+               record['rhypo'] if isnan(record['rrup']) else record['rrup'])
+        append(dctx, 'rx',
+               record['repi'] if isnan(record['rx']) else record['rx'])
+        append(dctx, 'ry0',
+               record['repi'] if isnan(record['ry0']) else record['ry0'])
+        append(dctx, 'rcdpp', 0.0)
+        append(dctx, 'rvolc', 0.0)
         append(dctx, 'azimuth', record['azimuth'])
-        append(dctx, 'rvolc', 0)
+
 
     def _set_event_context(self, record, rctx, nodal_plane_index=1):
         """
@@ -1452,7 +1487,7 @@ class GMdb:
         setattr(rctx, 'strike', strike)
         setattr(rctx, 'dip', dip)
         setattr(rctx, 'rake', rake)
-        setattr(rctx, 'hypo_depth', record['event.depth'])
+        setattr(rctx, 'hypo_depth', record['hypocenter_depth'])
         _ = record['depth_top_of_rupture']
         setattr(rctx, 'ztor', rctx.hypo_depth if isnan(_) else _)
         setattr(rctx, 'width', record['rupture_width'])
@@ -1473,8 +1508,9 @@ class GMdb:
             elif "SA(" in imtx:
                 target_period = imt.from_string(imtx).period
                 spectrum = record['sa']
-                observations[imtx].append(get_interpolated_period(
-                    target_period, sa_periods, spectrum) / hundred_g)
+                value = \
+                    get_interpolated_period(target_period, sa_periods,
+                                            spectrum) / hundred_g
             else:
                 value = record[imtx.lower()]
 

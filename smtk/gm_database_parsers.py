@@ -29,6 +29,12 @@ class UserDefinedParser(GMDatabaseParser):
     2. pga column is supposed to be in g unit, but the user can also supply it
         as 'pga(cm/s^2)' or 'pga(m/s^2)'. The column header will
         be recognized as pga and the unit conversion will be done automatically
+        A column 'pga' can be also given but then there must be a column
+        'acceleration_unit' with one of the values 'g', 'cm/s^2', 'm/s^2'
+    3. Event time can be given as datetime in ISO format under the column
+        'event_time' , or as separate columns 'year' 'month' 'day' /
+        'year', 'month', 'day', 'hour', 'minute' ,' second'.
+    4. All columns will be converted to lower case before processing
 
     The parsing is done in the `parse` method. The typical workflow
     is to implement a new subclass for each new flatfile released.
@@ -38,8 +44,7 @@ class UserDefinedParser(GMDatabaseParser):
     is performed in-place on each flatfile row. For more details, see
     the :method:`parse_row` method docstring
     '''
-    # the csv delimiter:
-    csv_delimiter = ';'
+    csv_delimiter = ';'  # the csv delimiter (same as superclass)
 
     _accel_units = ["g", "m/s/s", "m/s**2", "m/s^2",
                     "cm/s/s", "cm/s**2", "cm/s^2"]
@@ -310,6 +315,11 @@ class EsmParser(GMDatabaseParser):
         '''
         tofloat = cls.float  # coerces to nan in case of errors
 
+        def tofloatabs(val):
+            '''ESM not reporting correctly some values: PGA, PGV, PGD and SA
+            should always be positive (absolute value)'''
+            return np.abs(tofloat(val))
+
         # convert event time from cells into a timestamp:
         rowdict['event_time'] = cls.timestamp(rowdict.get('event_time', ''))
 
@@ -350,11 +360,11 @@ class EsmParser(GMDatabaseParser):
         # vs30_measure is False
         # Othersie, vs30 is obviously missing and vs30 measured is not given
         # (check needs to be False by default)
-        if rowdict.get('vs30_meas_sec', ''):
-            rowdict['vs30'] = rowdict['vs30_meas_sec']
+        if rowdict.get('vs30_m_sec', ''):
+            rowdict['vs30'] = rowdict['vs30_m_sec']
             rowdict['vs30_measured'] = True
-        elif rowdict.get('vs30_sec_WA', ''):
-            rowdict['vs30'] = rowdict['vs30_sec_WA']
+        elif rowdict.get('vs30_m_sec_WA', ''):
+            rowdict['vs30'] = rowdict['vs30_m_sec_WA']
             rowdict['vs30_measured'] = False
 
         # rhyopo is sqrt of repi**2 + event_depth**2 (basic Pitagora)
@@ -370,23 +380,23 @@ class EsmParser(GMDatabaseParser):
         dflt, cfunc, fromg = np.nan, SCALAR_XY['Geometric'],\
             lambda val: sm_utils.convert_accel_units(val, 'g')
         rowdict['_pga_components'] = \
-            [fromg(tofloat(rowdict.pop('U_pga', dflt))),
-             fromg(tofloat(rowdict.pop('V_pga', dflt))),
-             fromg(tofloat(rowdict.pop('W_pga', dflt)))]
+            [(tofloatabs(rowdict.pop('U_pga', dflt))),
+             (tofloatabs(rowdict.pop('V_pga', dflt))),
+             (tofloatabs(rowdict.pop('W_pga', dflt)))]
         rowdict['pga'] = cfunc(rowdict['_pga_components'][0],
                                rowdict['_pga_components'][1])
 
         # U_pgv    V_pgv    W_pgv are the three components of pgv
-        rowdict['_pgv_components'] = [tofloat(rowdict.pop('U_pgv', dflt)),
-                                      tofloat(rowdict.pop('V_pgv', dflt)),
-                                      tofloat(rowdict.pop('W_pgv', dflt))]
+        rowdict['_pgv_components'] = [tofloatabs(rowdict.pop('U_pgv', dflt)),
+                                      tofloatabs(rowdict.pop('V_pgv', dflt)),
+                                      tofloatabs(rowdict.pop('W_pgv', dflt))]
         rowdict['pgv'] = cfunc(rowdict['_pgv_components'][0],
                                rowdict['_pgv_components'][1])
 
         # U_pgd    V_pgd    W_pgd are the three components of pgd
-        rowdict['_pgd_components'] = [tofloat(rowdict.pop('U_pgd', dflt)),
-                                      tofloat(rowdict.pop('V_pgd', dflt)),
-                                      tofloat(rowdict.pop('W_pgd', dflt))]
+        rowdict['_pgd_components'] = [tofloatabs(rowdict.pop('U_pgd', dflt)),
+                                      tofloatabs(rowdict.pop('V_pgd', dflt)),
+                                      tofloatabs(rowdict.pop('W_pgd', dflt))]
         rowdict['pgd'] = cfunc(rowdict['_pgd_components'][0],
                                rowdict['_pgd_components'][1])
 
@@ -416,10 +426,10 @@ class EsmParser(GMDatabaseParser):
                   rowdict['_arias_intensity_components'][1])
 
         # SA columns are defined in `get_sa_columns`
-        sa_u = [tofloat(rowdict[_]) for _ in sa_colnames]
-        sa_v = [tofloat(rowdict[_]) for _ in
+        sa_u = [tofloatabs(rowdict[_]) for _ in sa_colnames]
+        sa_v = [tofloatabs(rowdict[_]) for _ in
                 (_.replace('U_', 'V_') for _ in sa_colnames)]
-        sa_w = [tofloat(rowdict[_]) for _ in
+        sa_w = [tofloatabs(rowdict[_]) for _ in
                 (_.replace('U_', 'W_') for _ in sa_colnames)]
         rowdict['_sa_components'] = np.array([sa_u, sa_v, sa_w])
         rowdict['sa'] = cfunc(rowdict['_sa_components'][0],
