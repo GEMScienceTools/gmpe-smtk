@@ -41,8 +41,8 @@ import smtk.intensity_measures as ims
 from openquake.hazardlib import imt
 from smtk.strong_motion_selector import SMRecordSelector
 from smtk.trellis.trellis_plots import _get_gmpe_name
-from smtk.gm_database import GMdb
-
+from smtk.sm_table import GroundMotionTable
+from smtk.sm_utils import SCALAR_XY, get_interpolated_period
 
 GSIM_LIST = get_available_gsims()
 GSIM_KEYS = set(GSIM_LIST.keys())
@@ -78,31 +78,6 @@ def _check_gsim_list(gsim_list):
         else:
             output_gsims.append((gsim, GSIM_LIST[gsim]()))
     return OrderedDict(output_gsims)
-
-
-def get_interpolated_period(target_period, periods, values):
-    """
-    Returns the spectra interpolated in loglog space
-    :param float target_period:
-        Period required for interpolation
-    :param np.ndarray periods:
-        Spectral Periods
-    :param np.ndarray values:
-        Ground motion values
-    """
-    if (target_period < np.min(periods)) or (target_period > np.max(periods)):
-        return None, "Period not within calculated range %s"
-    lval = np.where(periods <= target_period)[0][-1]
-    uval = np.where(periods >= target_period)[0][0]
-    if (uval - lval) == 0:
-        return values[lval]
-    else:
-        dy = np.log10(values[uval]) - np.log10(values[lval])
-        dx = np.log10(periods[uval]) - np.log10(periods[lval])
-        return 10.0 ** (
-            np.log10(values[lval]) +
-            (np.log10(target_period) - np.log10(periods[lval])) * dy / dx
-            )
 
 
 def get_geometric_mean(fle):
@@ -234,12 +209,6 @@ SPECTRA_FROM_FILE = {"Geometric": get_geometric_mean,
                      "GMRotI50": get_gmroti50,
                      "GMRotD50": get_gmrotd50,
                      "RotD50": get_rotd50}
-
-
-SCALAR_XY = {"Geometric": lambda x, y: np.sqrt(x * y),
-             "Arithmetic": lambda x, y: (x + y) / 2.,
-             "Larger": lambda x, y: np.max(np.array([x, y])),
-             "Vectorial": lambda x, y: np.sqrt(x ** 2. + y ** 2.)}
 
 
 def get_scalar(fle, i_m, component="Geometric"):
@@ -415,11 +384,15 @@ class Residuals(object):
                       component="Geometric", normalise=True):
         """
         Calculate the residuals for a set of ground motion records
+
+        :param database: a record database. It can be either a
+            :class:`smtk.sm_database.GroundMotionDatabase` or a
+            :class:`smtk.sm_table.GroundMotionTable`
         """
         # FIXME: this is hacky. One should merge sm and gm databases into
         # a single storage interface backed by a common storage type:
         calculate_observations = True
-        if isinstance(database, GMdb):
+        if isinstance(database, GroundMotionTable):
             contexts = database.get_contexts(self.imts,
                                              nodal_plane_index,
                                              component)

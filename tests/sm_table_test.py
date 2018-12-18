@@ -26,14 +26,14 @@ from datetime import datetime
 # import pprint
 import unittest
 import numpy as np
-# import smtk.gm_database
+# import smtk.sm_table
 from tables.file import open_file
 from tables.description import IsDescription, Time64Col, EnumCol as _EnumCol
 
-from smtk.gm_database_parsers import UserDefinedParser, EsmParser
-from smtk.residuals.gmpe_residuals import get_interpolated_period
-from smtk.gm_database import GMDatabaseParser, GMDatabaseTable, \
-    records_where, read_where, get_dbnames, _normalize_condition, GMdb, \
+from smtk.sm_table_parsers import UserDefinedParser, EsmParser
+from smtk.sm_table import GMTableParser, GMTableDescription, \
+    records_where, read_where, get_dbnames, _normalize_condition, \
+    GroundMotionTable, \
     DateTimeCol, Float64Col, Float32Col, StringCol
 
 BASE_DATA_PATH = os.path.join(
@@ -59,10 +59,8 @@ class DummyTable(IsDescription):
 #    ballColor = EnumCol(['orange'], 'black', base='uint8')
 
 
-
-
-class GmDatabaseTestCase(unittest.TestCase):
-    '''tests Gm database parser and selection'''
+class GroundMotionTableTestCase(unittest.TestCase):
+    '''tests GroundMotionTable and selection'''
     @classmethod
     def setUpClass(cls):
 
@@ -86,7 +84,7 @@ class GmDatabaseTestCase(unittest.TestCase):
             os.remove(cls.output_file)
 
     def test_timestamp(self):
-        timestamp = GMDatabaseParser.timestamp
+        timestamp = GMTableParser.timestamp
         d = datetime(2006, 3, 31, 11, 12, 34)
         prevval = None
         for val in [d, d.isoformat(), [d, d], [d.isoformat(), d.isoformat()]]:
@@ -125,7 +123,7 @@ class GmDatabaseTestCase(unittest.TestCase):
         self.assertTrue(val1 == val2 == val3 ==val4)
 
     def test_float64(self):
-        float64 = GMDatabaseParser.float
+        float64 = GMTableParser.float
         d = 0.357
         for val in [d, str(d), [d, d], [str(d), str(d)]]:
             _ = float64(val)
@@ -294,7 +292,7 @@ class GmDatabaseTestCase(unittest.TestCase):
         '''parses sample flatfile and perfomrs some tests'''
         # test a file not found
         with self.assertRaises(IOError):
-            with GMdb(self.output_file + 'what',
+            with GroundMotionTable(self.output_file + 'what',
                       dbname='whatever', mode='r') as gmdb:
                 pass
 
@@ -335,7 +333,7 @@ class GmDatabaseTestCase(unittest.TestCase):
         test_col = 'event_name'
         test_col_oldval, test_col_newval = None, b'dummy'
         test_cols_found = 0
-        with GMdb(self.output_file, dbname, 'a') as gmdb:
+        with GroundMotionTable(self.output_file, dbname, 'a') as gmdb:
             tbl = gmdb.table
             ids = list(r['event_id'] for r in tbl.iterrows())
             # assert record ids are the number of rows
@@ -355,7 +353,7 @@ class GmDatabaseTestCase(unittest.TestCase):
             self.assertTrue(test_cols_found == 1)
 
         # assert that we modified the event name
-        with GMdb(self.output_file, dbname, 'r') as gmdb:
+        with GroundMotionTable(self.output_file, dbname, 'r') as gmdb:
             tbl = gmdb.table
             count = 0
             for row in tbl.where('%s == %s' % (test_col, test_col_oldval)):
@@ -373,7 +371,7 @@ class GmDatabaseTestCase(unittest.TestCase):
                                       delimiter=',')
         # open HDF5 with append='a' (the default)
         # and check that wewrote stuff twice
-        with GMdb(self.output_file, dbname, 'r') as gmdb:
+        with GroundMotionTable(self.output_file, dbname, 'r') as gmdb:
             tbl = gmdb.table
             self.assertTrue(tbl.nrows == written * 2)
             # assert the old rows are there
@@ -389,7 +387,7 @@ class GmDatabaseTestCase(unittest.TestCase):
         log = UserDefinedParser.parse(self.input_file,
                                       output_path=self.output_file,
                                       mode='w', delimiter=',')
-        with GMdb(self.output_file, dbname, 'r') as gmdb:
+        with GroundMotionTable(self.output_file, dbname, 'r') as gmdb:
             tbl = gmdb.table
             self.assertTrue(tbl.nrows == written)
             # assert the old rows are not there anymore
@@ -420,7 +418,7 @@ class GmDatabaseTestCase(unittest.TestCase):
                                       delimiter=',')
 
         dbname = os.path.splitext(os.path.basename(self.output_file))[0]
-        with GMdb(self.output_file, dbname) as gmdb:
+        with GroundMotionTable(self.output_file, dbname) as gmdb:
             table = gmdb.table
             total = table.nrows
             selection = 'pga <= %s' % 100.75
@@ -544,7 +542,7 @@ class GmDatabaseTestCase(unittest.TestCase):
                             expected = 'event_country %s b\'%s\'' % (opr, val)
                         self.assertEqual(_normalize_condition(cond), expected)
                         cond = 'event_time %s "%s"' % (opr, val)
-                        expected_val = str(GMDatabaseParser.timestamp(val))
+                        expected_val = str(GMTableParser.timestamp(val))
                         expected = 'event_time %s %s' % (opr, expected_val)
                         self.assertEqual(_normalize_condition(cond), expected)
                         # now these cases should raise:
@@ -594,7 +592,7 @@ class GmDatabaseTestCase(unittest.TestCase):
         for test in ['2006', '2006-12-31', '2016-12-31 00:01:02',
                      '2016-12-31T01:02:03']:
             cond = 'event_time == "%s"' % test
-            expected_val = str(GMDatabaseParser.timestamp(test))
+            expected_val = str(GMTableParser.timestamp(test))
             expected = 'event_time == %s' % expected_val
             self.assertEqual(expected, _normalize_condition(cond))
             cond = 'event_time == b"%s"' % test
@@ -607,7 +605,7 @@ class GmDatabaseTestCase(unittest.TestCase):
 #             byte, text = test, test.decode('utf8')
 #         for test in [byte, text]:
 #             cond = 'event_time == "%s"' % str(test)
-#             expected_val = GMDatabaseParser.normalize_dtime(test)
+#             expected_val = GMTableParser.normalize_dtime(test)
 #             expected = 'event_time == b\'%s\'' % expected_val if self.py3\
 #                  else 'event_time == \'%s\'' % expected_val
 #             self.assertEqual(expected, _normalize_condition(cond))
@@ -632,7 +630,7 @@ class GmDatabaseTestCase(unittest.TestCase):
         self.assertTrue(missingvals['magnitude'] == 
                         missingvals['magnitude_type'] == 13)
 
-        gmdb = GMdb(self.output_file, 'esm_sa_flatfile_2018')
+        gmdb = GroundMotionTable(self.output_file, 'esm_sa_flatfile_2018')
 
         gmdb2 = gmdb.filter('magnitude <= 4')
         # underlying HDF5 file not open (ValueError):
@@ -656,7 +654,7 @@ class GmDatabaseTestCase(unittest.TestCase):
         self.assertTrue(mag_le_4 + mag_gt_4 == 98 - 13)
 
         # just open and set some selections to check it
-        with GMdb(self.output_file, 'esm_sa_flatfile_2018') as gmdb:
+        with GroundMotionTable(self.output_file, 'esm_sa_flatfile_2018') as gmdb:
             table = gmdb.table
             total = table.nrows
             gmdb.filter

@@ -9,8 +9,8 @@ import unittest
 import numpy as np
 from smtk.parsers.esm_flatfile_parser import ESMFlatfileParser
 import smtk.residuals.gmpe_residuals as res
-from smtk.gm_database_parsers import EsmParser
-from smtk.gm_database import GMdb
+from smtk.sm_table_parsers import EsmParser
+from smtk.sm_table import GroundMotionTable
 
 if sys.version_info[0] >= 3:
     import pickle
@@ -73,9 +73,10 @@ class ResidualsTestCase(unittest.TestCase):
         # create the sm table:
         cls.out_location2 = cls.out_location + '_table'
         EsmParser.parse(ifile, cls.out_location2, mode='w', delimiter=';')
-        cls.gmdb = GMdb(cls.out_location2,
-                        os.path.splitext(os.path.basename(ifile))[0])
-#         with GMdb(cls.out_location2,
+        cls.gmdb = \
+            GroundMotionTable(cls.out_location2,
+                              os.path.splitext(os.path.basename(ifile))[0])
+#         with GroundMotionTable(cls.out_location2,
 #                   os.path.splitext(os.path.basename(ifile))[0]) as gmdb:
 #             gmdb.table.nrows
 #         with open(ifile, newline='') as csvfile:
@@ -133,7 +134,6 @@ class ResidualsTestCase(unittest.TestCase):
         self._check_residual_dictionary_correctness(residuals2.residuals)
         stats2 = residuals2.get_residual_statistics()
 
-        
         asd = 9
 
     def tst_likelihood_execution(self):

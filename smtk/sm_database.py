@@ -268,24 +268,6 @@ class GCMTPrincipalAxes(object):
         return pas
 
 
-MECHANISM_TYPE = {"Normal": -90.0,
-                  "Strike-Slip": 0.0,
-                  "Reverse": 90.0,
-                  "Oblique": 0.0,
-                  "Unknown": 0.0,
-                  "N": -90.0, # Flatfile conventions
-                  "S": 0.0,
-                  "R": 90.0,
-                  "U": 0.0,
-                  "NF": -90., # ESM flatfile conventions
-                  "SS": 0.,
-                  "TF": 90.,
-                  "NS": -45., # Normal with strike-slip component
-                  "TS": 45., # Reverse with strike-slip component
-                  "O": 0.0
-                  }
-
-
 DIP_TYPE = {"Normal": 60.0,
             "Strike-Slip": 90.0,
             "Reverse": 35.0,
@@ -338,10 +320,9 @@ class FocalMechanism(object):
         Returns an idealised "rake" based on a qualitative description of the
         style of faulting
         """
-        if self.mechanism_type in MECHANISM_TYPE:
-            return MECHANISM_TYPE[self.mechanism_type]
-        else:
-            return 0.0
+        if self.mechanism_type in utils.MECHANISM_TYPE:
+            return utils.MECHANISM_TYPE[self.mechanism_type]
+        return 0.0
 
     def to_dict(self):
         """

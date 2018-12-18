@@ -40,7 +40,7 @@ from openquake.hazardlib.geo.line import Line
 from openquake.hazardlib.geo.surface.simple_fault import SimpleFaultSurface
 import smtk.trellis.configure as rcfg
 from smtk.sm_database import *
-from smtk.sm_utils import convert_accel_units
+from smtk.sm_utils import convert_accel_units, MECHANISM_TYPE
 from smtk.parsers import valid
 from smtk.parsers.base_database_parser import (get_float, get_int,
                                                get_positive_float,

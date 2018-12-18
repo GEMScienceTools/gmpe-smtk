@@ -6,16 +6,11 @@ import re
 
 import numpy as np
 from scipy.constants import g
-from smtk.gm_database import GMDatabaseParser
+from smtk.sm_table import GMTableParser
 from smtk import sm_utils
 
-SCALAR_XY = {"Geometric": lambda x, y: np.sqrt(x * y),
-             "Arithmetic": lambda x, y: (x + y) / 2.,
-             "Larger": lambda x, y: np.max(np.array([x, y])),
-             "Vectorial": lambda x, y: np.sqrt(x ** 2. + y ** 2.)}
 
-
-class UserDefinedParser(GMDatabaseParser):
+class UserDefinedParser(GMTableParser):
     '''
     Implements a base class for parsing flatfiles in csv format into
     GmDatabase files in HDF5 format.
@@ -238,7 +233,7 @@ class UserDefinedParser(GMDatabaseParser):
             rowdict[key.lower()] = rowdict.pop(key)
 
 
-class EsmParser(GMDatabaseParser):
+class EsmParser(GMTableParser):
 
     mappings = {'ev_nation_code': 'event_country',
                 'event_id': 'event_name',
@@ -246,7 +241,6 @@ class EsmParser(GMDatabaseParser):
                 'ev_longitude': 'event_longitude',
                 'ev_depth_km': 'hypocenter_depth',
                 'fm_type_code': 'style_of_faulting',
-                 # 'tectonic_environment': 'tectonic_environment',
                 'st_nation_code': 'station_country',
                 'st_latitude': 'station_latitude',
                 'st_longitude': 'station_longitude',
@@ -315,11 +309,6 @@ class EsmParser(GMDatabaseParser):
         '''
         tofloat = cls.float  # coerces to nan in case of errors
 
-        def tofloatabs(val):
-            '''ESM not reporting correctly some values: PGA, PGV, PGD and SA
-            should always be positive (absolute value)'''
-            return np.abs(tofloat(val))
-
         # convert event time from cells into a timestamp:
         rowdict['event_time'] = cls.timestamp(rowdict.get('event_time', ''))
 
@@ -339,8 +328,6 @@ class EsmParser(GMDatabaseParser):
                 rowdict['magnitude'] = magnitude
                 rowdict['magnitude_type'] = magtype
                 break
-        else:
-            sdf = 9
 
         # If all es_strike    es_dip    es_rake are not nan use those as
         # strike dip rake.
@@ -376,29 +363,40 @@ class EsmParser(GMDatabaseParser):
         rowdict['digital_recording'] = \
             rowdict.get('instrument_type_code', '') == 'D'
 
+        # IMTS: define functions:
+        dflt = np.nan
+        geom_mean = sm_utils.SCALAR_XY['Geometric']
+
+        def to_cm_sec_square(val):
+            '''converts g to cm/sec^2'''
+            return sm_utils.convert_accel_units(val, 'g')
+
+        # Note: ESM not reporting correctly some values: PGA, PGV, PGD and SA
+        # should always be positive (absolute value)
+
         # U_pga    V_pga    W_pga are the three components of pga
-        dflt, cfunc, fromg = np.nan, SCALAR_XY['Geometric'],\
-            lambda val: sm_utils.convert_accel_units(val, 'g')
         rowdict['_pga_components'] = \
-            [(tofloatabs(rowdict.pop('U_pga', dflt))),
-             (tofloatabs(rowdict.pop('V_pga', dflt))),
-             (tofloatabs(rowdict.pop('W_pga', dflt)))]
-        rowdict['pga'] = cfunc(rowdict['_pga_components'][0],
-                               rowdict['_pga_components'][1])
+            to_cm_sec_square(np.abs([tofloat(rowdict.pop('U_pga', dflt)),
+                                     tofloat(rowdict.pop('V_pga', dflt)),
+                                     tofloat(rowdict.pop('W_pga', dflt))]))
+        rowdict['pga'] = geom_mean(rowdict['_pga_components'][0],
+                                   rowdict['_pga_components'][1])
 
         # U_pgv    V_pgv    W_pgv are the three components of pgv
-        rowdict['_pgv_components'] = [tofloatabs(rowdict.pop('U_pgv', dflt)),
-                                      tofloatabs(rowdict.pop('V_pgv', dflt)),
-                                      tofloatabs(rowdict.pop('W_pgv', dflt))]
-        rowdict['pgv'] = cfunc(rowdict['_pgv_components'][0],
-                               rowdict['_pgv_components'][1])
+        rowdict['_pgv_components'] = \
+            np.abs([tofloat(rowdict.pop('U_pgv', dflt)),
+                    tofloat(rowdict.pop('V_pgv', dflt)),
+                    tofloat(rowdict.pop('W_pgv', dflt))])
+        rowdict['pgv'] = geom_mean(rowdict['_pgv_components'][0],
+                                   rowdict['_pgv_components'][1])
 
         # U_pgd    V_pgd    W_pgd are the three components of pgd
-        rowdict['_pgd_components'] = [tofloatabs(rowdict.pop('U_pgd', dflt)),
-                                      tofloatabs(rowdict.pop('V_pgd', dflt)),
-                                      tofloatabs(rowdict.pop('W_pgd', dflt))]
-        rowdict['pgd'] = cfunc(rowdict['_pgd_components'][0],
-                               rowdict['_pgd_components'][1])
+        rowdict['_pgd_components'] = \
+            np.abs([tofloat(rowdict.pop('U_pgd', dflt)),
+                    tofloat(rowdict.pop('V_pgd', dflt)),
+                    tofloat(rowdict.pop('W_pgd', dflt))])
+        rowdict['pgd'] = geom_mean(rowdict['_pgd_components'][0],
+                                   rowdict['_pgd_components'][1])
 
         # U_T90    V_T90    W_T90 are the three components of duration_5_95
         rowdict['_duration_5_95_components'] = \
@@ -406,15 +404,15 @@ class EsmParser(GMDatabaseParser):
              tofloat(rowdict.pop('V_T90', dflt)),
              tofloat(rowdict.pop('W_T90', dflt))]
         rowdict['duration_5_95'] = \
-            cfunc(rowdict['_duration_5_95_components'][0],
-                  rowdict['_duration_5_95_components'][1])
+            geom_mean(rowdict['_duration_5_95_components'][0],
+                      rowdict['_duration_5_95_components'][1])
 
         # U_CAV    V_CAV    W_CAV are the 3 comps for cav
         rowdict['_cav_components'] = [tofloat(rowdict.pop('U_CAV', dflt)),
                                       tofloat(rowdict.pop('V_CAV', dflt)),
                                       tofloat(rowdict.pop('W_CAV', dflt))]
-        rowdict['cav'] = cfunc(rowdict['_cav_components'][0],
-                               rowdict['_cav_components'][1])
+        rowdict['cav'] = geom_mean(rowdict['_cav_components'][0],
+                                   rowdict['_cav_components'][1])
 
         # U_ia    V_ia    W_ia  are the 3 comps for arias_intensity
         rowdict['_arias_intensity_components'] = \
@@ -422,18 +420,20 @@ class EsmParser(GMDatabaseParser):
              tofloat(rowdict.pop('V_ia', dflt)),
              tofloat(rowdict.pop('W_ia', dflt))]
         rowdict['arias_intensity'] = \
-            cfunc(rowdict['_arias_intensity_components'][0],
-                  rowdict['_arias_intensity_components'][1])
+            geom_mean(rowdict['_arias_intensity_components'][0],
+                      rowdict['_arias_intensity_components'][1])
 
-        # SA columns are defined in `get_sa_columns`
-        sa_u = [tofloatabs(rowdict[_]) for _ in sa_colnames]
-        sa_v = [tofloatabs(rowdict[_]) for _ in
-                (_.replace('U_', 'V_') for _ in sa_colnames)]
-        sa_w = [tofloatabs(rowdict[_]) for _ in
-                (_.replace('U_', 'W_') for _ in sa_colnames)]
-        rowdict['_sa_components'] = np.array([sa_u, sa_v, sa_w])
-        rowdict['sa'] = cfunc(rowdict['_sa_components'][0],
-                              rowdict['_sa_components'][1])
+        # SA columns are defined in `get_sa_columns
+        sa_u = np.abs([tofloat(rowdict[_]) for _ in sa_colnames])
+        sa_v = np.abs([tofloat(rowdict[_]) for _ in
+                       (_.replace('U_', 'V_') for _ in sa_colnames)])
+        sa_w = np.abs([tofloat(rowdict[_]) for _ in
+                       (_.replace('U_', 'W_') for _ in sa_colnames)])
+        rowdict['_sa_components'] = np.array([to_cm_sec_square(sa_u),
+                                              to_cm_sec_square(sa_v),
+                                              to_cm_sec_square(sa_w)])
+        rowdict['sa'] = geom_mean(rowdict['_sa_components'][0],
+                                  rowdict['_sa_components'][1])
 
         # depth_top_of_rupture = es_z_top if given else event_depth_km
         if 'es_z_top' in rowdict:
@@ -449,7 +449,8 @@ class EsmParser(GMDatabaseParser):
         # magnitude_uncertainty strike_1 dip_1 rake_1,
         #  strike_2, dip_2 rake_2
 
-class NgaWest2Parser(GMDatabaseParser):
+
+class NgaWest2Parser(GMTableParser):
     mappings: {}
 
 #     @classmethod
@@ -476,10 +477,10 @@ class NgaWest2Parser(GMDatabaseParser):
 #         rowdict['event_time'] = evtime
 
 
-class NgaEast2Parser(GMDatabaseParser):
+class NgaEast2Parser(GMTableParser):
     mappings: {}
 
 
-class EuropeanWeakMotionParser(GMDatabaseParser):
-    _mappings: {}
+class EuropeanWeakMotionParser(GMTableParser):
+    mappings: {}
 

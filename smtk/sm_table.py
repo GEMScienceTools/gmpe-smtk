@@ -46,7 +46,7 @@ from tables.description import StringCol as _StringCol, \
 from openquake.hazardlib.contexts import SitesContext, DistancesContext, \
     RuptureContext
 from openquake.hazardlib import imt
-from smtk import sm_utils
+from smtk.sm_utils import MECHANISM_TYPE, get_interpolated_period
 from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 
 
@@ -133,22 +133,22 @@ class StringCol(_StringCol):
 #         return 'Enum'
 
 
-# defines a mechanism type to be associated to a rake
-MECHANISM_TYPE = {"Normal": -90.0,
-                  "Strike-Slip": 0.0,
-                  "Reverse": 90.0,
-                  "Oblique": 0.0,
-                  "Unknown": 0.0,
-                  "N": -90.0,  # Flatfile conventions
-                  "S": 0.0,
-                  "R": 90.0,
-                  "U": 0.0,
-                  "NF": -90.,  # ESM flatfile conventions
-                  "SS": 0.,
-                  "TF": 90.,
-                  "NS": -45.,  # Normal with strike-slip component
-                  "TS": 45.,  # Reverse with strike-slip component
-                  }
+# # defines a mechanism type to be associated to a rake
+# MECHANISM_TYPE = {"Normal": -90.0,
+#                   "Strike-Slip": 0.0,
+#                   "Reverse": 90.0,
+#                   "Oblique": 0.0,
+#                   "Unknown": 0.0,
+#                   "N": -90.0,  # Flatfile conventions
+#                   "S": 0.0,
+#                   "R": 90.0,
+#                   "U": 0.0,
+#                   "NF": -90.,  # ESM flatfile conventions
+#                   "SS": 0.,
+#                   "TF": 90.,
+#                   "NS": -45.,  # Normal with strike-slip component
+#                   "TS": 45.,  # Reverse with strike-slip component
+#                   }
 
 # Instead of implementing a static GMDatabase as `pytable.IsDescription` class.
 # which does not allow to dynamically set the length of array columns, write
@@ -156,7 +156,7 @@ MECHANISM_TYPE = {"Normal": -90.0,
 # later. This also permits to have the scalar columns in one place, as scalar
 # columns only are selectable in pytables by default. NOTE: columns whose
 # names starts with '_' should be hidden from the user
-GMDatabaseTable = dict(
+GMTableDescription = dict(
     record_id=UInt32Col(),  # max id: 4,294,967,295
     event_id=StringCol(20),
     event_name=StringCol(itemsize=40),
@@ -233,20 +233,20 @@ GMDatabaseTable = dict(
 )
 
 
-class GMDatabaseParser(object):  # pylint: disable=useless-object-inheritance
+class GMTableParser(object):  # pylint: disable=useless-object-inheritance
     '''
     Implements a base class for parsing flatfiles in csv format into
-    GmDatabase files in HDF5 format. The latter are Table-like heterogeneous
-    datasets (each representing a flatfile) organized in subfolders-like
-    structures called groups.
-    See the :class:`GMDatabaseTable` for a description of the Table columns
+    GroundMotionTable files in HDF5 format. The latter are Table-like
+    heterogeneous datasets (each representing a flatfile) organized in
+    subfolders-like structures called groups.
+    See the :class:`GMTableDescription` for a description of the Table columns
     and types.
 
     The parsing is done in the `parse` method. The typical workflow
     is to implement a new subclass for each new flatfile released.
     Subclasses should override the `mapping` dict where flatfile
-    specific column names are mapped to :class:`GMDatabaseTable` column names
-    and optionally the `parse_row` method where additional operation
+    specific column names are mapped to :class:`GMTableDescription` column
+    names and optionally the `parse_row` method where additional operation
     is performed in-place on each flatfile row. For more details, see
     the :method:`parse_row` method docstring
     '''
@@ -319,7 +319,7 @@ class GMDatabaseParser(object):  # pylint: disable=useless-object-inheritance
             minimum possible value for integers, the empty string for strings.
         '''
         dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
-        with GMdb(output_path, dbname, mode) as gmdb:
+        with GroundMotionTable(output_path, dbname, mode) as gmdb:
 
             i, error, missing, bad, outofbound = \
                 -1, [], defaultdict(int), defaultdict(int), defaultdict(int)
@@ -542,7 +542,7 @@ class GMDatabaseParser(object):  # pylint: disable=useless-object-inheritance
 
 def get_dbnames(filepath):
     '''Returns he database names of the given Gm database (HDF5 file)
-    The file should have been created with the `GMDatabaseParser.parse`
+    The file should have been created with the `GMTableParser.parse`
     method.
 
     :param filepath: the path to the HDF5 file
@@ -643,7 +643,7 @@ def _normalize_condition(condition):
         false or incomplete. Maybe it works as long as `value` has ascii
         characters only?).
     '''
-    dbcolumns = GMDatabaseTable
+    dbcolumns = GMTableDescription
     py3 = sys.version_info[0] >= 3
     oprs = {'==', '!=', '<=', '>=', '<', '>'}
     nan_indices = []
@@ -737,7 +737,7 @@ def _normalize_tokens(tokens, dtime_indices, str_indices, nan_indices):
         if tokenstr[0:1] == 'b':
             tokenstr = tokenstr[1:]
         string = shlex.split(tokenstr)[0]
-        value = GMDatabaseParser.timestamp(string)
+        value = GMTableParser.timestamp(string)
         if np.isnan(value):
             raise ValueError('not a date-time: %s' % string)
         tokens[i][1] = str(value)
@@ -763,32 +763,33 @@ def _normalize_tokens(tokens, dtime_indices, str_indices, nan_indices):
 # Residuals calculation
 ########################################
 
-class GMdb:
-    '''Implements a Ground motion database. This class differs from
-    :class:`smtk.sm_database.GroundMotionDatabase` in that flat files are
-    stored as pytables tables in a single HDF file container. This should in
-    principle have more efficient IO operations, exploit numexpr syntax for
-    efficient and simpler record selection, and allow the integration of
-    customized flat-files (via pytables pre-defined column classes).
+class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
+    '''Implements a Ground motion database in table format. This class
+    differs from :class:`smtk.sm_database.GroundMotionDatabase` in that flat
+    files are stored as pytables tables in a single HDF file container.
+    This should in principle have more efficient IO operations,
+    exploit numexpr syntax for efficient and simpler record selection,
+    and allow the creation of customized flat-files (via pytables pre-defined
+    column classes).
     Support for time-series (non-scalar) data is still possible although this
-    functionality has not been not tested. From
+    functionality has not been not tested yet. From
     :class:`smtk.residuals.gmpe_residuals.Residuals.get_residuals`, both
     databses can be passed as `database` argument.
-    (FIXME: in the future the two databases should be merged into a single
-    class providing the functionalities of both)
     '''
+    # TODO: in the future the two databases might inherit from a single
+    # abstract class providing the functionalities of both
     def __init__(self, filepath, dbname, mode='r'):
         '''
-        Creates a new database. The main functionality of a GMdb is to
-        provide the contexts for the residuals calculations:
+        Creates a new database. The main functionality of a GroundMotionTable
+        is to provide the contexts for the residuals calculations:
         ```
-            contexts = GMdb(...).get_contexts(...)
+            contexts = GroundMotionTable(...).get_contexts(...)
         ```
         For all other records manipulation tasks, note that this object
         needs to be accessed inside a with statement like a normal Python
         file-like object, which opens and closes the underlying HDF file:
         ```
-            with GMdb(filepath, name, 'r') as dbase:
+            with GroundMotionTable(filepath, name, 'r') as dbase:
                 # ... do your operation here
                 for record in dbase.records:
                     ...
@@ -826,7 +827,7 @@ class GMdb:
     def filter(self, condition):
         '''Returns a read-only copy of this database filtered according to
         the given condition (numexpr expression on the database scalar
-        columns, see :class:`GMDatabaseTable`). Raises ValueError if this
+        columns, see :class:`GMTableDescription`). Raises ValueError if this
         method is accessed while the underlying HDF file is open (e.g.,
         inside a with statement).
 
@@ -837,7 +838,7 @@ class GMdb:
             condition = ("(pga < 0.14) | (pga > 1.1) & (pgv != nan) &
                           (event_time < '2006-01-01T00:00:00'")
 
-            filtered_gmdb = GMdb(...).filter(condition)
+            filtered_gmdb = GroundMotionTable(...).filter(condition)
         ```
         For user trying to build expressions from input variables as python
         objects, simply use the `str(object)` function which supports
@@ -850,13 +851,13 @@ class GMdb:
                 (event_time < '%s')" % \
                 (str(pgamin), str(pgamax), str(float('nan')), str(dtime))
 
-            filtered_gmdb = GMdb(...).filter(condition)
+            filtered_gmdb = GroundMotionTable(...).filter(condition)
         ```
         '''
         if self.is_open:
             raise ValueError('Cannot filter, underlying HDF5 file is open. '
                              'Do not call this method inside a with statement')
-        gmdb = GMdb(self.filepath, self.dbname, 'r')
+        gmdb = GroundMotionTable(self.filepath, self.dbname, 'r')
         gmdb._condition = condition  # pylint: disable=protected-access
         return gmdb
 
@@ -868,7 +869,7 @@ class GMdb:
 
         Example:
         ```
-            with GMdb(filepath, name, 'r') as dbase:
+            with GroundMotionTable(filepath, name, 'r') as dbase:
                 # ... do your operation here
         ```
 
@@ -1048,7 +1049,7 @@ class GMdb:
     # ----- IO PRIVATE METHODS  ----- #
 
     def _create_table(self, sa_length):
-        desc = dict(GMDatabaseTable, sa=Float64Col(shape=(sa_length,)),
+        desc = dict(GMTableDescription, sa=Float64Col(shape=(sa_length,)),
                     _sa_components=Float64Col(shape=(3, sa_length)))
         self._table = self._h5file.create_table(self._root, "table",
                                                 description=desc)
@@ -1162,10 +1163,10 @@ class GMdb:
         must not be modified while accessing this property, and thus must
         be opened in read mode.
         ```
-            with GMdb(filepath, name, 'r').filter(condition) as dbase:
-                # ... do your operation here
-                for record in dbase.records:
-                    ...
+        with GroundMotionTable(filepath, name, 'r').filter(condition) as dbase:
+            # ... do your operation here
+            for record in dbase.records:
+                ...
         ```
         '''
         return records_where(self.table, self._condition)
@@ -1255,7 +1256,7 @@ class GMdb:
         # FIXME:
         # deal with non attached attributes
 
-        append, isnan = GMdb._append, np.isnan
+        append, isnan = GroundMotionTable._append, np.isnan
 
         append(sctx, 'lons', record['station_longitude'])
         append(sctx, 'lats', record['station_latitude'])
@@ -1394,7 +1395,7 @@ class GMdb:
         # - append(dctx, 'rvolc', rup['rvolc'])
         # 2) Old TODO maybe to be fixed NOW?
 
-        append, isnan = GMdb._append, np.isnan
+        append, isnan = GroundMotionTable._append, np.isnan
 
         # TODO Setting Rjb == Repi and Rrup == Rhypo when missing value
         # is a hack! Need feedback on how to fix
@@ -1516,32 +1517,6 @@ class GMdb:
 
             observations[imtx].append(value)
 
-# sm_database, sm_table
-
-def get_interpolated_period(target_period, periods, values):
-    """
-    Returns the spectra interpolated in loglog space
-    :param float target_period:
-        Period required for interpolation
-    :param np.ndarray periods:
-        Spectral Periods
-    :param np.ndarray values:
-        Ground motion values
-    """
-    # FIXME: copied from gmpe_residuals in order to avoid circular
-    # imports
-    if (target_period < np.min(periods)) or (target_period > np.max(periods)):
-        return None, "Period not within calculated range %s"
-    lval = np.where(periods <= target_period)[0][-1]
-    uval = np.where(periods >= target_period)[0][0]
-    if (uval - lval) == 0:
-        return values[lval]
-    deltay = np.log10(values[uval]) - np.log10(values[lval])
-    deltax = np.log10(periods[uval]) - np.log10(periods[lval])
-    return 10.0 ** (
-        np.log10(values[lval]) +
-        (np.log10(target_period) - np.log10(periods[lval])) * deltay / deltax
-        )
 
 #     def get_observations(self, context, component="Geometric"):
 #         """

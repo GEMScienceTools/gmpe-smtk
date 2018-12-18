@@ -34,7 +34,8 @@ import matplotlib.pyplot as plt
 if sys.version_info[0] >= 3:
     import pickle
 else:
-    import cPickle as pickle
+    import cPickle as pickle  # pylint: disable=import-error
+
 
 def get_time_vector(time_step, number_steps):
     """
@@ -265,6 +266,7 @@ def planar_fault_surface_from_dict(data, mesh_spacing=1.):
     return PlanarSurface.from_corner_points(mesh_spacing, top_left, top_right,
                                             bottom_right, bottom_left)
 
+
 def simple_fault_surface_from_dict(data, mesh_spacing=1.):
     """
     Builds a simple fault surface from the json load
@@ -298,10 +300,12 @@ def complex_fault_surface_from_dict(data, mesh_spacing=1.):
     edges.append(_3d_line_from_list(data["faultBottomEdge"]))
     return ComplexFaultSurface.from_fault_data(edges, mesh_spacing)
 
+
 surfaces_from_dict = {
     "PlanarSurface": planar_fault_surface_from_dict,
     "SimpleFaultSurface": simple_fault_surface_from_dict,
     "ComplexFaultSurface": complex_fault_surface_from_dict}
+
 
 def multi_surface_from_dict(data, mesh_spacing=1.):
     """
@@ -314,17 +318,61 @@ def multi_surface_from_dict(data, mesh_spacing=1.):
                                                             mesh_spacing))
     return MultiSurface(surfaces)
 
+
 surfaces_from_dict["MultiSurface"] = multi_surface_from_dict
 
 
+# Moved from sm_database: Mechanism type to Rake conversion:
+MECHANISM_TYPE = {"Normal": -90.0,
+                  "Strike-Slip": 0.0,
+                  "Reverse": 90.0,
+                  "Oblique": 0.0,
+                  "Unknown": 0.0,
+                  "N": -90.0,  # Flatfile conventions
+                  "S": 0.0,
+                  "R": 90.0,
+                  "U": 0.0,
+                  "NF": -90.,  # ESM flatfile conventions
+                  "SS": 0.,
+                  "TF": 90.,
+                  "NS": -45.,  # Normal with strike-slip component
+                  "TS": 45.,  # Reverse with strike-slip component
+                  "O": 0.0
+                  }
 
-    
+# mean utilities (geometric, arithmetic, ...):
+SCALAR_XY = {"Geometric": lambda x, y: np.sqrt(x * y),
+             "Arithmetic": lambda x, y: (x + y) / 2.,
+             "Larger": lambda x, y: np.max(np.array([x, y])),
+             "Vectorial": lambda x, y: np.sqrt(x ** 2. + y ** 2.)}
 
 
-    
+def get_interpolated_period(target_period, periods, values):
+    """
+    Returns the spectra interpolated in loglog space
+    :param float target_period:
+        Period required for interpolation
+    :param np.ndarray periods:
+        Spectral Periods
+    :param np.ndarray values:
+        Ground motion values
+    """
+    if (target_period < np.min(periods)) or (target_period > np.max(periods)):
+        return None, "Period not within calculated range %s"
+    lval = np.where(periods <= target_period)[0][-1]
+    uval = np.where(periods >= target_period)[0][0]
 
+    if (uval - lval) == 0:
+        return values[lval]
 
-#surfaces_to_dict = {
+    dy = np.log10(values[uval]) - np.log10(values[lval])
+    dx = np.log10(periods[uval]) - np.log10(periods[lval])
+    return 10.0 ** (
+        np.log10(values[lval]) +
+        (np.log10(target_period) - np.log10(periods[lval])) * dy / dx
+        )
+
+# surfaces_to_dict = {
 #    "PlanarSurface": planar_fault_surface_to_dict,
 #    "SimpleFaultSurface": simple_fault_surface_to_dict,
 #    "ComplexFaultSurface": complex_fault_surface_to_dict,

@@ -8,7 +8,7 @@ import unittest
 import csv
 from smtk.parsers.esm_flatfile_parser import ESMFlatfileParser
 import smtk.residuals.gmpe_residuals as res
-from smtk.gm_database import GMDatabaseParser, GMdb
+from smtk.gm_database import GMTableParser, GroundMotionTable
 
 if sys.version_info[0] >= 3:
     import pickle
@@ -72,7 +72,7 @@ class ResidualsTestCase(unittest.TestCase):
         notin_egsim = fnames1 - fnames2
         notin_smtk = fnames2 - fnames1
         
-        GMDatabaseParser.parse(ifile, cls.out_location)
+        GMTableParser.parse(ifile, cls.out_location)
 #         parser = ESMFlatfileParser.autobuild("000", "ESM ALL",
 #                                              cls.out_location, ifile)
 #         del parser
@@ -81,7 +81,7 @@ class ResidualsTestCase(unittest.TestCase):
 #         cls.database = None
 #         with open(cls.database_file, "rb") as f:
 #             cls.database = pickle.load(f)
-        cls.database = GMdb(cls.out_location, dbname='esm')
+        cls.database = GroundMotionTable(cls.out_location, dbname='esm')
         cls.gsims = ["AkkarEtAlRjb2014",  "ChiouYoungs2014"]
         cls.imts = ["PGA", "SA(1.0)"]
 
