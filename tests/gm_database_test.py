@@ -28,13 +28,13 @@ import unittest
 import numpy as np
 # import smtk.gm_database
 from tables.file import open_file
-from tables.description import IsDescription, Time64Col
+from tables.description import IsDescription, Time64Col, EnumCol as _EnumCol
 
-
+from smtk.gm_database_parsers import UserDefinedParser, EsmParser
 from smtk.residuals.gmpe_residuals import get_interpolated_period
 from smtk.gm_database import GMDatabaseParser, GMDatabaseTable, \
     records_where, read_where, get_dbnames, _normalize_condition, GMdb, \
-    DateTimeCol, Float64Col, Float32Col, EnumCol, StringCol
+    DateTimeCol, Float64Col, Float32Col, StringCol
 
 BASE_DATA_PATH = os.path.join(
     os.path.join(os.path.dirname(__file__), "file_samples")
@@ -53,7 +53,8 @@ class DummyTable(IsDescription):
     floatcol = Float32Col()
     arraycol = Float32Col(shape=(10,))
     stringcol = StringCol(5)
-    ecol = EnumCol(['a', 'b', 'c'])
+    # first issue with EnumCol: dict values MUST be 
+    ecol = _EnumCol({'a': -90, 'b': -5, 'c': 4}, 'a', 'int64')
     tcol = Time64Col(dflt=np.nan)
 #    ballColor = EnumCol(['orange'], 'black', base='uint8')
 
@@ -210,7 +211,21 @@ class GmDatabaseTestCase(unittest.TestCase):
             set('floatcol', float('nan'))
             set('arraycol', [1, 2, 3, 4, float('nan'), 6.6, 7.7, 8.8, 9.9,
                              10.00045])
+
+            # setting ascii str in stringcol is safe, we do not need to convert
             set('stringcol', "abc")
+            # However, returned value is bytes
+            self.assertEqual(get('stringcol'), b'abc')
+
+            # test WHY enumcol IS USELESS:
+            eval = get('ecol')
+            # here is the point about enumcols: WE CANNOT SET the LABEL!
+            # What's the point of having an enum if we actually need to
+            # set/get the associated int?
+            with self.assertRaises(Exception):
+                set('ecol' , 'a')
+            set('ecol' , -5)
+            self.assertEqual(get('ecol'), -5)
 
             #test time64 col:
             tme = get('tcol')
@@ -283,9 +298,9 @@ class GmDatabaseTestCase(unittest.TestCase):
                       dbname='whatever', mode='r') as gmdb:
                 pass
 
-        log = GMDatabaseParser.parse(self.input_file,
-                                     output_path=self.output_file,
-                                     delimiter=',')
+        log = UserDefinedParser.parse(self.input_file,
+                                      output_path=self.output_file,
+                                      delimiter=',')
         dbname = os.path.splitext(os.path.basename(self.output_file))[0]
         # the flatfile parsed has:
         # 1. an event latitude out of bound (row 0)
@@ -301,7 +316,7 @@ class GmDatabaseTestCase(unittest.TestCase):
         self.assertEqual(len(log['outofbound_values']), 2)  # rows 0 and 1
         self.assertEqual(log['outofbound_values']['event_latitude'], 1)  # 0
         self.assertEqual(log['outofbound_values']['event_longitude'], 1)  # 1
-        self.assertEqual(log['missing_values']['pga'], 0)
+        # self.assertEqual(log['missing_values']['pga'], 0)
         self.assertEqual(log['missing_values']['pgv'], log['written'])
         self.assertEqual(log['missing_values']['pgv'], log['written'])
 
@@ -353,9 +368,9 @@ class GmDatabaseTestCase(unittest.TestCase):
             self.assertTrue(count == test_cols_found)
 
         # now re-write, with append mode
-        log = GMDatabaseParser.parse(self.input_file,
-                                     output_path=self.output_file,
-                                     delimiter=',')
+        log = UserDefinedParser.parse(self.input_file,
+                                      output_path=self.output_file,
+                                      delimiter=',')
         # open HDF5 with append='a' (the default)
         # and check that wewrote stuff twice
         with GMdb(self.output_file, dbname, 'r') as gmdb:
@@ -371,9 +386,9 @@ class GmDatabaseTestCase(unittest.TestCase):
             self.assertTrue(len(newrows) == test_cols_found)
 
         # now re-write, with no mode='w'
-        log = GMDatabaseParser.parse(self.input_file,
-                                     output_path=self.output_file,
-                                     mode='w', delimiter=',')
+        log = UserDefinedParser.parse(self.input_file,
+                                      output_path=self.output_file,
+                                      mode='w', delimiter=',')
         with GMdb(self.output_file, dbname, 'r') as gmdb:
             tbl = gmdb.table
             self.assertTrue(tbl.nrows == written)
@@ -397,12 +412,12 @@ class GmDatabaseTestCase(unittest.TestCase):
         # the test file has a comma delimiter. Test that we raise with
         # the default semicolon:
         with self.assertRaises(ValueError):
-            log = GMDatabaseParser.parse(self.input_file,
-                                         output_path=self.output_file)
+            log = UserDefinedParser.parse(self.input_file,
+                                          output_path=self.output_file)
         # now should be ok:
-        log = GMDatabaseParser.parse(self.input_file,
-                                     output_path=self.output_file,
-                                     delimiter=',')
+        log = UserDefinedParser.parse(self.input_file,
+                                      output_path=self.output_file,
+                                      delimiter=',')
 
         dbname = os.path.splitext(os.path.basename(self.output_file))[0]
         with GMdb(self.output_file, dbname) as gmdb:
@@ -599,41 +614,75 @@ class GmDatabaseTestCase(unittest.TestCase):
 #             cond = 'event_time == b"%s"' % test
 #             self.assertEqual(expected, _normalize_condition(cond))
 
+    def test_esm_flatfile(self):
+        input_file = os.path.join(os.path.dirname(self.input_file),
+                                  'esm_sa_flatfile_2018.csv')
+        log = EsmParser.parse(input_file,
+                              output_path=self.output_file)
+        self.assertEqual(log['total'], 98)
+        self.assertEqual(log['written'], 98)
+        missingvals = log['missing_values']
+        self.assertTrue(missingvals['rjb'] == missingvals['rrup'] ==
+                        missingvals['rupture_length'] ==
+                        missingvals['ry0'] == missingvals['rx'] ==
+                        missingvals['strike_1'] == missingvals['dip_1'] ==
+                        missingvals['rupture_width'] == 97)
+        self.assertEqual(missingvals['_duration_5_75_components'], 98)
+        self.assertEqual(missingvals['duration_5_75'], 98)
+        self.assertTrue(missingvals['magnitude'] == 
+                        missingvals['magnitude_type'] == 13)
 
-    def tst_interp_period(self):
-        values = np.linspace(0, 1.0, num=len(GMDatabaseParser._ref_periods),
-                             endpoint=True)
-        periods = GMDatabaseParser._ref_periods
-        for val in periods:
-            val1 = get_interpolated_period(val, np.array(periods),
-                                           np.array(values))
-            val2 = get_interpolated_periods(np.log10(val), np.log10(periods),
-                                            np.log10(values))
-            self.assertEqual(val1, val2)
+        gmdb = GMdb(self.output_file, 'esm_sa_flatfile_2018')
 
+        gmdb2 = gmdb.filter('magnitude <= 4')
+        # underlying HDF5 file not open (ValueError):
+        with self.assertRaises(ValueError):
+            for rec in gmdb2.records:
+                rec
+        # now it works:
+        with gmdb2:
+            mag_le_4 = 0
+            for rec in gmdb2.records:
+                self.assertTrue(rec['magnitude'] <= 4)
+                mag_le_4 += 1
 
-def get_interpolated_periods(target_periods, periods, values, sort=True,
-                             check_bounds=True):
-    """
-    Returns the spectra interpolated in loglog space
-    :param float target_period:
-        Period required for interpolation
-    :param np.ndarray periods:
-        Spectral Periods
-    :param np.ndarray values:
-        Ground motion values
-    """
-    target_periods, periods, values = np.asarray(target_periods),\
-        np.asarray(periods), np.asarray(values)
+        gmdb2 = gmdb.filter('magnitude > 4')
+        with gmdb2:
+            mag_gt_4 = 0
+            for rec in gmdb2.records:
+                self.assertTrue(rec['magnitude'] > 4)
+                mag_gt_4 += 1
 
-    if check_bounds:
-        pmin, pmax = (target_periods, target_periods) \
-            if target_periods.ndim == 0 \
-            else (target_periods[0], target_periods[-1])
-        if pmin < periods[0] or pmax > periods[-1]:
-            raise ValueError("Period not within calculated range")
+        self.assertTrue(mag_le_4 + mag_gt_4 == 98 - 13)
 
-    return np.interp(target_periods, periods, values)
+        # just open and set some selections to check it
+        with GMdb(self.output_file, 'esm_sa_flatfile_2018') as gmdb:
+            table = gmdb.table
+            total = table.nrows
+            gmdb.filter
+
+# def get_interpolated_periods(target_periods, periods, values, sort=True,
+#                              check_bounds=True):
+#     """
+#     Returns the spectra interpolated in loglog space
+#     :param float target_period:
+#         Period required for interpolation
+#     :param np.ndarray periods:
+#         Spectral Periods
+#     :param np.ndarray values:
+#         Ground motion values
+#     """
+#     target_periods, periods, values = np.asarray(target_periods),\
+#         np.asarray(periods), np.asarray(values)
+# 
+#     if check_bounds:
+#         pmin, pmax = (target_periods, target_periods) \
+#             if target_periods.ndim == 0 \
+#             else (target_periods[0], target_periods[-1])
+#         if pmin < periods[0] or pmax > periods[-1]:
+#             raise ValueError("Period not within calculated range")
+# 
+#     return np.interp(target_periods, periods, values)
 
 
 if __name__ == "__main__":

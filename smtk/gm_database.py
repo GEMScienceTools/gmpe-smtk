@@ -112,25 +112,25 @@ class StringCol(_StringCol):
         self.min_value, self.max_value = min, max
 
 
-class EnumCol(_EnumCol):
-    '''subclasses pytables EnumCol: accepts a list of strings, inserts the
-    empty string (if not present) and sets it as default'''
-    def __init__(self, values):
-        dflt = ''
-        if dflt not in values:
-            values = [''] + list(values)
-        # decide the type automatically according to the size of elements:
-        type_ = 'uint64'
-        if len(values) <= 255:
-            type_ = 'uint8'
-        elif len(values) <= 65535:
-            type_ = 'uint16'
-        elif len(values) <= 4294967295:
-            type_ = 'uint32'
-        super(EnumCol, self).__init__(values, dflt, type_)
-
-    def prefix(self):  # make pytables happy. See description.py line 2013
-        return 'Enum'
+# class EnumCol(_EnumCol):
+#     '''subclasses pytables EnumCol: accepts a list of strings, inserts the
+#     empty string (if not present) and sets it as default'''
+#     def __init__(self, values):
+#         dflt = ''
+#         if dflt not in values:
+#             values = [''] + list(values)
+#         # decide the type automatically according to the size of elements:
+#         type_ = 'uint64'
+#         if len(values) <= 255:
+#             type_ = 'uint8'
+#         elif len(values) <= 65535:
+#             type_ = 'uint16'
+#         elif len(values) <= 4294967295:
+#             type_ = 'uint32'
+#         super(EnumCol, self).__init__(values, dflt, type_)
+# 
+#     def prefix(self):  # make pytables happy. See description.py line 2013
+#         return 'Enum'
 
 
 # defines a mechanism type to be associated to a rake
@@ -154,7 +154,8 @@ MECHANISM_TYPE = {"Normal": -90.0,
 # which does not allow to dynamically set the length of array columns, write
 # a dict here of SCALAR values only. Array columns (i.e., 'sa') will be added
 # later. This also permits to have the scalar columns in one place, as scalar
-# columns only are selectable in pytables by default
+# columns only are selectable in pytables by default. NOTE: columns whose
+# names starts with '_' should be hidden from the user
 GMDatabaseTable = dict(
     record_id=UInt32Col(),  # max id: 4,294,967,295
     event_id=StringCol(20),
@@ -174,7 +175,7 @@ GMDatabaseTable = dict(
     dip_2=Float32Col(),
     rake_1=Float32Col(),
     rake_2=Float32Col(),
-    style_of_faulting=EnumCol(list(MECHANISM_TYPE.keys())),
+    style_of_faulting=StringCol(itemsize=max(len(_) for _ in MECHANISM_TYPE)),
     depth_top_of_rupture=Float32Col(),
     rupture_length=Float32Col(),
     rupture_width=Float32Col(),
@@ -228,7 +229,7 @@ GMDatabaseTable = dict(
     arias_intensity=Float64Col(),
     _arias_intensity_components=Float64Col(shape=(3,)),
     cav=Float64Col(),
-    _cav_component=Float64Col(shape=(3,))
+    _cav_components=Float64Col(shape=(3,))
 )
 
 
@@ -324,47 +325,51 @@ class GMDatabaseParser(object):
         :return: a dictionary holding information with keys:
             'total': the total number of csv rows
             'written': the number of parsed rows written on the db table
-            'error': a list of integers denoting the position
-                (0 = first row) of the parsed rows not written on the db table
-                because of errors
-            'missing_values': a dict with table column names as keys, mapped
+            'error': the **indices** (0 = first row) of the rows not written
+                due to errors (e.g., unexpected exceptions, suspicious bad
+                values). It always holds: `len(errors) + written = total`
+            'missing_values': a dict of column names mapped
                 to the number of rows which have missing values for that
-                column (e.g., invalid/empty values in the csv, or most
-                likely, a column not found, if the number of missing values
-                equals 'total').
-            'outofbound_values': a dict with table column names as keys,
-                mapped to the number of rows which had out-of-bound values for
-                that column.
+                column (e.g., empty value, or column not in the csv)
+            'bad_values': a dict of column names mapped to the number of rows
+                which have bad values for that column (e.g., invalid numeric
+                values)
+            'outofbound_values': a dict of column names mapped to the number
+                of rows which have out-of-bound values for that column, if
+                the column was implemented to be bounded within a range
 
-            Missing and out-of-bound values are stored in the GM database with
-            the column default, which is usually NaN for floats, the minimum
-            possible value for integers, the empty string for strings
+            Bad, missing or out-of-bound values are stored in the GM database
+            with the column default, which is usually NaN for floats, the
+            minimum possible value for integers, the empty string for strings.
         '''
         dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
         with GMdb(output_path, dbname, mode) as gmdb:
 
-            i, error, missing, outofbound = \
-                -1, [], defaultdict(int), defaultdict(int)
+            i, error, missing, bad, outofbound = \
+                -1, [], defaultdict(int), defaultdict(int), defaultdict(int)
 
             for i, (rowdict, sa_periods) in \
                     enumerate(cls._rows(flatfile_path, delimiter)):
 
                 # write sa_periods only the first time
                 if rowdict:
-                    missingcols, outofboundcols = \
+                    missingcols, badcols, outofboundcols = \
                         gmdb.write_record(rowdict, sa_periods)
                 else:
-                    missingcols, outofboundcols = [], []
+                    missingcols, badcols, outofboundcols = [], [], []
                     error.append(i)
 
                 # write statistics:
                 for col in missingcols:
                     missing[col] += 1
+                for col in badcols:
+                    bad[col] += 1
                 for col in outofboundcols:
                     outofbound[col] += 1
 
         return {'total': i+1, 'written': i+1-len(error), 'error': error,
-                'missing_values': missing, 'outofbound_values': outofbound}
+                'bad_values': dict(bad), 'missing_values': dict(missing),
+                'outofbound_values': dict(outofbound)}
 
     @classmethod
     def _rows(cls, flatfile_path, delimiter=None):  # pylint: disable=too-many-locals
@@ -376,63 +381,23 @@ class GMDatabaseParser(object):
         mappings = getattr(cls, 'mappings', {})
         with cls._get_csv_reader(flatfile_path, delimiter=delimiter) as reader:
 
-            newfieldnames = [mappings[f] if f in mappings else f for f in
-                             reader.fieldnames]
-            # get spectra fieldnames and priods:
-            try:
-                sa_periods_odict =\
-                    cls._get_sa_columns(newfieldnames)
-                sa_periods = list(sa_periods_odict.values())
-            except Exception as exc:
-                raise ValueError('Unable to parse SA columns: %s' % str(exc))
-
-            # get event time fieldname(s):
-            try:
-                evtime_fieldnames = \
-                    cls._get_event_time_columns(newfieldnames, 'event_time')
-            except Exception as exc:
-                raise ValueError('Unable to parse event '
-                                 'time column(s): %s' % str(exc))
-
-            # get pga fieldname and units:
-            try:
-                pga_col, pga_unit = cls._get_pga_column(newfieldnames)
-            except Exception as exc:
-                raise ValueError('Unable to parse PGA column: %s' % str(exc))
+            # get sa periods:
+            sa_columns = list(cls.get_sa_columns(reader.fieldnames).items())
+            sa_columns.sort(key=lambda item: item[1])
+            sa_periods = [_[1] for _ in sa_columns]
+            sa_colnames = [_[0] for _ in sa_columns]
 
             for rowdict in reader:
                 # re-map keys:
                 for k in mappings:
                     rowdict[mappings[k]] = rowdict.pop(k)
 
-                # assign values (sa, event time, pga):
-                try:
-                    rowdict['sa'] = np.array([rowdict[p] for p in
-                                              sa_periods_odict.keys()],
-                                             dtype=float)
-                except Exception as _:  # pylint: disable=broad-except
-                    pass
-
-                try:
-                    rowdict['event_time'] = \
-                        cls._get_event_time(rowdict, evtime_fieldnames)
-                except Exception as _:  # pylint: disable=broad-except
-                    pass
-
-                try:
-                    acc_unit = rowdict[pga_unit] \
-                        if pga_unit == 'acceleration_unit' else pga_unit
-                    rowdict['pga'] = cls._get_pga(rowdict, pga_col, acc_unit)
-                except Exception as _:  # pylint: disable=broad-except
-                    pass
-
                 try:
                     # custom post processing, if needed in subclasses:
-                    cls.parse_row(rowdict)
+                    cls.parse_row(rowdict, sa_colnames)
+                    if not cls._sanity_check(rowdict):
+                        rowdict = {}
                 except Exception as _:  # pylint: disable=broad-except
-                    pass
-
-                if not cls._sanity_check(rowdict):
                     rowdict = {}
 
                 # yield row as dict:
@@ -486,79 +451,50 @@ class GMDatabaseParser(object):
             yield reader
 
     @classmethod
-    def _get_sa_columns(cls, csv_fieldnames):
-        """Returns the field names, the spectra fieldnames and the periods
-        (numoy array) of e.g., a parsed csv reader's fieldnames
+    def get_sa_columns(cls, csv_fieldnames):
+        """This method is intended to be overridden by subclasses (by default
+        it raises :class:`NotImplementedError`) to return a `dict` of SA
+        column names (string), mapped to a numeric value representing the SA
+        period. This class will then sort and save SA periods accordingly.
+        You can also implement here operations which should be executed once
+        at the beginning of the flatfile parsing, such as e.g.
+        creating objects and storing them as class attributes later accessible
+        in :method:`parse_row`
+
+        :param csv_fieldnames: an iterable of strings representing the
+            header of the persed csv file
         """
-        periods_names = []
-        # spectra_fieldnames = []
-        # periods = []
-        reg = cls._sa_periods_re
-        for fname in csv_fieldnames:
-            match = reg.match(fname)
-            if match:
-                periods_names.append((fname, float(match.group(1))))
-#                 periods.append(float(match.group(1)))
-#                 spectra_fieldnames.append(fname)
-
-        periods_names.sort(key=lambda item: item[1])
-        return OrderedDict(periods_names)
+        raise NotImplementedError()
 
     @classmethod
-    def _get_event_time_columns(cls, csv_fieldnames, default_colname):
-        '''returns the event time column names'''
-        if default_colname in csv_fieldnames:
-            return [default_colname]
-        evtime_defnames = {_.lower(): i for i, _ in
-                           enumerate(cls._event_time_colnames)}
-        evtime_names = [None] * 6
-        for fname in csv_fieldnames:
-            index = evtime_defnames.get(fname.lower(), None)
-            if index is not None:
-                evtime_names[index] = fname
+    def parse_row(cls, rowdict, sa_colnames):
+        '''This method is intended to be overridden by subclasses (by default
+        is no-op) to perform any further operation on the given csv row
+        `rowdict` before writing it to the GM databse file. Please note that:
 
-        for _, caption in zip(evtime_names, ['year', 'month', 'day']):
-            if _ is None:
-                raise Exception('column "%s" not found' % caption)
+        1. This method should process `rowdict` in place, the returned value is
+           ignored. Any exception raised here is hanlded in the caller method.
+        2. `rowdict` keys might not be the same as the csv
+           field names (first csv row). See `mappings` class attribute
+        3. The values of `rowdict` are all strings and they will be casted
+           later according to the column type. However, if a cast is needed
+           here for some custom operation, in order to convert strings to
+           floats or timestamps (floats denoting date-times) you can use the
+           static methods `timestamp` and `float`. Both methods accept also
+           lists or tuples to convert arrays and silenttly coerce unparsable
+           values to nan (Note that nan represents a missing value for any
+           numeric or timestamp column).
+        4. the `rowdict` keys 'event_id', 'station_id' and 'record_id' are
+           reserved and their values will be overridden anyway
 
-        return evtime_names
+        :param rowdict: a row of the csv flatfile, as Python dict
 
-    @classmethod
-    def _get_event_time(cls, rowdict, evtime_fieldnames):
-        '''returns the event time column names'''
-        dtime = rowdict[evtime_fieldnames[0]]
-        if len(evtime_fieldnames) > 1:
-            args = [int(rowdict[fieldname] if i < 3 else
-                        rowdict.get(fieldname, 0))
-                    for i, fieldname in enumerate(evtime_fieldnames)]
-            dtime = datetime(*args)
-
-        return cls.timestamp(dtime)
-
-#     @staticmethod
-#     def normalize_dtime(dtime):
-#         '''Returns a **string** representing the argument in ISO 8061 format:
-#             '%Y-%m-%dT%H:%M:%S'
-# 
-#         :param dtime: string or datetime. In the former case, it must be
-#             in any of these formats:
-#             '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%Y'
-#         :return: ISO formatted string representing `dtime`
-#         :raises: ValueError (string not parsable) or TypeError (`dtime`
-#             neither datetime not string)
-#         '''
-#         base_format = '%Y-%m-%dT%H:%M:%S'
-#         if not isinstance(dtime, datetime):
-#             formats_ = [base_format, '%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%Y']
-#             for frmt in formats_:
-#                 try:
-#                     dtime = datetime.strptime(dtime, frmt)
-#                     break
-#                 except ValueError:
-#                     pass
-#             else:
-#                 raise ValueError('Unparsable as date-time: "%s"' % str(dtime))
-#         return dtime.strftime(base_format)
+        :param sa_colnames: a list of strings of the column
+            names denoting the SA values. The list is sorted ascending
+            according to the relative numeric period defined in
+            :method:`get_sa_periods`
+        '''
+        pass
 
     @staticmethod
     def timestamp(value):
@@ -620,72 +556,6 @@ class GMDatabaseParser(object):
                    not isinstance(value, (bytes, str)))
         return np.array([_float64(_) for _ in value]) if isarray \
             else _float64(value)
-
-    @classmethod
-    def _get_pga_column(cls, csv_fieldnames):
-        '''returns the column name denoting the PGA and the PGA unit.
-        The latter is usually retrieved in the PGA column name. Otherwise,
-        if a column 'PGA' *and* 'acceleration_unit' are found, returns
-        the names of those columns'''
-        reg = cls._pga_unit_re
-        # store fields 'pga' and 'acceleration_unit', if present:
-        pgacol, pgaunitcol = None, None
-        for fname in csv_fieldnames:
-            if not pgacol and fname.lower().strip() == 'pga':
-                pgacol = fname
-                continue
-            if not pgaunitcol and fname.lower().strip() == 'acceleration_unit':
-                pgaunitcol = fname
-                continue
-            match = reg.match(fname)
-            if match:
-                unit = match.group(1)
-                if unit not in cls._accel_units:
-                    raise Exception('unit not in %s' % str(cls._accel_units))
-                return fname, unit
-        # no pga(<unit>) column found. Check if we had 'pga' and
-        # 'acceleration_unit'
-        pgacol_ok, pgaunitcol_ok = pgacol is not None, pgaunitcol is not None
-        if pgacol_ok and not pgaunitcol_ok:
-            raise ValueError("provide field 'acceleration_unit' or "
-                             "specify unit in '%s'" % pgacol)
-        elif not pgacol_ok and pgaunitcol_ok:
-            raise ValueError("missing field 'pga'")
-        elif pgacol_ok and pgaunitcol_ok:
-            return pgacol, pgaunitcol
-        raise Exception('no matching column found')
-
-    @classmethod
-    def _get_pga(cls, rowdict, pga_column, pga_unit):
-        '''Returns the pga value from the given `rowdict[pga_column]`
-        converted to cm/^2
-        '''
-        return sm_utils.convert_accel_units(float(rowdict[pga_column]),
-                                            pga_unit)
-
-    @classmethod
-    def parse_row(cls, rowdict):
-        '''This method is intended to be overridden by subclasses (by default
-        is no-op) to perform any further operation on the given csv row
-        `rowdict` before writing it to the GM databse file.
-
-        Please **keep in mind that**:
-
-        1. This method should process `rowdict` in place, the returned value is
-           ignored. Any exception raised here is hanlded in the caller method.
-        2. `rowdict` keys might not be the same as the csv
-           field names (first csv row). See `mappings` class attribute
-        3. The values of `rowdict` are all strings, i.e. they have still to be
-           parsed to the correct column type, except those mapped to the keys
-           'sa', 'pga' and 'event_time', if present.
-        4. the `rowdict` keys 'event_id', 'station_id' and 'record_id' are
-           reserved and their values will be anyway overridden, as they
-           must represent hash string whereby comparing same
-           events, stations and records, respectively
-
-        :param rowdict: a row of the csv flatfile, as Python dict
-        '''
-        pass
 
 
 #########################################
@@ -1146,7 +1016,7 @@ class GMdb:
 
         tablerow = table.row
 
-        missing_colnames, outofbounds_colnames = [], []
+        missing_colnames, bad_colnames, outofbounds_colnames = [], [], []
         for col, colobj in tablerow.table.coldescrs.items():
             if col not in csvrow:
                 missing_colnames.append(col)
@@ -1178,12 +1048,15 @@ class GMdb:
                     continue  # actually useless, but if we add code below ...
 
             except (ValueError, TypeError):
-                missing_colnames.append(col)
+                if csvrow[col] in ('', b''):
+                    missing_colnames.append(col)
+                else:
+                    bad_colnames.append(col)
 
         tablerow.append()  # pylint: disable=no-member
         table.flush()
 
-        return missing_colnames, outofbounds_colnames
+        return missing_colnames, bad_colnames, outofbounds_colnames
 
     @property
     def table(self):
@@ -1198,7 +1071,8 @@ class GMdb:
     # ----- IO PRIVATE METHODS  ----- #
 
     def _create_table(self, sa_length):
-        desc = dict(GMDatabaseTable, sa=Float64Col(shape=(sa_length,)))
+        desc = dict(GMDatabaseTable, sa=Float64Col(shape=(sa_length,)),
+                    _sa_components=Float64Col(shape=(3, sa_length)))
         self._table = self._h5file.create_table(self._root, "table",
                                                 description=desc)
         self._table.attrs._current_row_id = 1
@@ -1218,6 +1092,7 @@ class GMdb:
     def _get_ids(self, csvrow):
         '''Returns the tuple record_id, event_id and station_id from
         the given HDF5 row `csvrow`'''
+        # FIXME: record_id NOT USED: remove?
         dbname = self.dbname
         toint = self._toint
         ids = (dbname,
@@ -1347,7 +1222,7 @@ class GMdb:
                 dic['EventIndex'].append(rec['record_id'].item())
                 self._set_sites_context_event(rec, dic['Sites'])
                 self._set_distances_context_event(rec, dic['Distances'])
-                self._add_observations(rec, imts, dic['Observations'],
+                self._add_observations(rec, dic['Observations'],
                                        sa_periods, component)
                 dic["Num. Sites"] += 1
 
@@ -1565,7 +1440,11 @@ class GMdb:
             strike = 0.0
             dip = 90.0
             try:
-                rake = MECHANISM_TYPE[record['style_of_faulting']]
+                sof = record['style_of_faulting']
+                # might be bytes:
+                if hasattr(sof, 'decode'):
+                    sof = sof.decode('utf8')
+                rake = MECHANISM_TYPE[sof]
             except KeyError:
                 rake = 0.0
 
