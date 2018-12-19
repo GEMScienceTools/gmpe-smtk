@@ -18,27 +18,27 @@ BASE_DATA_PATH = os.path.join(os.path.dirname(__file__), "data")
 
 
 EXPECTED_IDS = [
-"EMSC_20040918_0000026_RA_PYAS_0", "EMSC_20040918_0000026_RA_PYAT_0",
-"EMSC_20040918_0000026_RA_PYLI_0", "EMSC_20040918_0000026_RA_PYLL_0",
-"EMSC_20041205_0000033_CH_BNALP_0", "EMSC_20041205_0000033_CH_BOURR_0",
-"EMSC_20041205_0000033_CH_DIX_0", "EMSC_20041205_0000033_CH_EMV_0",
-"EMSC_20041205_0000033_CH_LIENZ_0", "EMSC_20041205_0000033_CH_LLS_0",
-"EMSC_20041205_0000033_CH_MMK_0", "EMSC_20041205_0000033_CH_SENIN_0",
-"EMSC_20041205_0000033_CH_SULZ_0", "EMSC_20041205_0000033_CH_VDL_0",
-"EMSC_20041205_0000033_CH_ZUR_0", "EMSC_20041205_0000033_RA_STBO_0",
-"EMSC_20130103_0000020_HL_SIVA_0", "EMSC_20130103_0000020_HL_ZKR_0",
-"EMSC_20130108_0000044_HL_ALNA_0", "EMSC_20130108_0000044_HL_AMGA_0",
-"EMSC_20130108_0000044_HL_DLFA_0", "EMSC_20130108_0000044_HL_EFSA_0",
-"EMSC_20130108_0000044_HL_KVLA_0", "EMSC_20130108_0000044_HL_LIA_0",
-"EMSC_20130108_0000044_HL_NOAC_0", "EMSC_20130108_0000044_HL_PLG_0",
-"EMSC_20130108_0000044_HL_PRK_0", "EMSC_20130108_0000044_HL_PSRA_0", 
-"EMSC_20130108_0000044_HL_SMTH_0", "EMSC_20130108_0000044_HL_TNSA_0",
-"EMSC_20130108_0000044_HL_YDRA_0", "EMSC_20130108_0000044_KO_ENZZ_0",
-"EMSC_20130108_0000044_KO_FOCM_0", "EMSC_20130108_0000044_KO_GMLD_0",
-"EMSC_20130108_0000044_KO_GOKC_0", "EMSC_20130108_0000044_KO_GOMA_0",
-"EMSC_20130108_0000044_KO_GPNR_0", "EMSC_20130108_0000044_KO_KIYI_0",
-"EMSC_20130108_0000044_KO_KRBN_0", "EMSC_20130108_0000044_KO_ORLT_0", 
-"EMSC_20130108_0000044_KO_SHAP_0"]
+    "EMSC_20040918_0000026_RA_PYAS_0", "EMSC_20040918_0000026_RA_PYAT_0",
+    "EMSC_20040918_0000026_RA_PYLI_0", "EMSC_20040918_0000026_RA_PYLL_0",
+    "EMSC_20041205_0000033_CH_BNALP_0", "EMSC_20041205_0000033_CH_BOURR_0",
+    "EMSC_20041205_0000033_CH_DIX_0", "EMSC_20041205_0000033_CH_EMV_0",
+    "EMSC_20041205_0000033_CH_LIENZ_0", "EMSC_20041205_0000033_CH_LLS_0",
+    "EMSC_20041205_0000033_CH_MMK_0", "EMSC_20041205_0000033_CH_SENIN_0",
+    "EMSC_20041205_0000033_CH_SULZ_0", "EMSC_20041205_0000033_CH_VDL_0",
+    "EMSC_20041205_0000033_CH_ZUR_0", "EMSC_20041205_0000033_RA_STBO_0",
+    "EMSC_20130103_0000020_HL_SIVA_0", "EMSC_20130103_0000020_HL_ZKR_0",
+    "EMSC_20130108_0000044_HL_ALNA_0", "EMSC_20130108_0000044_HL_AMGA_0",
+    "EMSC_20130108_0000044_HL_DLFA_0", "EMSC_20130108_0000044_HL_EFSA_0",
+    "EMSC_20130108_0000044_HL_KVLA_0", "EMSC_20130108_0000044_HL_LIA_0",
+    "EMSC_20130108_0000044_HL_NOAC_0", "EMSC_20130108_0000044_HL_PLG_0",
+    "EMSC_20130108_0000044_HL_PRK_0", "EMSC_20130108_0000044_HL_PSRA_0",
+    "EMSC_20130108_0000044_HL_SMTH_0", "EMSC_20130108_0000044_HL_TNSA_0",
+    "EMSC_20130108_0000044_HL_YDRA_0", "EMSC_20130108_0000044_KO_ENZZ_0",
+    "EMSC_20130108_0000044_KO_FOCM_0", "EMSC_20130108_0000044_KO_GMLD_0",
+    "EMSC_20130108_0000044_KO_GOKC_0", "EMSC_20130108_0000044_KO_GOMA_0",
+    "EMSC_20130108_0000044_KO_GPNR_0", "EMSC_20130108_0000044_KO_KIYI_0",
+    "EMSC_20130108_0000044_KO_KRBN_0", "EMSC_20130108_0000044_KO_ORLT_0",
+    "EMSC_20130108_0000044_KO_SHAP_0"]
 
 
 class ResidualsTestCase(unittest.TestCase):
@@ -99,7 +99,7 @@ class ResidualsTestCase(unittest.TestCase):
                 self.assertEqual(
                         len(res_dict[gsim][imt]["Total"]), 41)
 
-    def tests_residuals_execution(self):
+    def test_residuals_execution(self):
         """
         Tests basic execution of residuals - not correctness of values
         """
@@ -108,7 +108,54 @@ class ResidualsTestCase(unittest.TestCase):
         self._check_residual_dictionary_correctness(residuals.residuals)
         residuals.get_residual_statistics()
 
-    def tests_likelihood_execution(self):
+    def test_likelihood_execution(self):
+        """
+        Tests basic execution of residuals - not correctness of values
+        """
+        lkh = res.Residuals(self.gsims, self.imts)
+        lkh.get_residuals(self.database, component="Geometric")
+        self._check_residual_dictionary_correctness(lkh.residuals)
+        lkh.get_likelihood_values()
+
+    def test_llh_execution(self):
+        """
+        Tests execution of LLH - not correctness of values
+        """
+        llh = res.Residuals(self.gsims, self.imts)
+        llh.get_residuals(self.database, component="Geometric")
+        self._check_residual_dictionary_correctness(llh.residuals)
+        llh.get_loglikelihood_values(self.imts)
+
+    def test_multivariate_llh_execution(self):
+        """
+        Tests execution of multivariate llh - not correctness of values
+        """
+        multi_llh = res.Residuals(self.gsims, self.imts)
+        multi_llh.get_residuals(self.database, component="Geometric")
+        self._check_residual_dictionary_correctness(multi_llh.residuals)
+        multi_llh.get_multivariate_loglikelihood_values()
+
+    def test_edr_execution(self):
+        """
+        Tests execution of EDR - not correctness of values
+        """
+        edr = res.Residuals(self.gsims, self.imts)
+        edr.get_residuals(self.database, component="Geometric")
+        self._check_residual_dictionary_correctness(edr.residuals)
+        edr.get_edr_values()
+
+    def test_multiple_metrics(self):
+        """
+        Tests the execution running multiple metrics in one call
+        """
+        residuals = res.Residuals(self.gsims, self.imts)
+        residuals.get_residuals(self.database, component="Geometric")
+        config = {}
+        for key in ["Residuals", "Likelihood", "LLH",
+                    "MultivariateLLH", "EDR"]:
+            _ = res.GSIM_MODEL_DATA_TESTS[key](residuals, config)
+
+    def test_likelihood_execution_old(self):
         """
         Tests basic execution of residuals - not correctness of values
         """
@@ -117,7 +164,7 @@ class ResidualsTestCase(unittest.TestCase):
         self._check_residual_dictionary_correctness(lkh.residuals)
         lkh.get_likelihood_values()
 
-    def tests_llh_execution(self):
+    def test_llh_execution_old(self):
         """
         Tests execution of LLH - not correctness of values
         """
@@ -126,16 +173,16 @@ class ResidualsTestCase(unittest.TestCase):
         self._check_residual_dictionary_correctness(llh.residuals)
         llh.get_loglikelihood_values(self.imts)
 
-    def tests_multivariate_llh_execution(self):
+    def test_multivariate_llh_execution_old(self):
         """
         Tests execution of multivariate llh - not correctness of values
         """
         multi_llh = res.MultivariateLLH(self.gsims, self.imts)
         multi_llh.get_residuals(self.database, component="Geometric")
         self._check_residual_dictionary_correctness(multi_llh.residuals)
-        multi_llh.get_likelihood_values()
+        multi_llh.get_multivariate_loglikelihood_values()
 
-    def tests_edr_execution(self):
+    def test_edr_execution_old(self):
         """
         Tests execution of EDR - not correctness of values
         """
@@ -151,6 +198,7 @@ class ResidualsTestCase(unittest.TestCase):
         """
         shutil.rmtree(cls.out_location)
 
+
 if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test.testName']
+    # import sys;sys.argv = ['', 'Test.testName']
     unittest.main()
