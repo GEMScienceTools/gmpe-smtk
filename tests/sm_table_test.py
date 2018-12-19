@@ -45,6 +45,7 @@ class ColTestCase(unittest.TestCase):
     def test_scol(self):
         scol = DateTimeCol()
         fcol = Float64Col()
+        scol_bounds = DateTimeCol(min='2006', max='2007-01-01')
         sdf = 9
 
 

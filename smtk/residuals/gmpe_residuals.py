@@ -566,8 +566,7 @@ class Residuals(object):
         intra_res = obs - (mean + inter_res)
         if normalise:
             return inter_res / inter, intra_res / intra
-        else:
-            return inter_res, intra_res
+        return inter_res, intra_res
 
     def get_residual_statistics(self):
         """

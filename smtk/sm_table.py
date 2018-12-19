@@ -50,11 +50,17 @@ from smtk.sm_utils import MECHANISM_TYPE, get_interpolated_period
 from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 
 
-# implements subclasses to account for dflt = nan, plus min and max and
-# allowing other custom attributes in the future. Note that the way Col
-# classes are implemented in pytables is tricky and full of abstraction
-# layers, so we have to manually subclass each specific type of interest,
-# with some "hacks":
+# Implements here pytables column subclasses.
+# Pytable column subclasses do not actually provide much functionality,
+# when compared to SQL columns. Their benefit is to clearly define a table
+# structure in Python code, but they miss several functionalities and implement
+# werid behaviour which we partly fix below: e.g., we set dflt = nan for
+# Float columns, and we allow min and max to be passed in the constructor (and
+# any other custom attribute in the future). Please DO NOT USE EnumCol: to
+# put it short, it's complex and useless. Rather, use a StringCol
+# (see style_of_faulting). Also, TRY NOT TO USE Integer Columns, as they cannot
+# have a clear missing value (0 is pytables default, NOT 100% of the times a
+# missing value as it would be b"" for StringCols and nan for FloatCols):
 class Float64Col(_Float64Col):
     '''subclasses pytables Float64Col, with nan as default and optional min/max
     attributes'''
@@ -88,11 +94,11 @@ class DateTimeCol(_Float64Col):
     def __init__(self, shape=(), min=None, max=None):  # @ReservedAssignment
         super(DateTimeCol, self).__init__(shape=shape, dflt=np.nan)
         if min is not None:
-            min = GMDatabaseParser.timestamp(min)
+            min = GMTableParser.timestamp(min)
             if np.isnan(min):
                 raise ValueError('"%s" is not a date-time' % str(min))
         if max is not None:
-            max = GMDatabaseParser.timestamp(max)
+            max = GMTableParser.timestamp(max)
             if np.isnan(max):
                 raise ValueError('"%s" is not a date-time' % str(max))
         self.min_value, self.max_value = min, max
@@ -1261,7 +1267,7 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
         append(sctx, 'lons', record['station_longitude'])
         append(sctx, 'lats', record['station_latitude'])
         append(sctx, 'depths',  0.0 if isnan(record['station_elevation'])
-               else record['station_elevation'])
+               else record['station_elevation'] * -1.0E-3)
         vs30 = record['vs30']
         append(sctx, 'vs30', vs30)
         append(sctx, 'vs30measured', record['vs30_measured'])

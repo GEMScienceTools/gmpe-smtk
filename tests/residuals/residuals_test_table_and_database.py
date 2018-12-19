@@ -1,5 +1,7 @@
 """
 Core test suite for the database and residuals construction
+when created from sm_database.GroundMotionDatabase and
+sm_table.GroundMotionTable (contexts should be equal)
 """
 import os
 import sys
@@ -73,7 +75,7 @@ class ResidualsTestCase(unittest.TestCase):
         # create the sm table:
         cls.out_location2 = cls.out_location + '_table'
         EsmParser.parse(ifile, cls.out_location2, mode='w', delimiter=';')
-        cls.gmdb = \
+        cls.dbtable = \
             GroundMotionTable(cls.out_location2,
                               os.path.splitext(os.path.basename(ifile))[0])
 #         with GroundMotionTable(cls.out_location2,
@@ -92,8 +94,8 @@ class ResidualsTestCase(unittest.TestCase):
         self.assertListEqual([rec.id for rec in self.database],
                              EXPECTED_IDS)
         # assert the table has also 41 elements:
-        with self.gmdb:  # oipen underlying HDF5 file
-            assert self.gmdb.table.nrows == 41
+        with self.dbtable:  # open underlying HDF5 file
+            assert self.dbtable.table.nrows == 41
 
     def _check_residual_dictionary_correctness(self, res_dict):
         """
@@ -120,9 +122,59 @@ class ResidualsTestCase(unittest.TestCase):
                 self.assertEqual(
                         len(res_dict[gsim][imt]["Total"]), 41)
 
+    def _check_new_context_vs_old(self, contexts_old, contexts_new):
+        self.assertEqual(len(contexts_old),
+                         len(contexts_new))
+
+        def cmp(obj1, obj2, exclude=None):
+            '''compares equality of objects'''
+            exclude = set() if not exclude else set(exclude)
+            self.assertEqual(type(obj1), type(obj2))
+            compare_dicts = isinstance(obj1, dict)
+            if compare_dicts:
+                keys1, keys2 = obj1.keys(), obj2.keys()
+            else:
+                keys1, keys2 = dir(obj1), dir(obj2)
+            atts1 = [_ for _ in keys1 if _[:1] != '_' and _ not in exclude]
+            atts2 = [_ for _ in keys2 if _[:1] != '_' and _ not in exclude]
+            # assert attrs are the same:
+            self.assertFalse(set(atts1)-set(atts2))
+            # compare att values:
+            for att in atts1:
+                if att in exclude:
+                    continue
+                if compare_dicts:
+                    val1, val2 = obj1[att], obj2[att]
+                else:
+                    val1, val2 = getattr(obj1, att), getattr(obj2, att)
+                try:
+                    assert np.allclose(val1, val2, rtol=.5e-3, equal_nan=True)
+                except TypeError:
+                    # attributes are not coimparable (e.g. mehtods)
+                    pass
+                except Exception as _:  # pylint: disable=broad-except
+                    raise
+
+        for cont1, cont2 in zip(contexts_old, contexts_new):
+            sites1, sites2 = cont1['Sites'], cont2['Sites']
+            cmp(sites1, sites2)
+            dist1, dist2 = cont1['Distances'], cont2['Distances']
+            cmp(dist1, dist2, exclude=['rx'])
+            rup1, rup2 = cont1['Rupture'], cont2['Rupture']
+            cmp(rup1, rup2, exclude=['hypo_loc', 'rake', 'width', 'dip',
+                                     'strike', 'ztor'])
+            obs1, obs2 = cont1['Observations'], cont2['Observations']
+            cmp(obs1, obs2)
+            expected1, expected2 = cont1['Expected'], cont2['Expected']
+            cmp(expected1, expected2)
+            res1, res2 = cont1['Residual'], cont2['Residual']
+            cmp(res1, res2)
+
     def test_residuals_execution(self):
         """
-        Tests basic execution of residuals - not correctness of values
+        Tests basic execution of residuals - not correctness of values -
+        to be the same when created from sm_database.GroundMotionDatabase and
+        sm_table.GroundMotionTable
         """
         residuals1 = res.Residuals(self.gsims, self.imts)
         residuals1.get_residuals(self.database, component="Geometric")
@@ -130,94 +182,109 @@ class ResidualsTestCase(unittest.TestCase):
         stats1 = residuals1.get_residual_statistics()
 
         residuals2 = res.Residuals(self.gsims, self.imts)
-        residuals2.get_residuals(self.gmdb, component="Geometric")
+        residuals2.get_residuals(self.dbtable, component="Geometric")
         self._check_residual_dictionary_correctness(residuals2.residuals)
         stats2 = residuals2.get_residual_statistics()
 
-        asd = 9
+        self._check_new_context_vs_old(residuals1.contexts,
+                                       residuals2.contexts)
 
-    def tst_likelihood_execution(self):
+    def test_likelihood_execution(self):
         """
-        Tests basic execution of residuals - not correctness of values
+        Tests basic execution of residuals - not correctness of values -
+        to be the same when created from sm_database.GroundMotionDatabase and
+        sm_table.GroundMotionTable
         """
-        lkh = res.Residuals(self.gsims, self.imts)
-        lkh.get_residuals(self.database, component="Geometric")
-        self._check_residual_dictionary_correctness(lkh.residuals)
-        lkh.get_likelihood_values()
+        lkh1 = res.Residuals(self.gsims, self.imts)
+        lkh1.get_residuals(self.database, component="Geometric")
+        self._check_residual_dictionary_correctness(lkh1.residuals)
+        lkh1.get_likelihood_values()
 
-    def tst_llh_execution(self):
-        """
-        Tests execution of LLH - not correctness of values
-        """
-        llh = res.Residuals(self.gsims, self.imts)
-        llh.get_residuals(self.database, component="Geometric")
-        self._check_residual_dictionary_correctness(llh.residuals)
-        llh.get_loglikelihood_values(self.imts)
+        lkh2 = res.Residuals(self.gsims, self.imts)
+        lkh2.get_residuals(self.dbtable, component="Geometric")
+        self._check_residual_dictionary_correctness(lkh2.residuals)
+        lkh2.get_likelihood_values()
 
-    def tst_multivariate_llh_execution(self):
-        """
-        Tests execution of multivariate llh - not correctness of values
-        """
-        multi_llh = res.Residuals(self.gsims, self.imts)
-        multi_llh.get_residuals(self.database, component="Geometric")
-        self._check_residual_dictionary_correctness(multi_llh.residuals)
-        multi_llh.get_multivariate_loglikelihood_values()
+        self._check_new_context_vs_old(lkh1.contexts,
+                                       lkh2.contexts)
 
-    def tst_edr_execution(self):
+    def test_llh_execution(self):
         """
-        Tests execution of EDR - not correctness of values
+        Tests execution of LLH - not correctness of values -
+        to be the same when created from sm_database.GroundMotionDatabase and
+        sm_table.GroundMotionTable
         """
-        edr = res.Residuals(self.gsims, self.imts)
-        edr.get_residuals(self.database, component="Geometric")
-        self._check_residual_dictionary_correctness(edr.residuals)
-        edr.get_edr_values()
+        llh1 = res.Residuals(self.gsims, self.imts)
+        llh1.get_residuals(self.database, component="Geometric")
+        self._check_residual_dictionary_correctness(llh1.residuals)
+        llh1.get_loglikelihood_values(self.imts)
 
-    def tst_multiple_metrics(self):
+        llh2 = res.Residuals(self.gsims, self.imts)
+        llh2.get_residuals(self.dbtable, component="Geometric")
+        self._check_residual_dictionary_correctness(llh2.residuals)
+        llh2.get_loglikelihood_values(self.imts)
+
+        self._check_new_context_vs_old(llh1.contexts,
+                                       llh2.contexts)
+
+    def test_multivariate_llh_execution(self):
+        """
+        Tests execution of multivariate llh - not correctness of values -
+        to be the same when created from sm_database.GroundMotionDatabase and
+        sm_table.GroundMotionTable
+        """
+        multi_llh1 = res.Residuals(self.gsims, self.imts)
+        multi_llh1.get_residuals(self.database, component="Geometric")
+        self._check_residual_dictionary_correctness(multi_llh1.residuals)
+        multi_llh1.get_multivariate_loglikelihood_values()
+
+        multi_llh2 = res.Residuals(self.gsims, self.imts)
+        multi_llh2.get_residuals(self.dbtable, component="Geometric")
+        self._check_residual_dictionary_correctness(multi_llh2.residuals)
+        multi_llh2.get_multivariate_loglikelihood_values()
+
+        self._check_new_context_vs_old(multi_llh1.contexts,
+                                       multi_llh2.contexts)
+
+    def test_edr_execution(self):
+        """
+        Tests execution of EDR - not correctness of values -
+        to be the same when created from sm_database.GroundMotionDatabase and
+        sm_table.GroundMotionTable
+        """
+        edr1 = res.Residuals(self.gsims, self.imts)
+        edr1.get_residuals(self.database, component="Geometric")
+        self._check_residual_dictionary_correctness(edr1.residuals)
+        edr1.get_edr_values()
+
+        edr2 = res.Residuals(self.gsims, self.imts)
+        edr2.get_residuals(self.dbtable, component="Geometric")
+        self._check_residual_dictionary_correctness(edr2.residuals)
+        edr2.get_edr_values()
+
+        self._check_new_context_vs_old(edr1.contexts,
+                                       edr2.contexts)
+
+    def test_multiple_metrics(self):
         """
         Tests the execution running multiple metrics in one call
+        with sm_table.GroundMotionTable instead of
+        sm_database.GroundMotionDatabase
         """
+        # OLD CODE:
+        # residuals = res.Residuals(self.gsims, self.imts)
+        # residuals.get_residuals(self.database, component="Geometric")
+        # config = {}
+        # for key in ["Residuals", "Likelihood", "LLH",
+        #             "MultivariateLLH", "EDR"]:
+        #     _ = res.GSIM_MODEL_DATA_TESTS[key](residuals, config)
+
         residuals = res.Residuals(self.gsims, self.imts)
-        residuals.get_residuals(self.database, component="Geometric")
+        residuals.get_residuals(self.dbtable, component="Geometric")
         config = {}
         for key in ["Residuals", "Likelihood", "LLH",
                     "MultivariateLLH", "EDR"]:
             _ = res.GSIM_MODEL_DATA_TESTS[key](residuals, config)
-
-    def tst_likelihood_execution_old(self):
-        """
-        Tests basic execution of residuals - not correctness of values
-        """
-        lkh = res.Likelihood(self.gsims, self.imts)
-        lkh.get_residuals(self.database, component="Geometric")
-        self._check_residual_dictionary_correctness(lkh.residuals)
-        lkh.get_likelihood_values()
-
-    def tst_llh_execution_old(self):
-        """
-        Tests execution of LLH - not correctness of values
-        """
-        llh = res.LLH(self.gsims, self.imts)
-        llh.get_residuals(self.database, component="Geometric")
-        self._check_residual_dictionary_correctness(llh.residuals)
-        llh.get_loglikelihood_values(self.imts)
-
-    def tst_multivariate_llh_execution_old(self):
-        """
-        Tests execution of multivariate llh - not correctness of values
-        """
-        multi_llh = res.MultivariateLLH(self.gsims, self.imts)
-        multi_llh.get_residuals(self.database, component="Geometric")
-        self._check_residual_dictionary_correctness(multi_llh.residuals)
-        multi_llh.get_multivariate_loglikelihood_values()
-
-    def tst_edr_execution_old(self):
-        """
-        Tests execution of EDR - not correctness of values
-        """
-        edr = res.EDR(self.gsims, self.imts)
-        edr.get_residuals(self.database, component="Geometric")
-        self._check_residual_dictionary_correctness(edr.residuals)
-        edr.get_edr_values()
 
     @classmethod
     def tearDownClass(cls):

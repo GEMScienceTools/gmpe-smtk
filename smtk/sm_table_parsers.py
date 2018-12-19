@@ -369,7 +369,7 @@ class EsmParser(GMTableParser):
 
         def to_cm_sec_square(val):
             '''converts g to cm/sec^2'''
-            return sm_utils.convert_accel_units(val, 'g')
+            return val  # sm_utils.convert_accel_units(val, 'g')
 
         # Note: ESM not reporting correctly some values: PGA, PGV, PGD and SA
         # should always be positive (absolute value)
