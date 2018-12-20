@@ -51,7 +51,7 @@ def nextpow2(nval):
     return int(2.0 ** m_i)
 
 
-def convert_accel_units(acceleration, from_, to_='cm/s/s'):
+def convert_accel_units(acceleration, from_, to_='cm/s/s'):  # pylint: disable=too-many-return-statements
     """
     Converts acceleration from/to different units
 
@@ -73,14 +73,14 @@ def convert_accel_units(acceleration, from_, to_='cm/s/s'):
         if to_ in m_sec_square:
             return acceleration * g
         if to_ in cm_sec_square:
-            return 100 * acceleration * g
+            return acceleration * (100 * g)
     elif from_ in m_sec_square:
         if to_ == 'g':
             return acceleration / g
         if to_ in m_sec_square:
             return acceleration
         if to_ in cm_sec_square:
-            return 100 * acceleration
+            return acceleration * 100
     elif from_ in cm_sec_square:
         if to_ == 'g':
             return acceleration / (100 * g)

@@ -8,6 +8,7 @@ import numpy as np
 from scipy.constants import g
 from smtk.sm_table import GMTableParser
 from smtk import sm_utils
+from smtk.sm_utils import convert_accel_units
 
 
 class UserDefinedParser(GMTableParser):
@@ -17,27 +18,30 @@ class UserDefinedParser(GMTableParser):
     This class should be user for any user defined flatfile. A flatfile
     (csv file) should have the columns defined as keys of
     :class:GmDatabaseTable (upper/lower case is ignored), with the following
-    caveats:
+    options/requirements:
 
     1. SA columns must be given in the form 'sa(period)', where 'period is a
-        number
-    2. pga column is supposed to be in g unit, but the user can also supply it
-        as 'pga(cm/s^2)' or 'pga(m/s^2)'. The column header will
-        be recognized as pga and the unit conversion will be done automatically
-        A column 'pga' can be also given but then there must be a column
-        'acceleration_unit' with one of the values 'g', 'cm/s^2', 'm/s^2'
-    3. Event time can be given as datetime in ISO format under the column
-        'event_time' , or as separate columns 'year' 'month' 'day' /
-        'year', 'month', 'day', 'hour', 'minute' ,' second'.
-    4. All columns will be converted to lower case before processing
+       number. The unit of SA can be given in the column 'acceleration_unit'.
+       If such a column is missing, SA is assumed to be in g as unit
+    2. PGA column ('pga') can also be supplied as 'pga(<unit>)', e.g.
+        'pga(cm/s^2)' or 'pga(g)'. In the former case (no unit specified),
+        the unit of the PGA will be the value given in the column
+        'acceleration_unit'. If such a column is missing, the PGA is assumed
+        to be in g as unit
+    3. PGV must is assumed to be given in cm/sec
+    4. Event time can be given as datetime in ISO format in the column
+        'event_time', or via six separate numeric columns:
+        'year', 'month' (from 1 to 12), 'day' (1-31), 'hour' (0-24),
+        'minute' (0-60),' second' (0-60).
+    5. All columns will be converted to lower case before processing
 
-    The parsing is done in the `parse` method. The typical workflow
-    is to implement a new subclass for each new flatfile released.
+    This class inherits from :class:`GMTableParser`: the parsing is done in
+    the `parse` method.
     Subclasses should override the `mapping` dict where flatfile
     specific column names are mapped to :class:`GMDatabaseTable` column names
     and optionally the `parse_row` method where additional operation
     is performed in-place on each flatfile row. For more details, see
-    the :method:`parse_row` method docstring
+    the :method:`parse_row` docstring
     '''
     csv_delimiter = ';'  # the csv delimiter (same as superclass)
 
@@ -61,6 +65,7 @@ class UserDefinedParser(GMTableParser):
     # pga column. Might be modified during parsing:
     _pga_col = 'pga'
     _pga_unit = 'g'
+    _acc_unit_col = None
 
     # fields to be converted to lower case will be populated during parsing:
     _non_lcase_fieldnames = []
@@ -68,22 +73,7 @@ class UserDefinedParser(GMTableParser):
     # The csv column names will be then converted according to the
     # `mappings` dict below, where a csv flatfile column is mapped to its
     # corresponding Gm database column name. The mapping is the first
-    # operation performed on any row. After that:
-    # 1. Columns matching `_sa_periods_re` will be parsed and log-log
-    # interpolated with '_ref_periods'. The resulting data will be put in the
-    # Gm database 'sa' column.
-    # 2. If a column 'event_time' is missing, then the program searches
-    # for '_event_time_colnames' (ignoring case) and parses the date. The
-    # resulting date (in ISO formatted string) will be put in the Gm databse
-    # column 'event_time'.
-    # 3. If a column matching `_pga_unit_re` is found, then the unit is
-    # stored and the Gm databse column 'pga' is filled with the PGA value,
-    # converted to cm/s/s.
-    # 4. The `parse_row` method is called. Therein, the user should
-    # implement any more complex operation
-    # 5 a row is written as record of the output HDF5 file. The columns
-    # 'event_id', 'station_id' and 'record_id' are automatically filled to
-    # uniquely identify their respective entitites
+    # operation performed on any row
     mappings = {}
 
     @classmethod
@@ -91,37 +81,45 @@ class UserDefinedParser(GMTableParser):
         """This method is intended to be overridden by subclasses (by default
         it raises :class:`NotImplementedError`) to return a `dict` of SA
         column names (string), mapped to a numeric value representing the SA
-        period.
-        This class will then sort and save SA periods accordingly.
+        period. This class will then sort and save SA periods accordingly.
+
+        You can also implement here operations which should be executed once
+        at the beginning of the flatfile parsing, such as e.g.
+        creating objects and storing them as class attributes later accessible
+        in :method:`parse_row`
 
         :param csv_fieldnames: an iterable of strings representing the
             header of the persed csv file
         """
+        # convert to lower case:
+        csv_fieldnames_lc = tuple(_.lower() for _ in csv_fieldnames)
+        csv_fieldnames_lc_set = set(csv_fieldnames_lc)
 
         # this method is run once per parse action, setup here the
         # needed class attributes we will need inside parse_row (maybe could be
         # better implemented):
         try:
             cls._evtime_fieldnames = \
-                cls._get_event_time_columns(csv_fieldnames)
+                cls._get_event_time_columns(csv_fieldnames_lc_set)
         except Exception as exc:
             raise ValueError('Unable to parse event '
                              'time column(s): %s' % str(exc))
 
         # get pga fieldname and units:
         try:
-            cls._pga_col, cls._pga_unit = cls._get_pga_column(csv_fieldnames)
+            cls._pga_col, cls._pga_unit, cls._acc_unit_col = \
+                cls._get_pga_column_and_acc_units(csv_fieldnames_lc_set)
         except Exception as exc:
             raise ValueError('Unable to parse PGA column: %s' % str(exc))
 
         # set non-lowercase fields, so that we replace these later:
         cls._non_lcase_fieldnames = \
-            [_ for _ in csv_fieldnames if _.lower() != _]
+            set(csv_fieldnames) - csv_fieldnames_lc_set
 
         # extract the sa columns:
         periods_names = []
         reg = cls._sa_periods_re
-        for fname in csv_fieldnames:
+        for fname in csv_fieldnames_lc:
             match = reg.match(fname)
             if match:
                 periods_names.append((fname, float(match.group(1))))
@@ -130,51 +128,40 @@ class UserDefinedParser(GMTableParser):
         return OrderedDict(periods_names)
 
     @classmethod
-    def _get_event_time_columns(cls, csv_fieldnames):
+    def _get_event_time_columns(cls, csv_fieldnames_lc_set):
         '''returns the event time column names'''
 
-        fnames = set(_.lower() for _ in csv_fieldnames)
-
         for evtnames in [['event_time'],
-                         ['year', 'month', 'day'],
                          ['year', 'month', 'day', 'hour', 'minute', 'second']]:
-            if fnames & set(evtnames) == set(evtnames):
+            if csv_fieldnames_lc_set & set(evtnames) == set(evtnames):
                 return evtnames
         raise Exception('no event time related column found')
 
     @classmethod
-    def _get_pga_column(cls, csv_fieldnames):
+    def _get_pga_column_and_acc_units(cls, csv_fieldnames_lc_set):
         '''returns the column name denoting the PGA and the PGA unit.
         The latter is usually retrieved in the PGA column name. Otherwise,
         if a column 'PGA' *and* 'acceleration_unit' are found, returns
         the names of those columns'''
-        reg = cls._pga_unit_re
-        # store fields 'pga' and 'acceleration_unit', if present:
-        pgacol, pgaunitcol = None, None
-        for fname in csv_fieldnames:
-            if not pgacol and fname.lower().strip() == 'pga':
-                pgacol = fname
-                continue
-            if not pgaunitcol and fname.lower().strip() == 'acceleration_unit':
-                pgaunitcol = fname
-                continue
-            match = reg.match(fname)
-            if match:
-                unit = match.group(1)
-                if unit not in cls._accel_units:
-                    raise Exception('unit not in %s' % str(cls._accel_units))
-                return fname, unit
-        # no pga(<unit>) column found. Check if we had 'pga' and
-        # 'acceleration_unit'
-        pgacol_ok, pgaunitcol_ok = pgacol is not None, pgaunitcol is not None
-        if pgacol_ok and not pgaunitcol_ok:
-            raise ValueError("provide field 'acceleration_unit' or "
-                             "specify unit in '%s'" % pgacol)
-        elif not pgacol_ok and pgaunitcol_ok:
-            raise ValueError("missing field 'pga'")
-        elif pgacol_ok and pgaunitcol_ok:
-            return pgacol, pgaunitcol
-        raise Exception('no matching column found')
+        pgacol, pgaunit, acc_unit_col = None, None, None
+        if 'acceleration_unit' in csv_fieldnames_lc_set:
+            acc_unit_col = 'acceleration_unit'
+        if 'pga' in csv_fieldnames_lc_set:
+            pgacol = 'pga'
+        else:
+            reg = cls._pga_unit_re
+            # store fields 'pga' and 'acceleration_unit', if present:
+            for fname in csv_fieldnames_lc_set:
+                match = reg.match(fname)
+                if match:
+                    unit = match.group(1)
+                    if unit not in cls._accel_units:
+                        raise Exception('unit not in %s' %
+                                        str(cls._accel_units))
+                    pgacol, pgaunit = fname, unit
+        if pgacol is None:
+            raise ValueError("no PGA column found")
+        return pgacol, pgaunit, acc_unit_col
 
     @classmethod
     def parse_row(cls, rowdict, sa_colnames):
@@ -204,33 +191,36 @@ class UserDefinedParser(GMTableParser):
             according to the relative numeric period defined in
             :method:`get_sa_periods`
         '''
+        # replace non lower case keys with their lower case counterpart:
+        for key in cls._non_lcase_fieldnames:
+            rowdict[key.lower()] = rowdict.pop(key)
+
         # assign values (sa, event time, pga):
         tofloat = cls.float
-        rowdict['sa'] = tofloat([rowdict[p] for p in sa_colnames])
+        sa_ = tofloat([rowdict[p] for p in sa_colnames])
+        sa_unit = rowdict[cls._acc_unit_col] if cls._acc_unit_col else 'g'
+        sa_ = convert_accel_units(sa_, sa_unit)
+        rowdict['sa'] = sa_
 
         # assign event time:
         evtime_fieldnames = cls._evtime_fieldnames
         dtime = ""
         if len(evtime_fieldnames) == 6:
-            dtime = "{}-{}-{}T{}:{}:{}".format(*(rowdict[i]
-                                                 for i in evtime_fieldnames))
-        elif len(evtime_fieldnames) == 3:
-            dtime = "{}-{}-{}".format(*(rowdict[i]
-                                        for i in evtime_fieldnames))
+            # use zfill to account for '934' formatted as '0934' for years,
+            # and '5' formatted as '05' for all other fields:
+            dtime = "{}-{}-{}T{}:{}:{}".\
+                format(*(rowdict[c].zfill(4 if i == 0 else 2)
+                       for i, c in enumerate(evtime_fieldnames)))
         else:
             dtime = rowdict[evtime_fieldnames[0]]
         rowdict['event_time'] = cls.timestamp(dtime)
 
         # assign pga:
         pga_col, pga_unit = cls._pga_col, cls._pga_unit
-        acc_unit = rowdict[pga_unit] \
-            if pga_unit == 'acceleration_unit' else pga_unit
+        if not pga_unit:
+            pga_unit = cls._acc_unit_col if cls._acc_unit_col else 'g'
         rowdict['pga'] = \
-            sm_utils.convert_accel_units(tofloat(rowdict[pga_col]), acc_unit)
-
-        # replace non lower case keys with their lower case counterpart:
-        for key in cls._non_lcase_fieldnames:
-            rowdict[key.lower()] = rowdict.pop(key)
+            convert_accel_units(tofloat(rowdict[pga_col]), pga_unit)
 
 
 class EsmParser(GMTableParser):
@@ -261,8 +251,12 @@ class EsmParser(GMTableParser):
         """This method is intended to be overridden by subclasses (by default
         it raises :class:`NotImplementedError`) to return a `dict` of SA
         column names (string), mapped to a numeric value representing the SA
-        period.
-        This class will then sort and save SA periods accordingly.
+        period. This class will then sort and save SA periods accordingly.
+
+        You can also implement here operations which should be executed once
+        at the beginning of the flatfile parsing, such as e.g.
+        creating objects and storing them as class attributes later accessible
+        in :method:`parse_row`
 
         :param csv_fieldnames: an iterable of strings representing the
             header of the persed csv file

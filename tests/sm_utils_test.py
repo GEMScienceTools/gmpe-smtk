@@ -44,7 +44,7 @@ def convert_accel_units_old(acceleration, units):
     :return: acceleration converted to the given units
     """
     if units == "g":
-        return (100*g) * acceleration
+        return (100 * g) * acceleration
     if units in ("m/s/s", "m/s**2", "m/s^2"):
         return 100. * acceleration
     if units in ("cm/s/s", "cm/s**2", "cm/s^2"):
@@ -53,15 +53,18 @@ def convert_accel_units_old(acceleration, units):
     raise ValueError("Unrecognised time history units. "
                      "Should take either ''g'', ''m/s/s'' or ''cm/s/s''")
 
+
 class SmUtilsTestCase(unittest.TestCase):
     '''tests GroundMotionTable and selection'''
 
     def assertNEqual(self, first, second, rtol=1e-6, atol=1e-9,
                      equal_nan=True):
+        '''wrapper around numpy.allcose'''
         self.assertTrue(np.allclose(first, second, rtol=rtol, atol=atol,
                                     equal_nan=equal_nan))
 
     def test_accel_units(self):
+        '''test acceleration units function'''
         func = convert_accel_units
         for acc in [np.nan, 0, 100, -g*5, g*6.5,
                     np.array([np.nan, 0, 100, g*5, g*6.5])]:
@@ -76,6 +79,7 @@ class SmUtilsTestCase(unittest.TestCase):
             for msec in ('m/s^2', 'm/s**2'):
                 self.assertNEqual(_1, func(acc, 'g', msec))
                 self.assertNEqual(_2, func(acc, msec, 'g'))
+
             # assert same label is no-op:
             self.assertNEqual(func(acc, 'g', 'g'), acc)
             self.assertNEqual(func(acc, 'cm/s/s', 'cm/s/s'), acc)
@@ -99,6 +103,8 @@ class SmUtilsTestCase(unittest.TestCase):
                 self.assertNEqual(convert_accel_units_old(acc, unit),
                                   func(acc, unit))
 
+            with self.assertRaises(ValueError):  # invalid units 'a':
+                func(acc, 'a')
 
 
 

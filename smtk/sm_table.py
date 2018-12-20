@@ -51,16 +51,16 @@ from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 
 
 # Implements here pytables column subclasses.
-# Pytable column subclasses do not actually provide much functionality,
-# when compared to SQL columns. Their benefit is to clearly define a table
-# structure in Python code, but they miss several functionalities and implement
-# werid behaviour which we partly fix below: e.g., we set dflt = nan for
-# Float columns, and we allow min and max to be passed in the constructor (and
-# any other custom attribute in the future). Please DO NOT USE EnumCol: to
-# put it short, it's complex and useless. Rather, use a StringCol
-# (see style_of_faulting). Also, TRY NOT TO USE Integer Columns, as they cannot
-# have a clear missing value (0 is pytables default, NOT 100% of the times a
-# missing value as it would be b"" for StringCols and nan for FloatCols):
+# Pytable column classes help defining a table structure in Python code,
+# similarly to ORM for SQL databases. However, they generally lack simplicity,
+# features and documentation. Subclasses defined below define a default
+# dflt = nan for Float columns, and we allow min and max to be passed in the
+# constructor (and any other custom attribute in the future).
+# Final notes: please DO NOT USE EnumCol: to
+# put it shortly, it's complex and useless. Rather, use a StringCol
+# (see style_of_faulting). Also, TRY NOT to use Integer Columns, as they cannot
+# have a clear missing value (0 is pytables default) as it happens
+# for StringColumns (b"") and FloatCols (NaN):
 class Float64Col(_Float64Col):
     '''subclasses pytables Float64Col, with nan as default and optional min/max
     attributes'''
@@ -117,44 +117,6 @@ class StringCol(_StringCol):
         super(StringCol, self).__init__(itemsize, shape, dflt=b'')
         self.min_value, self.max_value = min, max
 
-
-# class EnumCol(_EnumCol):
-#     '''subclasses pytables EnumCol: accepts a list of strings, inserts the
-#     empty string (if not present) and sets it as default'''
-#     def __init__(self, values):
-#         dflt = ''
-#         if dflt not in values:
-#             values = [''] + list(values)
-#         # decide the type automatically according to the size of elements:
-#         type_ = 'uint64'
-#         if len(values) <= 255:
-#             type_ = 'uint8'
-#         elif len(values) <= 65535:
-#             type_ = 'uint16'
-#         elif len(values) <= 4294967295:
-#             type_ = 'uint32'
-#         super(EnumCol, self).__init__(values, dflt, type_)
-# 
-#     def prefix(self):  # make pytables happy. See description.py line 2013
-#         return 'Enum'
-
-
-# # defines a mechanism type to be associated to a rake
-# MECHANISM_TYPE = {"Normal": -90.0,
-#                   "Strike-Slip": 0.0,
-#                   "Reverse": 90.0,
-#                   "Oblique": 0.0,
-#                   "Unknown": 0.0,
-#                   "N": -90.0,  # Flatfile conventions
-#                   "S": 0.0,
-#                   "R": 90.0,
-#                   "U": 0.0,
-#                   "NF": -90.,  # ESM flatfile conventions
-#                   "SS": 0.,
-#                   "TF": 90.,
-#                   "NS": -45.,  # Normal with strike-slip component
-#                   "TS": 45.,  # Reverse with strike-slip component
-#                   }
 
 # Instead of implementing a static GMDatabase as `pytable.IsDescription` class.
 # which does not allow to dynamically set the length of array columns, write
@@ -262,22 +224,7 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
     # The csv column names will be then converted according to the
     # `mappings` dict below, where a csv flatfile column is mapped to its
     # corresponding Gm database column name. The mapping is the first
-    # operation performed on any row. After that:
-    # 1. Columns matching `_sa_periods_re` will be parsed and log-log
-    # interpolated with '_ref_periods'. The resulting data will be put in the
-    # Gm database 'sa' column.
-    # 2. If a column 'event_time' is missing, then the program searches
-    # for '_event_time_colnames' (ignoring case) and parses the date. The
-    # resulting date (in ISO formatted string) will be put in the Gm databse
-    # column 'event_time'.
-    # 3. If a column matching `_pga_unit_re` is found, then the unit is
-    # stored and the Gm databse column 'pga' is filled with the PGA value,
-    # converted to cm/s/s.
-    # 4. The `parse_row` method is called. Therein, the user should
-    # implement any more complex operation
-    # 5 a row is written as record of the output HDF5 file. The columns
-    # 'event_id', 'station_id' and 'record_id' are automatically filled to
-    # uniquely identify their respective entitites
+    # operation performed on any row
     mappings = {}
 
     @classmethod
@@ -439,6 +386,7 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
         it raises :class:`NotImplementedError`) to return a `dict` of SA
         column names (string), mapped to a numeric value representing the SA
         period. This class will then sort and save SA periods accordingly.
+
         You can also implement here operations which should be executed once
         at the beginning of the flatfile parsing, such as e.g.
         creating objects and storing them as class attributes later accessible
