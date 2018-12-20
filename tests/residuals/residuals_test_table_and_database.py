@@ -85,6 +85,17 @@ class ResidualsTestCase(unittest.TestCase):
 #             reader = csv.DictReader(csvfile, delimiter=';')
 #             for row in reader:
 #                 row
+#        cls.statsfile = os.path.join(os.path.dirname(ifile),
+#                                     'residual_stats.pickle')
+
+#        cls._data = {}
+#     @classmethod
+#     def write_results(cls, key, value):
+#         if os.path.isfile(cls.statsfile):
+#             return
+#         if not hasattr(cls, '_data'):
+#             cls._data = {}
+#         cls._data[key] = value
 
     def test_correct_build_load(self):
         """
@@ -126,7 +137,7 @@ class ResidualsTestCase(unittest.TestCase):
         self.assertEqual(len(contexts_old),
                          len(contexts_new))
 
-        def cmp(obj1, obj2, exclude=None):
+        def cmp(obj1, obj2, exclude=None, rtol=.5e-3):
             '''compares equality of objects'''
             exclude = set() if not exclude else set(exclude)
             self.assertEqual(type(obj1), type(obj2))
@@ -148,8 +159,12 @@ class ResidualsTestCase(unittest.TestCase):
                 else:
                     val1, val2 = getattr(obj1, att), getattr(obj2, att)
                 try:
-                    assert np.allclose(val1, val2, rtol=.5e-3, equal_nan=True)
+                    assert np.allclose(val1, val2, rtol=rtol, equal_nan=True)
                 except TypeError:
+                    # if isinstance(val1, dict) and isinstance(val2, dict):
+                    #     # sub-array have a relaxed condition: rtol = .5e-1,
+                    #     # meaning they must not differ by 50% of the rel value:
+                    #     cmp(val1, val2, None, rtol=1e-1)
                     # attributes are not coimparable (e.g. mehtods)
                     pass
                 except Exception as _:  # pylint: disable=broad-except
@@ -180,6 +195,21 @@ class ResidualsTestCase(unittest.TestCase):
         residuals1.get_residuals(self.database, component="Geometric")
         self._check_residual_dictionary_correctness(residuals1.residuals)
         stats1 = residuals1.get_residual_statistics()
+
+        # yes, we said we do not check for correctness of values.
+        # However, this simple check warn us in case
+        # code modification will unexpectedly change residuals calculations:
+        expected_res_obs = {'PGA': np.array([2.02129254e-04,
+                                             1.05953800e-03,
+                                             1.89631889e-04,
+                                             7.53992832e-05]),
+                            'SA(1.0)': np.array([0.00012647,
+                                                 0.00073836,
+                                                 0.00019964,
+                                                 0.00014166])}
+        for imtx in expected_res_obs:
+            assert np.allclose(residuals1.contexts[0]['Observations'][imtx],
+                               expected_res_obs[imtx], rtol=.5e-3)
 
         residuals2 = res.Residuals(self.gsims, self.imts)
         residuals2.get_residuals(self.dbtable, component="Geometric")
@@ -293,6 +323,8 @@ class ResidualsTestCase(unittest.TestCase):
         """
         shutil.rmtree(cls.out_location)
         os.remove(cls.out_location2)
+#         if hasattr(cls, '_data'):
+#             pickle.dump(cls._data, cls.statsfile)
 
 
 if __name__ == "__main__":

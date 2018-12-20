@@ -51,22 +51,43 @@ def nextpow2(nval):
     return int(2.0 ** m_i)
 
 
-def convert_accel_units(acceleration, units):
+def convert_accel_units(acceleration, from_, to_='cm/s/s'):
     """
-    Converts acceleration from different units into cm/s^2
+    Converts acceleration from/to different units
 
-    :param units: string in "g", "m/s/s", "m/s**2", "m/s^2",
-        "cm/s/s", "cm/s**2" or "cm/s^2" (in the last three cases, this
-        function simply returns `acceleration`)
+    :param acceleration: the acceleration (numeric or numpy array)
+    :param from_: unit of `acceleration`: string in "g", "m/s/s", "m/s**2",
+        "m/s^2", "cm/s/s", "cm/s**2" or "cm/s^2"
+    :param to_: new unit of `acceleration`: string in "g", "m/s/s", "m/s**2",
+        "m/s^2", "cm/s/s", "cm/s**2" or "cm/s^2". When missing, it defaults
+        to "cm/s/s"
 
-    :return: acceleration converted to the given units
+    :return: acceleration converted to the given units (by default, 'cm/s/s')
     """
-    if units == "g":
-        return (100*g) * acceleration
-    if units in ("m/s/s", "m/s**2", "m/s^2"):
-        return 100. * acceleration
-    if units in ("cm/s/s", "cm/s**2", "cm/s^2"):
-        return acceleration
+    m_sec_square = ("m/s/s", "m/s**2", "m/s^2")
+    cm_sec_square = ("cm/s/s", "cm/s**2", "cm/s^2")
+    acceleration = np.asarray(acceleration)
+    if from_ == 'g':
+        if to_ == 'g':
+            return acceleration
+        if to_ in m_sec_square:
+            return acceleration * g
+        if to_ in cm_sec_square:
+            return 100 * acceleration * g
+    elif from_ in m_sec_square:
+        if to_ == 'g':
+            return acceleration / g
+        if to_ in m_sec_square:
+            return acceleration
+        if to_ in cm_sec_square:
+            return 100 * acceleration
+    elif from_ in cm_sec_square:
+        if to_ == 'g':
+            return acceleration / (100 * g)
+        if to_ in m_sec_square:
+            return acceleration / 100
+        if to_ in cm_sec_square:
+            return acceleration
 
     raise ValueError("Unrecognised time history units. "
                      "Should take either ''g'', ''m/s/s'' or ''cm/s/s''")

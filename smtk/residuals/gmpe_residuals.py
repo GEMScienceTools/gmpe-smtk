@@ -42,7 +42,8 @@ from openquake.hazardlib import imt
 from smtk.strong_motion_selector import SMRecordSelector
 from smtk.trellis.trellis_plots import _get_gmpe_name
 from smtk.sm_table import GroundMotionTable
-from smtk.sm_utils import SCALAR_XY, get_interpolated_period
+from smtk.sm_utils import SCALAR_XY, get_interpolated_period,\
+    convert_accel_units
 
 GSIM_LIST = get_available_gsims()
 GSIM_KEYS = set(GSIM_LIST.keys())
@@ -399,15 +400,30 @@ class Residuals(object):
             calculate_observations = False
         else:
             contexts = database.get_contexts(nodal_plane_index)
+
+        # Fetch now outside the loop for efficiency the IMTs which need
+        # acceleration units conversion from cm/s/s to g. Conversion will be
+        # done inside the loop:
+        accel_imts = tuple([imtx for imtx in self.imts if
+                            (imtx == "PGA" or "SA(" in imtx)])
+
         # Contexts is in either case a list of dictionaries
         self.contexts = []
         for context in contexts:
-            # Get the observed strong ground motions if database is
-            # a Sm database (if a GM database, observtions are already
-            # calculated)
+            # Get the observed strong ground motions if database is a
+            # sm_database.GroundMotionDatabase (if a
+            # sm_table.GroundMotionTable, observations are already calculated)
             if calculate_observations:
                 context = self.get_observations(SMRecordSelector(database),
                                                 context, component)
+
+            # convert all IMTS with acceleration units, which are supposed to
+            # be in cm/s/s, to g:
+            for a_imt in accel_imts:
+                context['Observations'][a_imt] = \
+                    convert_accel_units(context['Observations'][a_imt],
+                                        'cm/s/s', 'g')
+
             # Get the expected ground motions
             context = self.get_expected_motions(context)
             context = self.calculate_residuals(context, normalise)
@@ -460,7 +476,10 @@ class Residuals(object):
     def get_observations(self, sm_record_selector, context,
                          component="Geometric"):
         """
-        Get the obsered ground motions from the database
+        Get the obsered ground motions from the database. *NOTE*: IMTs in
+        acceleration units (e.g. PGA, SA) are supposed to return their
+        values in cm/s/s (which is by default the unit in which they are
+        stored)
         """
         select_records = \
             sm_record_selector.select_from_event_id(context["EventID"])
@@ -470,20 +489,15 @@ class Residuals(object):
             fle = h5py.File(record.datafile, "r")
             for imtx in self.imts:
                 if imtx in SCALAR_IMTS:
-                    if imtx == "PGA":
-                        observations[imtx].append(
-                            get_scalar(fle, imtx, component) / 981.0)
-                    else:
-                        observations[imtx].append(
-                            get_scalar(fle, imtx, component))
-
+                    observations[imtx].append(
+                        get_scalar(fle, imtx, component))
                 elif "SA(" in imtx:
                     target_period = imt.from_string(imtx).period
                     spectrum = fle[selection_string + component +
                                    "/damping_05"].value
                     periods = fle["IMS/H/Spectra/Response/Periods"].value
                     observations[imtx].append(get_interpolated_period(
-                        target_period, periods, spectrum) / 981.0)
+                        target_period, periods, spectrum))
                 else:
                     raise "IMT %s is unsupported!" % imtx
             fle.close()
@@ -492,6 +506,42 @@ class Residuals(object):
         context["Observations"] = observations
         context["Num. Sites"] = len(select_records)
         return context
+
+#     def get_observations(self, sm_record_selector, context,
+#                          component="Geometric"):
+#         """
+#         Get the obsered ground motions from the database
+#         """
+#         select_records = \
+#             sm_record_selector.select_from_event_id(context["EventID"])
+#         observations = OrderedDict([(imtx, []) for imtx in self.imts])
+#         selection_string = "IMS/H/Spectra/Response/Acceleration/"
+#         for record in select_records:
+#             fle = h5py.File(record.datafile, "r")
+#             for imtx in self.imts:
+#                 if imtx in SCALAR_IMTS:
+#                     if imtx == "PGA":
+#                         observations[imtx].append(
+#                             get_scalar(fle, imtx, component) / 981.0)
+#                     else:
+#                         observations[imtx].append(
+#                             get_scalar(fle, imtx, component))
+# 
+#                 elif "SA(" in imtx:
+#                     target_period = imt.from_string(imtx).period
+#                     spectrum = fle[selection_string + component +
+#                                    "/damping_05"].value
+#                     periods = fle["IMS/H/Spectra/Response/Periods"].value
+#                     observations[imtx].append(get_interpolated_period(
+#                         target_period, periods, spectrum) / 981.0)
+#                 else:
+#                     raise "IMT %s is unsupported!" % imtx
+#             fle.close()
+#         for imtx in self.imts:
+#             observations[imtx] = np.array(observations[imtx])
+#         context["Observations"] = observations
+#         context["Num. Sites"] = len(select_records)
+#         return context
 
     def get_expected_motions(self, context):
         """

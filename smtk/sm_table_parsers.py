@@ -367,18 +367,15 @@ class EsmParser(GMTableParser):
         dflt = np.nan
         geom_mean = sm_utils.SCALAR_XY['Geometric']
 
-        def to_cm_sec_square(val):
-            '''converts g to cm/sec^2'''
-            return val  # sm_utils.convert_accel_units(val, 'g')
-
         # Note: ESM not reporting correctly some values: PGA, PGV, PGD and SA
         # should always be positive (absolute value)
 
         # U_pga    V_pga    W_pga are the three components of pga
+        # IT IS SUPPOSED TO BE ALREADY IN CM/S/S
         rowdict['_pga_components'] = \
-            to_cm_sec_square(np.abs([tofloat(rowdict.pop('U_pga', dflt)),
-                                     tofloat(rowdict.pop('V_pga', dflt)),
-                                     tofloat(rowdict.pop('W_pga', dflt))]))
+            np.abs([tofloat(rowdict.pop('U_pga', dflt)),
+                    tofloat(rowdict.pop('V_pga', dflt)),
+                    tofloat(rowdict.pop('W_pga', dflt))])
         rowdict['pga'] = geom_mean(rowdict['_pga_components'][0],
                                    rowdict['_pga_components'][1])
 
@@ -424,14 +421,13 @@ class EsmParser(GMTableParser):
                       rowdict['_arias_intensity_components'][1])
 
         # SA columns are defined in `get_sa_columns
+        # THEY ARE SUPPOSED TO BE ALREADY IN CM/S/S
         sa_u = np.abs([tofloat(rowdict[_]) for _ in sa_colnames])
         sa_v = np.abs([tofloat(rowdict[_]) for _ in
                        (_.replace('U_', 'V_') for _ in sa_colnames)])
         sa_w = np.abs([tofloat(rowdict[_]) for _ in
                        (_.replace('U_', 'W_') for _ in sa_colnames)])
-        rowdict['_sa_components'] = np.array([to_cm_sec_square(sa_u),
-                                              to_cm_sec_square(sa_v),
-                                              to_cm_sec_square(sa_w)])
+        rowdict['_sa_components'] = np.array([sa_u, sa_v, sa_w])
         rowdict['sa'] = geom_mean(rowdict['_sa_components'][0],
                                   rowdict['_sa_components'][1])
 

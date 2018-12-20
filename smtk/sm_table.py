@@ -34,7 +34,7 @@ from datetime import datetime
 from contextlib import contextmanager
 from collections import defaultdict
 import numpy as np
-from scipy.constants import g
+# from scipy.constants import g
 import tables
 # from tables.file import File
 from tables.table import Table
@@ -1503,21 +1503,22 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
 
     def _add_observations(self, record, observations, sa_periods,
                           component="Geometric"):
-        '''Fetches the given observations (IMTs) from `record` into
-        the `observations` dict'''
+        '''Fetches the given observations (IMTs) from `record` and puts it into
+        the `observations` dict. *NOTE*: IMTs in
+        acceleration units (e.g. PGA, SA) are supposed to return their
+        values in cm/s/s (which is by default the unit in which they are
+        stored)
+        '''
         # FIXME: unused parameter component (obviously, but how to dealt
         # with it?)
-        hundred_g = 100.0 * g  # for convertion from/to cm s^2
         for imtx in observations.keys():
             value = np.nan
-            if imtx == "PGA":
-                value = record["pga"] / hundred_g
-            elif "SA(" in imtx:
+            if "SA(" in imtx:
                 target_period = imt.from_string(imtx).period
                 spectrum = record['sa']
                 value = \
                     get_interpolated_period(target_period, sa_periods,
-                                            spectrum) / hundred_g
+                                            spectrum)
             else:
                 value = record[imtx.lower()]
 
