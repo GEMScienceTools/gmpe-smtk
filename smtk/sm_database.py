@@ -21,10 +21,10 @@
 Basic Pseudo-database built on top of hdf5 for a set of processed strong
 motion records
 """
-import numpy as np
 import json
 from datetime import datetime
 from collections import OrderedDict
+import numpy as np
 from openquake.hazardlib.gsim.base import (
     SitesContext, DistancesContext, RuptureContext)
 from openquake.hazardlib.site import Site, SiteCollection

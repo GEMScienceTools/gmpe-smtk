@@ -386,11 +386,11 @@ def get_interpolated_period(target_period, periods, values):
     if (uval - lval) == 0:
         return values[lval]
 
-    dy = np.log10(values[uval]) - np.log10(values[lval])
-    dx = np.log10(periods[uval]) - np.log10(periods[lval])
+    d_y = np.log10(values[uval]) - np.log10(values[lval])
+    d_x = np.log10(periods[uval]) - np.log10(periods[lval])
     return 10.0 ** (
         np.log10(values[lval]) +
-        (np.log10(target_period) - np.log10(periods[lval])) * dy / dx
+        (np.log10(target_period) - np.log10(periods[lval])) * d_y / d_x
         )
 
 # surfaces_to_dict = {

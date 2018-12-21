@@ -28,7 +28,7 @@ import unittest
 import numpy as np
 from scipy.constants import g
 
-from smtk.sm_utils import convert_accel_units
+from smtk.sm_utils import convert_accel_units, SCALAR_XY
 
 
 # OLD IMPLEMENTATION OF CONVERT ACCELERATION UNITS. USED HERE
@@ -106,8 +106,43 @@ class SmUtilsTestCase(unittest.TestCase):
             with self.assertRaises(ValueError):  # invalid units 'a':
                 func(acc, 'a')
 
+    def tst_scalar_xy(self):
+        '''Commented out: it tested whether SCALAR_XY supported numpy
+        array, it does not'''
+        argslist = [(np.nan, np.nan),
+                    (1, 2),
+                    (3.5, -4.706),
+                    (np.array([np.nan, 1, 3.5]),
+                     np.array([np.nan, 2, -4.706]))]
 
+        types = ['Geometric', 'Arithmetic', 'Larger', 'Vectorial']
 
+        # SCALAR_XY = {"Geometric": lambda x, y: np.sqrt(x * y),
+        #              "Arithmetic": lambda x, y: (x + y) / 2.,
+        #              "Larger": lambda x, y: np.max(np.array([x, y])),
+        #              "Vectorial": lambda x, y: np.sqrt(x ** 2. + y ** 2.)}
+        expected = {
+            'Geometric': [np.nan, np.sqrt(1 * 2), np.sqrt(3.5 * -4.706),
+                          [np.nan, np.sqrt(1 * 2), np.sqrt(3.5 * -4.706)]],
+            'Arithmetic': [np.nan, (1+2.)/2., (3.5 - 4.706)/2,
+                           [np.nan, (1+2.)/2., (3.5 - 4.706)/2]],
+            'Larger': [np.nan, 2, 3.5, [np.nan, 2, 3.5]],
+            'Vectorial': [np.nan, np.sqrt(5.), np.sqrt(3.5**2 + 4.706**2),
+                          [np.nan, np.sqrt(5.), np.sqrt(3.5**2 + 4.706**2)]]
+        }
+
+        for i, args in enumerate(argslist):
+            for type_, exp in expected.items():
+                res = SCALAR_XY[type_](*args)
+                equals = np.allclose(res, exp[i], rtol=1e-7, atol=0,
+                                     equal_nan=True)
+                if hasattr(equals, 'all'):  # np.array
+                    equals = equals.all()
+                try:
+                    self.assertTrue(equals)
+                except AssertionError:
+                    asd = 9
+                    
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']
     unittest.main()

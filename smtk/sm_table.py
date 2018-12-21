@@ -22,17 +22,14 @@ Basic classes for the GMDatabase (HDF5 database) and parsers
 
 import os
 import sys
-from collections import OrderedDict
-import re
+from collections import OrderedDict, defaultdict
 import csv
 import hashlib
 import shlex
 import tokenize
 from tokenize import generate_tokens, TokenError, untokenize
 from io import StringIO
-from datetime import datetime
 from contextlib import contextmanager
-from collections import defaultdict
 import numpy as np
 # from scipy.constants import g
 import tables
@@ -46,7 +43,7 @@ from tables.description import StringCol as _StringCol, \
 from openquake.hazardlib.contexts import SitesContext, DistancesContext, \
     RuptureContext
 from openquake.hazardlib import imt
-from smtk.sm_utils import MECHANISM_TYPE, get_interpolated_period
+from smtk.sm_utils import MECHANISM_TYPE, get_interpolated_period, SCALAR_XY
 from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 
 
@@ -132,17 +129,17 @@ GMTableDescription = dict(
     event_time=DateTimeCol(),  # In ISO Format YYYY-MM-DDTHH:mm:ss
     event_latitude=Float64Col(min=-90, max=90),
     event_longitude=Float64Col(min=-180, max=180),
-    hypocenter_depth=Float32Col(),
-    magnitude=Float16Col(),
+    hypocenter_depth=Float64Col(),
+    magnitude=Float64Col(),
     magnitude_type=StringCol(itemsize=5),
     magnitude_uncertainty=Float32Col(),
     tectonic_environment=StringCol(itemsize=30),
-    strike_1=Float32Col(),
-    strike_2=Float32Col(),
-    dip_1=Float32Col(),
-    dip_2=Float32Col(),
-    rake_1=Float32Col(),
-    rake_2=Float32Col(),
+    strike_1=Float64Col(),
+    strike_2=Float64Col(),
+    dip_1=Float64Col(),
+    dip_2=Float64Col(),
+    rake_1=Float64Col(),
+    rake_2=Float64Col(),
     style_of_faulting=StringCol(itemsize=max(len(_) for _ in MECHANISM_TYPE)),
     depth_top_of_rupture=Float32Col(),
     rupture_length=Float32Col(),
@@ -157,14 +154,14 @@ GMTableDescription = dict(
     vs30_measured=BoolCol(dflt=True),
     vs30_sigma=Float32Col(),
     depth_to_basement=Float32Col(),
-    z1=Float32Col(),
-    z2pt5=Float32Col(),
-    repi=Float32Col(),  # epicentral_distance
-    rhypo=Float32Col(),  # Float32Col
-    rjb=Float32Col(),  # joyner_boore_distance
-    rrup=Float32Col(),  # rupture_distance
-    rx=Float32Col(),
-    ry0=Float32Col(),
+    z1=Float64Col(),
+    z2pt5=Float64Col(),
+    repi=Float64Col(),  # epicentral_distance
+    rhypo=Float64Col(),  # Float32Col
+    rjb=Float64Col(),  # joyner_boore_distance
+    rrup=Float64Col(),  # rupture_distance
+    rx=Float64Col(),
+    ry0=Float64Col(),
     azimuth=Float32Col(),
     digital_recording=BoolCol(dflt=True),
     type_of_filter=StringCol(itemsize=25),
@@ -1024,7 +1021,7 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
     def _get_ids(self, csvrow):
         '''Returns the tuple record_id, event_id and station_id from
         the given HDF5 row `csvrow`'''
-        # FIXME: record_id NOT USED: remove?
+        # FIXME: record_id (recid) NOT USED: remove?
         dbname = self.dbname
         toint = self._toint
         ids = (dbname,
@@ -1130,7 +1127,8 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
         Returns an iterable of dictionaries, each containing the site, distance
         and rupture contexts for individual records
         """
-        # FIXME: nodal_plane_index and component not used. Remove?
+        # FIXME: nodal_plane_index not used. Remove?
+        scalar_func = SCALAR_XY[component]
         context_dicts = {}
         with self:
             sa_periods = self.table.attrs.sa_periods
@@ -1155,7 +1153,7 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
                 self._set_sites_context_event(rec, dic['Sites'])
                 self._set_distances_context_event(rec, dic['Distances'])
                 self._add_observations(rec, dic['Observations'],
-                                       sa_periods, component)
+                                       sa_periods, scalar_func)
                 dic["Num. Sites"] += 1
 
         # converts to numeric arrays (once at the end is faster, see
@@ -1188,7 +1186,6 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
             att_val = getattr(obj, att_name, None)
             if isinstance(att_val, list):
                 setattr(obj, att_name, np.array(att_val))
-
 
     @staticmethod
     def _set_sites_context_event(record, sctx):
@@ -1450,26 +1447,40 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
         setattr(rctx, 'hypo_lon', record['event_longitude'])
 
     def _add_observations(self, record, observations, sa_periods,
-                          component="Geometric"):
+                          scalar_func):
         '''Fetches the given observations (IMTs) from `record` and puts it into
         the `observations` dict. *NOTE*: IMTs in
         acceleration units (e.g. PGA, SA) are supposed to return their
         values in cm/s/s (which is by default the unit in which they are
         stored)
+
+        :param scalar_func: a function returning a scalar from two numeric
+            components. See `sm_utils.SCALAR_XY`
         '''
-        # FIXME: unused parameter component (obviously, but how to dealt
-        # with it?)
         for imtx in observations.keys():
             value = np.nan
+            components = [np.nan, np.nan]
             if "SA(" in imtx:
                 target_period = imt.from_string(imtx).period
-                spectrum = record['sa']
-                value = \
-                    get_interpolated_period(target_period, sa_periods,
-                                            spectrum)
+                spectrum = record['_sa_components'][:2]
+                if not np.isnan(spectrum).all():
+                    components[0] = get_interpolated_period(target_period,
+                                                            sa_periods,
+                                                            spectrum[0])
+                    components[1] = get_interpolated_period(target_period,
+                                                            sa_periods,
+                                                            spectrum[1])
+                else:
+                    spectrum = record['sa']
+                    value = get_interpolated_period(target_period, sa_periods,
+                                                    spectrum)
             else:
-                value = record[imtx.lower()]
+                imtx_ = imtx.lower()
+                components = record['_%s_components' % imtx_][:2]
+                value = record[imtx_]
 
+            if not np.isnan(components).all():
+                value = scalar_func(*components)
             observations[imtx].append(value)
 
 
