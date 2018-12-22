@@ -638,6 +638,13 @@ class GroundMotionTableTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             for rec in gmdb2.records:
                 rec
+        # check that we correctly wrote default attrs:
+        with gmdb2:
+            tbl = gmdb2.table.attrs
+            self.assertTrue(isinstance(tbl.stats, dict))
+            self.assertEqual(tbl.filename, 'template_basic_flatfile.hd5')
+            self.assertEqual(len(gmdb2.attrnames()), 4)
+
         # now it works:
         with gmdb2:
             mag_le_4 = 0

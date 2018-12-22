@@ -22,6 +22,7 @@ Basic classes for the GMDatabase (HDF5 database) and parsers
 
 import os
 import sys
+import json
 from collections import OrderedDict, defaultdict
 import csv
 import hashlib
@@ -293,9 +294,12 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
                 for col in outofboundcols:
                     outofbound[col] += 1
 
-        return {'total': i+1, 'written': i+1-len(error), 'error': error,
-                'bad_values': dict(bad), 'missing_values': dict(missing),
-                'outofbound_values': dict(outofbound)}
+            stats = {'total': i+1, 'written': i+1-len(error), 'error': error,
+                     'bad_values': dict(bad), 'missing_values': dict(missing),
+                     'outofbound_values': dict(outofbound)}
+            gmdb.table.attrs.stats = stats
+
+        return stats
 
     @classmethod
     def _rows(cls, flatfile_path, delimiter=None):  # pylint: disable=too-many-locals
@@ -997,6 +1001,20 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
                                                       classname=Table.__name__)
         return tab
 
+    def attrnames(self, key='user'):
+        '''Returns this object attribute names, i.e. the attribute
+            names of the underlying pytables table attributes object:
+            `self.table.attrs`.
+            Modification of attribute values should not happen outside
+            this class, unless you know what you are doing
+
+        :param key: string in ('sys', 'user', 'all'), default: 'user'.
+            'user' returns the user-defined attributes set e.g. by this object
+            during creation. 'sys' returns the system attributes, **which
+            should never be modified**. 'all' returns all attributes
+        '''
+        return self.table.attrs._f_list(key)
+
     # ----- IO PRIVATE METHODS  ----- #
 
     def _create_table(self, sa_length):
@@ -1005,6 +1023,7 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
         self._table = self._h5file.create_table(self._root, "table",
                                                 description=desc)
         self._table.attrs._current_row_id = 1
+        self._table.attrs.filename = os.path.basename(self.filepath)
         return self._table
 
     @property
