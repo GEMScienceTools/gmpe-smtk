@@ -774,6 +774,7 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
         self._condition = None
         self.__h5file = None
         self._table = None
+        self._w_mark = None
 
     @property
     def is_open(self):
@@ -835,6 +836,10 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
         filepath, mode, name = self.filepath, self.mode, self.dbname
         h5file = self.__h5file = \
             tables.open_file(filepath, mode if mode == 'r' else 'a')
+        if mode == 'w':
+            h5file.enable_undo()
+            self._w_mark = h5file.mark()
+
         grouppath = self._root
         try:
             group = h5file.get_node(grouppath, classname=Group.__name__)
@@ -852,9 +857,14 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
     def __exit__(self, exc_type, exc_val, exc_tb):
         # make sure the dbconnection gets closed
         if self.__h5file is not None:
+            if exc_val is not None and self._w_mark is not None:
+                self.__h5file.undo(self._w_mark)
+            if self.__h5file.is_undo_enabled():
+                self.__h5file.disable_undo()
             self.__h5file.close()
         self.__h5file = None
         self._table = None
+        self._w_mark = None
 
     def get_array(self, relative_path):
         '''
