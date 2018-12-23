@@ -290,7 +290,8 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
             stats = {'total': i+1, 'written': i+1-len(error), 'error': error,
                      'bad_values': dict(bad), 'missing_values': dict(missing),
                      'outofbound_values': dict(outofbound)}
-            gmdb.table.attrs.stats = stats
+            gmdb.table.attrs.parser = cls.__name__
+            gmdb.table.attrs.parser_stats = stats
 
         return stats
 
@@ -838,27 +839,6 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
         path = self._fullpath(relative_path)
         return self._h5file.get_node("/".join(path[:-1]), path[-1]).read()
 
-    def write_array(self, relative_path, values, create_path=True):
-        '''
-        Writes the given array on the
-        undelrying HDF file, which must be open (i.e., the user must be
-        inside a with statement)
-
-        :param relative_path: string, the path of the group relative to
-            the path of the undelrying database storage.
-            E.g. 'my/arrays/array_1'
-        :param values: the array to be saved. The value saved to the HDF
-            file will be `numpy.asarray(values)`
-        :param create_path: boolean (defaault: True) whether to create the
-            array path (and all its ancestors) if it does not exists. If False,
-            and the path does not exists, a :class:`NoSuchNode` exception is
-            raised
-        '''
-        _splitpath = relative_path.split('/')
-        group = self.get_group("/".join(_splitpath[:-1]), create_path)
-        self._h5file.create_array(group, _splitpath[-1],
-                                  obj=np.asarray(values))
-
     def get_group(self, relative_path, create=True):
         '''
         Returns the given Group (HDF directory-like structure) from the
@@ -890,12 +870,10 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
             return node
 
     def write_record(self, csvrow, sa_periods):
-        '''writes the content of csvrow into tablerow. Returns two lists:
-        The missing column names (a missing column is also a column for which
-        the csv value is invalid, i.e. it raised during assignement), and
-        the out-of-bounds column names (in case bounds were provided in the
-        column class. In this case, the default of that column will be set
-        in `tablerow`). Returns the tuple:
+        '''writes the content of `csvrow` into tablerow  on the table mapped
+        to this object in the undelrying HDF file, which must be open
+        (i.e., the user must be inside a with statement) in write mode.
+        Returns the tuple:
         ```written, missing_colnames, bad_colnames, outofbounds_colnames```
         where the last three elements are lists of strings (the record
         column names under the given categories) and the first element is a
@@ -903,8 +881,10 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
         been written if the sanity check did not pass
 
         :param csvrow: a dict representing a record, usually read froma  csv
-        file. Values of the dict might be all strings
+        file.
         '''
+        # NOTE: if parsed from a csv reader (the usual case),
+        # values of `csvrow` the dict are all strings
         missing_colnames, bad_colnames, outofbounds_colnames = [], [], []
         if not self._sanity_check(csvrow):
             return False, missing_colnames, bad_colnames, outofbounds_colnames
@@ -1030,6 +1010,27 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
             should never be modified**. 'all' returns all attributes
         '''
         return self.table.attrs._f_list(key)
+
+    def write_array(self, relative_path, values, create_path=True):
+        '''
+        Writes the given array on the group mapped to this object in the
+        undelrying HDF file, which must be open (i.e., the user must be
+        inside a with statement) in write mode
+
+        :param relative_path: string, the path of the group relative to
+            the path of the undelrying database storage.
+            E.g. 'my/arrays/array_1'
+        :param values: the array to be saved. The value saved to the HDF
+            file will be `numpy.asarray(values)`
+        :param create_path: boolean (defaault: True) whether to create the
+            array path (and all its ancestors) if it does not exists. If False,
+            and the path does not exists, a :class:`NoSuchNode` exception is
+            raised
+        '''
+        _splitpath = relative_path.split('/')
+        group = self.get_group("/".join(_splitpath[:-1]), create_path)
+        self._h5file.create_array(group, _splitpath[-1],
+                                  obj=np.asarray(values))
 
     # ----- IO PRIVATE METHODS  ----- #
 

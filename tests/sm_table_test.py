@@ -643,9 +643,9 @@ class GroundMotionTableTestCase(unittest.TestCase):
         # check that we correctly wrote default attrs:
         with gmdb2:
             tbl = gmdb2.table.attrs
-            self.assertTrue(isinstance(tbl.stats, dict))
+            self.assertTrue(isinstance(tbl.parser_stats, dict))
             self.assertEqual(tbl.filename, 'template_basic_flatfile.hd5')
-            self.assertEqual(len(gmdb2.attrnames()), 4)
+            self.assertEqual(len(gmdb2.attrnames()), 5)
 
         # now it works:
         with gmdb2:
