@@ -273,20 +273,19 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
                     enumerate(cls._rows(flatfile_path, delimiter)):
 
                 # write sa_periods only the first time
-                if rowdict:
-                    missingcols, badcols, outofboundcols = \
-                        gmdb.write_record(rowdict, sa_periods)
-                else:
-                    missingcols, badcols, outofboundcols = [], [], []
-                    error.append(i)
+                written, missingcols, badcols, outofboundcols = \
+                    gmdb.write_record(rowdict, sa_periods)
 
-                # write statistics:
-                for col in missingcols:
-                    missing[col] += 1
-                for col in badcols:
-                    bad[col] += 1
-                for col in outofboundcols:
-                    outofbound[col] += 1
+                if not written:
+                    error.append(i)
+                else:
+                    # write statistics:
+                    for col in missingcols:
+                        missing[col] += 1
+                    for col in badcols:
+                        bad[col] += 1
+                    for col in outofboundcols:
+                        outofbound[col] += 1
 
             stats = {'total': i+1, 'written': i+1-len(error), 'error': error,
                      'bad_values': dict(bad), 'missing_values': dict(missing),
@@ -316,49 +315,11 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
                 for k in mappings:
                     rowdict[mappings[k]] = rowdict.pop(k)
 
-                try:
-                    # custom post processing, if needed in subclasses:
-                    cls.parse_row(rowdict, sa_colnames)
-                    if not cls._sanity_check(rowdict):
-                        rowdict = {}
-                except Exception as _:  # pylint: disable=broad-except
-                    rowdict = {}
+                # custom post processing, if needed in subclasses:
+                cls.parse_row(rowdict, sa_colnames)
 
                 # yield row as dict:
                 yield rowdict, sa_periods
-
-    @classmethod
-    def _sanity_check(cls, rowdict):
-        '''performs sanity checks on the csv row `rowdict` before
-        writing it. Note that  pytables does not support roll backs,
-        and when closing the file pending data is automatically flushed.
-        Therefore, the data has to be checked before, on the csv row'''
-        # for the moment, just do a pga/sa[0] check for unit consistency
-        # other methods might be added in the future
-        return cls._pga_sa_unit_ok(rowdict)
-
-    @classmethod
-    def _pga_sa_unit_ok(cls, rowdict):
-        '''Checks that pga unit and sa unit are in accordance
-        '''
-        # if the PGA and the acceleration in the shortest period of the SA
-        # columns differ by more than an order of magnitude then certainly
-        # there is something wrong and the units of the PGA and SA are not
-        # in agreement and an error should be raised.
-        try:
-            pga, sa0 = float(rowdict['pga']), float(rowdict['sa'][0])
-#             pga, sa0 = float(rowdict['pga']) / (100*g),\
-#                 float(rowdict['sa'][0])
-            retol = abs(max(pga, sa0) / min(pga, sa0))
-            if not np.isnan(retol) and round(retol) >= 10:
-                return False
-        except Exception as _:  # disable=broad-except
-            # it might seem weird to return true on exceptions, but this method
-            # should only check wheather there is certainly a unit
-            # mismatch between sa and pga, when they are given (i.e., not in
-            # this case)
-            pass
-        return True
 
     @classmethod
     @contextmanager
@@ -934,7 +895,20 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
         the csv value is invalid, i.e. it raised during assignement), and
         the out-of-bounds column names (in case bounds were provided in the
         column class. In this case, the default of that column will be set
-        in `tablerow`)'''
+        in `tablerow`). Returns the tuple:
+        ```written, missing_colnames, bad_colnames, outofbounds_colnames```
+        where the last three elements are lists of strings (the record
+        column names under the given categories) and the first element is a
+        boolean inicating if the record has been written. A record might not
+        been written if the sanity check did not pass
+
+        :param csvrow: a dict representing a record, usually read froma  csv
+        file. Values of the dict might be all strings
+        '''
+        missing_colnames, bad_colnames, outofbounds_colnames = [], [], []
+        if not self._sanity_check(csvrow):
+            return False, missing_colnames, bad_colnames, outofbounds_colnames
+
         try:
             table = self.table
         except NoSuchNodeError:
@@ -956,7 +930,6 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
 
         tablerow = table.row
 
-        missing_colnames, bad_colnames, outofbounds_colnames = [], [], []
         for col, colobj in tablerow.table.coldescrs.items():
             if col not in csvrow:
                 missing_colnames.append(col)
@@ -996,7 +969,43 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
         tablerow.append()  # pylint: disable=no-member
         table.flush()
 
-        return missing_colnames, bad_colnames, outofbounds_colnames
+        return True, missing_colnames, bad_colnames, outofbounds_colnames
+
+    @classmethod
+    def _sanity_check(cls, csvrow):
+        '''performs sanity checks on the dict `csvrow` before
+        writing it. Note that  pytables does not support roll backs,
+        and when closing the file pending data is automatically flushed.
+        Therefore, the data has to be checked before, on the csv row
+
+        :param csvrow: a row of a parsed csv file representing a record to add
+        '''
+        # for the moment, just do a pga/sa[0] check for unit consistency
+        # other methods might be added in the future
+        return cls._pga_sa_unit_ok(csvrow)
+
+    @classmethod
+    def _pga_sa_unit_ok(cls, csvrow):
+        '''Checks that pga unit and sa unit are in accordance
+
+        :param csvrow: a row of a parsed csv file representing a record to add
+        '''
+        # if the PGA and the acceleration in the shortest period of the SA
+        # columns differ by more than an order of magnitude then certainly
+        # there is something wrong and the units of the PGA and SA are not
+        # in agreement and an error should be raised.
+        try:
+            pga, sa0 = float(csvrow['pga']), float(csvrow['sa'][0])
+            retol = abs(max(pga, sa0) / min(pga, sa0))
+            if not np.isnan(retol) and round(retol) >= 10:
+                return False
+        except Exception as _:  # disable=broad-except
+            # it might seem weird to return true on exceptions, but this method
+            # should only check wheather there is certainly a unit
+            # mismatch between sa and pga, when they are given (i.e., not in
+            # this case)
+            pass
+        return True
 
     @property
     def table(self):
