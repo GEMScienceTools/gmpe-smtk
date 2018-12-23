@@ -226,7 +226,7 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
     mappings = {}
 
     @classmethod
-    def parse(cls, flatfile_path, output_path, mode='a',
+    def parse(cls, flatfile_path, output_path, # mode='w',
               delimiter=None):
         '''Parses a flat file and writes its content in the GM database file
         `output_path`, which is a HDF5 organized hierarchically in groups
@@ -240,15 +240,9 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
         :param flatfile_path: string denoting the path to the input CSV
             flatfile
         :param output_path: string: path to the output GM database file.
-        :param mode: either 'w' or 'a'. It is NOT the `mode` option of the
-            `open_file` function (which is always 'a'): 'a' means append to
-            the existing **table**, if it exists (otherwise create a new one),
-            'w' means write (i.e. overwrite the existing table, if any).
-            In case of 'a' and the table exists, it is up to the user not to
-            add duplicated entries
         :param delimiter: the delimiter used to parse the csv. If None
             (the default when missing) it is the class-attribute
-            `csv_delimiter` (';' by default when not subclassed)
+            `csv_delimiter` (';' by default when not overridden in subclasses)
         :return: a dictionary holding information with keys:
             'total': the total number of csv rows
             'written': the number of parsed rows written on the db table
@@ -270,7 +264,7 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
             minimum possible value for integers, the empty string for strings.
         '''
         dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
-        with GroundMotionTable(output_path, dbname, mode) as gmdb:
+        with GroundMotionTable(output_path, dbname, 'w') as gmdb:
 
             i, error, missing, bad, outofbound = \
                 -1, [], defaultdict(int), defaultdict(int), defaultdict(int)
@@ -755,7 +749,7 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
             is 'r', the file must exist
         :param dbname: the name of the database table. It will be the name
             of the group (kind of sub-folder) of the underlying HDF file
-        :param mode: string (default: 'r'). The mode ('a', 'r', 'w') whereby
+        :param mode: string (default: 'r'). The mode ('r', 'w') whereby
             the underlying hdf file will be opened **when this object
             is used in a with statement**.
             Note that 'w' does not overwrite the whole file, but the table
@@ -764,8 +758,6 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
                 the file content where not found
             'w': opens file in 'a' mode, creates the table if it does not
                 exists, clears all table data if it exists.
-            'a': open file in 'a' mode, creates the table if it does not
-                exists, does nothing otherwise
         '''
         self.filepath = filepath
         self.dbname = dbname
@@ -820,7 +812,7 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
     def __enter__(self):
         '''Yields a pytable Group object representing a Gm database
         in the given hdf5 file `filepath`. If such a group does not exist
-        and mode is either 'a' or 'w', creates the group. In any other case
+        and mode is 'w', creates the group. In any other case
         where such  a group does not exist, raises a :class:`NoSuchNodeError`
 
         Example:

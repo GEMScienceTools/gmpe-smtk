@@ -370,24 +370,26 @@ class GroundMotionTableTestCase(unittest.TestCase):
         log = UserDefinedParser.parse(self.input_file,
                                       output_path=self.output_file,
                                       delimiter=',')
+
+        # . NOT SUPPORTED, COMMENTED:
         # open HDF5 with append='a' (the default)
         # and check that wewrote stuff twice
-        with GroundMotionTable(self.output_file, dbname, 'r') as gmdb:
-            tbl = gmdb.table
-            self.assertTrue(tbl.nrows == written * 2)
-            # assert the old rows are there
-            oldrows = list(row[test_col] for row in
-                           tbl.where('%s == %s' % (test_col, test_col_oldval)))
-            self.assertTrue(len(oldrows) == test_cols_found)
-            # assert the new rows are added:
-            newrows = list(row[test_col] for row in
-                           tbl.where('%s == %s' % (test_col, test_col_newval)))
-            self.assertTrue(len(newrows) == test_cols_found)
+        # with GroundMotionTable(self.output_file, dbname, 'r') as gmdb:
+        #     tbl = gmdb.table
+        #     self.assertTrue(tbl.nrows == written * 2)
+        #     # assert the old rows are there
+        #     oldrows = list(row[test_col] for row in
+        #                    tbl.where('%s == %s' % (test_col, test_col_oldval)))
+        #     self.assertTrue(len(oldrows) == test_cols_found)
+        #     # assert the new rows are added:
+        #     newrows = list(row[test_col] for row in
+        #                    tbl.where('%s == %s' % (test_col, test_col_newval)))
+        #     self.assertTrue(len(newrows) == test_cols_found)
 
         # now re-write, with no mode='w'
         log = UserDefinedParser.parse(self.input_file,
                                       output_path=self.output_file,
-                                      mode='w', delimiter=',')
+                                      delimiter=',')
         with GroundMotionTable(self.output_file, dbname, 'r') as gmdb:
             tbl = gmdb.table
             self.assertTrue(tbl.nrows == written)
