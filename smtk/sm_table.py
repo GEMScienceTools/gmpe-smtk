@@ -226,19 +226,18 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
     mappings = {}
 
     @classmethod
-    def parse(cls, flatfile_path, output_path, delimiter=None):
-        '''Parses a flat file and writes its content in the GM database file
-        `output_path`, which is a HDF5 organized hierarchically in groups
-        (sort of sub-directories) each of which identifies a parsed
-        input flatfile. Each group's `table` attribute is where
-        the actual GM database data is stored and can be accessed later
-        with the module's :function:`get_table`.
-        The group will have the same name as `flatfile_path` (more precisely,
-        the file basename without extension).
+    def parse(cls, flatfile_path, output_path, dbname=None, delimiter=None):
+        '''Parses a flat file and writes its content in the file
+        `output_path`, which is a HDF file organized hierarchically in groups
+        (sort of sub-directories) each of which identifies a
+        :class:`GroundMotionTable`, later accessible 
+        with the module's :function:`get_dbnames`.
 
         :param flatfile_path: string denoting the path to the input CSV
             flatfile
         :param output_path: string: path to the output GM database file.
+        :param dbname: string: the database name. If None (the default),
+            it will be the basename of `flatfile_path` (without extension)
         :param delimiter: the delimiter used to parse the csv. If None
             (the default when missing) it is the class-attribute
             `csv_delimiter` (';' by default when not overridden in subclasses)
@@ -262,7 +261,8 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
             with the column default, which is usually NaN for floats, the
             minimum possible value for integers, the empty string for strings.
         '''
-        dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
+        if dbname is None:
+            dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
         with GroundMotionTable(output_path, dbname, 'w') as gmdb:
 
             i, error, missing, bad, outofbound = \
@@ -684,13 +684,13 @@ def raises_if_file_is_open(meth):
     requiring the underlying hdf file not to be opened'''
     def wrapped(self, *args, **kwargs):
         if self.is_open:
-            raise ValueError('Underlying HDF5 file is open. Did you call '
+            raise ValueError('Underlying HDF file is open. Did you call '
                              'the method inside a `with` statement?')
         return meth(self, *args, **kwargs)
     return wrapped
 
 
-class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
+class GroundMotionTable(object):
     '''Implements a Ground motion database in table format. This class
     differs from :class:`smtk.sm_database.GroundMotionDatabase` in that flat
     files are stored as pytables tables in a single HDF file container.
@@ -750,6 +750,15 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
     @property
     def is_open(self):
         return self.__h5file is not None
+
+    @raises_if_file_is_open
+    def delete(self):
+        '''Deletes the HDF data related to this table stored in the underlying
+        HDF file. Example:
+            GroundMotionTable(filepath, dbname, 'w').delete()
+        '''
+        with self:
+            self._h5file.remove_node(self._root, recursive=True)
 
     @raises_if_file_is_open
     def filter(self, condition):
