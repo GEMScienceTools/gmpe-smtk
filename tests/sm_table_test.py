@@ -635,6 +635,11 @@ class GroundMotionTableTestCase(unittest.TestCase):
 
         gmdb = GroundMotionTable(self.output_file, 'esm_sa_flatfile_2018')
 
+        with self.assertRaises(ValueError):
+            # trying to filter inside a with statement
+            with gmdb:
+                gmdb.filter('magnitude <= 4')
+
         gmdb2 = gmdb.filter('magnitude <= 4')
         # underlying HDF5 file not open (ValueError):
         with self.assertRaises(ValueError):

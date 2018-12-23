@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 """
-Basic classes for the GMDatabase (HDF5 database) and parsers
+Basic classes for the GroundMotionTable (HDF5 database) and parsers
 """
 
 import os
@@ -226,8 +226,7 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
     mappings = {}
 
     @classmethod
-    def parse(cls, flatfile_path, output_path, # mode='w',
-              delimiter=None):
+    def parse(cls, flatfile_path, output_path, delimiter=None):
         '''Parses a flat file and writes its content in the GM database file
         `output_path`, which is a HDF5 organized hierarchically in groups
         (sort of sub-directories) each of which identifies a parsed
@@ -469,7 +468,7 @@ def get_dbnames(filepath):
         return [group._v_name for group in  # pylint: disable=protected-access
                 h5file.list_nodes(root, classname=Group.__name__)]
         # note: h5file.walk_groups() might raise a ClosedNodeError.
-        # This error is badly documented (as much pytables styff),
+        # This error is badly documented (as much pytables stuff),
         # the only mention is (pytables pdf doc): "CloseNodeError: The
         # operation can not be completed because the node is closed. For
         # instance, listing the children of a closed group is not allowed".
@@ -675,9 +674,21 @@ def _normalize_tokens(tokens, dtime_indices, str_indices, nan_indices):
             tokens[i][1] = varname
 
 
-########################################
-# Residuals calculation
-########################################
+##########################################
+# GroundMotionTable/ Residuals calculation
+##########################################
+
+
+def raises_if_file_is_open(meth):
+    '''decorator to be attached to the methods of GroundMotionTable
+    requiring the underlying hdf file not to be opened'''
+    def wrapped(self, *args, **kwargs):
+        if self.is_open:
+            raise ValueError('Underlying HDF5 file is open. Did you call '
+                             'the method inside a `with` statement?')
+        return meth(self, *args, **kwargs)
+    return wrapped
+
 
 class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
     '''Implements a Ground motion database in table format. This class
@@ -705,7 +716,7 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
         needs to be accessed inside a with statement like a normal Python
         file-like object, which opens and closes the underlying HDF file:
         ```
-            with GroundMotionTable(filepath, name, 'r') as dbase:
+            with GroundMotionTable(filepath, name) as dbase:
                 # ... do your operation here
                 for record in dbase.records:
                     ...
@@ -718,8 +729,9 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
             of the group (kind of sub-folder) of the underlying HDF file
         :param mode: string (default: 'r'). The mode ('r', 'w') whereby
             the underlying hdf file will be opened **when this object
-            is used in a with statement**.
-            Note that 'w' does not overwrite the whole file, but the table
+            is used in a with statement**. Usually, 'w' should not be used
+            outside a :meth:`GMTableParser.parse` method. Note however that
+            'w' does not overwrite the whole file, but the table
             data only. More specifically:
             'r': opens file in 'r' mode, raises if the file or the table in
                 the file content where not found
@@ -739,6 +751,7 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
     def is_open(self):
         return self.__h5file is not None
 
+    @raises_if_file_is_open
     def filter(self, condition):
         '''Returns a read-only copy of this database filtered according to
         the given condition (numexpr expression on the database scalar
@@ -769,9 +782,6 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
             filtered_gmdb = GroundMotionTable(...).filter(condition)
         ```
         '''
-        if self.is_open:
-            raise ValueError('Cannot filter, underlying HDF5 file is open. '
-                             'Do not call this method inside a with statement')
         gmdb = GroundMotionTable(self.filepath, self.dbname, 'r')
         gmdb._condition = condition  # pylint: disable=protected-access
         return gmdb
@@ -1158,6 +1168,7 @@ class GroundMotionTable(object):  # pylint: disable=useless-object-inheritance
         '''
         return records_where(self.table, self._condition)
 
+    @raises_if_file_is_open
     def get_contexts(self, imts, nodal_plane_index=1, component="Geometric"):
         """
         Returns an iterable of dictionaries, each containing the site, distance
