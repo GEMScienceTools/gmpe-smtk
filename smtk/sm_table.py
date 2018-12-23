@@ -438,14 +438,7 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
 
         :return: a numpy float64 (array or scalar depending on the input type)
         '''
-        def dtime(val):
-            '''np.datetime64('') -> np.datetime64('NaT') ok, but
-            we want also np.datetime64('abc') to be np.datetime64('NaT')'''
-            try:
-                return np.datetime64(val)
-            except ValueError:
-                return np.datetime64('NaT')
-
+        dtime = GMTableParser._np_datetime64
         isarray = (hasattr(value, '__len__') and
                    not isinstance(value, (bytes, str)))
         # did not find any better way to make array case and scalar case
@@ -461,6 +454,17 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
         return seconds_since_epoch
 
     @staticmethod
+    def _np_datetime64(value):
+        '''returns np.datetime64(value), or np.datetime64('NaT') in case of
+        ValueError'''
+        try:
+            # Note: np.datetime64('') -> np.datetime64('NaT')
+            return np.datetime64(value)
+        except ValueError:
+            # e.g., np.datetime64('abc'):
+            return np.datetime64('NaT')
+
+    @staticmethod
     def float(value):
         '''Converts value to float (numpy float64). Silently coerces
             erros to NaN(s) when needed
@@ -470,18 +474,19 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
 
         :return: a numpy float64 (array or scalar depending on the input type)
         '''
-        def _float64(val):
-            '''np.asarray(.. dtype=float) fails if any value is not castable.
-            We want silently return an array with nan in case'''
-            try:
-                return np.float64(val)
-            except ValueError:
-                return np.nan
-
+        float64 = GMTableParser._np_float64
         isarray = (hasattr(value, '__len__') and
                    not isinstance(value, (bytes, str)))
-        return np.array([_float64(_) for _ in value]) if isarray \
-            else _float64(value)
+        return np.array([float64(_) for _ in value]) if isarray \
+            else float64(value)
+
+    @staticmethod
+    def _np_float64(value):
+        '''Returns np.float64(value) or np.nan in case of ValueError'''
+        try:
+            return np.float64(value)
+        except ValueError:
+            return np.nan
 
 
 #########################################
