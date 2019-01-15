@@ -44,7 +44,8 @@ from tables.description import StringCol as _StringCol, \
 from openquake.hazardlib.contexts import SitesContext, DistancesContext, \
     RuptureContext
 from openquake.hazardlib import imt
-from smtk.sm_utils import MECHANISM_TYPE, get_interpolated_period, SCALAR_XY
+from smtk.sm_utils import MECHANISM_TYPE, get_interpolated_period, SCALAR_XY,\
+    DEFAULT_MSR, DIP_TYPE
 from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 
 
@@ -1202,6 +1203,7 @@ class GroundMotionTable(object):
                            "Num. Sites": 0}
                     # set Rupture only once:
                     dic['Rupture'] = RuptureContext()
+
                     self._set_event_context(rec, dic['Rupture'],
                                             nodal_plane_index)
                     context_dicts[evt_id] = dic
@@ -1413,7 +1415,7 @@ class GroundMotionTable(object):
         append(dctx, 'rrup',
                record['rhypo'] if isnan(record['rrup']) else record['rrup'])
         append(dctx, 'rx',
-               record['repi'] if isnan(record['rx']) else record['rx'])
+               -record['repi'] if isnan(record['rx']) else record['rx'])
         append(dctx, 'ry0',
                record['repi'] if isnan(record['ry0']) else record['ry0'])
         append(dctx, 'rcdpp', 0.0)
@@ -1488,6 +1490,7 @@ class GroundMotionTable(object):
                 if hasattr(sof, 'decode'):
                     sof = sof.decode('utf8')
                 rake = MECHANISM_TYPE[sof]
+                dip = DIP_TYPE[sof]
             except KeyError:
                 rake = 0.0
 
@@ -1498,9 +1501,13 @@ class GroundMotionTable(object):
         setattr(rctx, 'hypo_depth', record['hypocenter_depth'])
         _ = record['depth_top_of_rupture']
         setattr(rctx, 'ztor', rctx.hypo_depth if isnan(_) else _)
-        setattr(rctx, 'width', record['rupture_width'])
+        rec_width = record['rupture_width']
+        if np.isnan(rec_width):
+            rec_width = np.sqrt(DEFAULT_MSR.get_median_area(rctx.mag, 0))
+        setattr(rctx, 'width', rec_width)
         setattr(rctx, 'hypo_lat', record['event_latitude'])
         setattr(rctx, 'hypo_lon', record['event_longitude'])
+        setattr(rctx, 'hypo_loc', (0.5, 0.5))
 
     def _add_observations(self, record, observations, sa_periods,
                           scalar_func):

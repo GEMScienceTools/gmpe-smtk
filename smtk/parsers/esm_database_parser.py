@@ -105,17 +105,17 @@ def _get_xyz_metadata(file_dict):
     if file_dict["Time-Series"]["X"]:
         metadata["X"] = _get_metadata_from_file(
             file_dict["Time-Series"]["X"])
-    
+
     if file_dict["Time-Series"]["Y"]:
         metadata["Y"] = _get_metadata_from_file(
             file_dict["Time-Series"]["Y"])
-    
+
     if file_dict["Time-Series"]["Z"]:
         metadata["Z"] = _get_metadata_from_file(
             file_dict["Time-Series"]["Z"])
     return metadata
 
-ESMD_MECHANISM_TYPE = {"NF": -90., "SS": 180.0, "TF": 90.0, "U": 0.0}
+
 DATA_TYPE_KEYS = {
     "ACCELERATION": "PGA_",
     "VELOCITY": "PGV_",
@@ -321,7 +321,7 @@ class ESMDatabaseMetadataReader(SMDatabaseReader):
         # Get focal mechanism data - here only the general type is reported
         if metadata["FOCAL_MECHANISM"]:
             foc_mech = FocalMechanism(eq_id, eq_name, None, None,
-                mechanism_type=ESMD_MECHANISM_TYPE[metadata["FOCAL_MECHANISM"]])
+                mechanism_type=metadata["FOCAL_MECHANISM"])
         else:
             foc_mech = FocalMechanism(eq_id, eq_name, None, None,
                 mechanism_type=None)

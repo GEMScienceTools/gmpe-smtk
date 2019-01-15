@@ -323,14 +323,25 @@ class EsmParser(GMTableParser):
                 rowdict['magnitude_type'] = magtype
                 break
 
+        if cls.float(rowdict['dip_2']) > 87 and cls.float(rowdict['dip_2']) < 89:
+            asd = 9
         # If all es_strike    es_dip    es_rake are not nan use those as
         # strike dip rake.
         # Otherwise see below (all es_strike    es_dip    es_rake are nans:
         # do not set strike dip and rake and use style of faulting later
         # during residuals calc)
-        rowdict['strike_1'], rowdict['dip_1'], rowdict['rake_1'] = \
-            rowdict.pop('es_strike', ''), rowdict.pop('es_dip', ''), \
-            rowdict.pop('es_rake', '')
+        es_strike, es_dip, es_rake = cls.float([rowdict.get('es_strike', ""),
+                                                rowdict.get('es_dip', ""),
+                                                rowdict.get('es_rake', "")])
+        if not np.isnan([es_strike, es_dip, es_rake]).any():
+            rowdict['strike_1'], rowdict['dip_1'], rowdict['rake_1'] = \
+                es_strike, es_dip, es_rake
+
+#         if np.isnan([rowdict['strike_1'], rowdict['dip_1'],
+#                      rowdict['rake_1']]).any():
+#             rowdict['strike_1'], rowdict['dip_1'], rowdict['rake_1'] = \
+#                 rowdict.get('strike_1', ''), rowdict.pop('dip_1', ''), \
+#                 rowdict.get('rake_1', '')
 
         # if vs30_meas_type is not empty  then vs30_measured is True else False
         rowdict['vs30_measured'] = bool(rowdict.get('vs30_meas_type', ''))

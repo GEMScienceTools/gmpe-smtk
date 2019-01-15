@@ -74,7 +74,7 @@ class ResidualsTestCase(unittest.TestCase):
 
         # create the sm table:
         cls.out_location2 = cls.out_location + '_table'
-        EsmParser.parse(ifile, cls.out_location2, mode='w', delimiter=';')
+        EsmParser.parse(ifile, cls.out_location2, delimiter=';')
         cls.dbtable = \
             GroundMotionTable(cls.out_location2,
                               os.path.splitext(os.path.basename(ifile))[0])
@@ -159,7 +159,8 @@ class ResidualsTestCase(unittest.TestCase):
                 else:
                     val1, val2 = getattr(obj1, att), getattr(obj2, att)
                 try:
-                    assert np.allclose(val1, val2, rtol=rtol, equal_nan=True)
+                    self.assertTrue(np.allclose(val1, val2, rtol=rtol,
+                                                equal_nan=True))
                 except TypeError:
                     # if isinstance(val1, dict) and isinstance(val2, dict):
                     #     # sub-array have a relaxed condition: rtol = .5e-1,
@@ -174,10 +175,9 @@ class ResidualsTestCase(unittest.TestCase):
             sites1, sites2 = cont1['Sites'], cont2['Sites']
             cmp(sites1, sites2)
             dist1, dist2 = cont1['Distances'], cont2['Distances']
-            cmp(dist1, dist2, exclude=['rx'])
+            cmp(dist1, dist2)
             rup1, rup2 = cont1['Rupture'], cont2['Rupture']
-            cmp(rup1, rup2, exclude=['hypo_loc', 'rake', 'width', 'dip',
-                                     'strike', 'ztor'])
+            cmp(rup1, rup2)
             obs1, obs2 = cont1['Observations'], cont2['Observations']
             cmp(obs1, obs2)
             expected1, expected2 = cont1['Expected'], cont2['Expected']

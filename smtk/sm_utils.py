@@ -16,6 +16,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
+from openquake.hazardlib.scalerel.peer import PeerMSR
 
 """
 Strong motion utilities
@@ -361,11 +362,35 @@ MECHANISM_TYPE = {"Normal": -90.0,
                   "O": 0.0
                   }
 
+
+DIP_TYPE = {"Normal": 60.0,
+            "Strike-Slip": 90.0,
+            "Reverse": 35.0,
+            "Oblique": 60.0,
+            "Unknown": 90.0,
+            "N": 60.0, # Flatfile conventions
+            "S": 90.0,
+            "R": 35.0,
+            "U": 90.0,
+            "NF": 60., # ESM flatfile conventions
+            "SS": 90.,
+            "TF": 35.,
+            "NS": 70., # Normal with strike-slip component
+            "TS": 45., # Reverse with strike-slip component
+            "O": 90.0
+            }
+
+
+
+
 # mean utilities (geometric, arithmetic, ...):
 SCALAR_XY = {"Geometric": lambda x, y: np.sqrt(x * y),
              "Arithmetic": lambda x, y: (x + y) / 2.,
-             "Larger": lambda x, y: np.max(np.array([x, y])),
+             "Larger": lambda x, y: np.max(np.array([x, y]), axis=0),
              "Vectorial": lambda x, y: np.sqrt(x ** 2. + y ** 2.)}
+
+
+DEFAULT_MSR = PeerMSR()
 
 
 def get_interpolated_period(target_period, periods, values):

@@ -16,7 +16,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
-
 """
 Parser from the ESM Flatfile to SMTK
 """
@@ -39,8 +38,11 @@ from openquake.hazardlib.geo.point import Point
 from openquake.hazardlib.geo.line import Line
 from openquake.hazardlib.geo.surface.simple_fault import SimpleFaultSurface
 import smtk.trellis.configure as rcfg
-from smtk.sm_database import *
-from smtk.sm_utils import convert_accel_units, MECHANISM_TYPE
+# from smtk.sm_database import *
+from smtk.sm_database import GroundMotionDatabase, GroundMotionRecord,\
+    Earthquake, Magnitude, Rupture, FocalMechanism, GCMTNodalPlanes,\
+    Component, RecordSite, RecordDistance
+from smtk.sm_utils import convert_accel_units, MECHANISM_TYPE, DIP_TYPE
 from smtk.parsers import valid
 from smtk.parsers.base_database_parser import (get_float, get_int,
                                                get_positive_float,
@@ -254,14 +256,15 @@ class ESMFlatfileParser(SMDatabaseReader):
         """
         If rupture data is available - parse it, otherwise return None
         """
+
         sof = metadata["fm_type_code"]
         if not metadata["event_source_id"].strip():
             # No rupture model available. Mechanism is limited to a style
             # of faulting only
-            rupture = Rupture(eq_id, eq_name, mag, 5., 5., depth)
+            rupture = Rupture(eq_id, eq_name, mag, None, None, depth)
             mechanism = FocalMechanism(
                 eq_id, eq_name, GCMTNodalPlanes(), None,
-                mechanism_type=MECHANISM_TYPE[sof])
+                mechanism_type=sof)
             # See if focal mechanism exists
             fm_set = []
             for key in ["strike_1", "dip_1", "rake_1"]:
@@ -295,7 +298,7 @@ class ESMFlatfileParser(SMDatabaseReader):
                     "rake": MECHANISM_TYPE[sof]
                     }
             return rupture, mechanism
-        #print(metadata["es_strike"], metadata["es_dip"], metadata["es_rake"])
+
         strike = valid.strike(metadata["es_strike"])
         dip = valid.dip(metadata["es_dip"])
         rake = valid.rake(metadata["es_rake"])
@@ -308,14 +311,14 @@ class ESMFlatfileParser(SMDatabaseReader):
         # No nodal planes, eigenvalues moment tensor initially
         mechanism = FocalMechanism(
             eq_id, eq_name, GCMTNodalPlanes(), None,
-            mechanism_type=MECHANISM_TYPE[metadata["fm_type_code"]])
+            mechanism_type=metadata["fm_type_code"])
         if strike is None:
             strike = 0.0
         if dip is None:
             dip = DIP_TYPE[sof]
         if rake is None:
             rake = MECHANISM_TYPE[sof]
-        #if strike is not None and dip is not None and rake is not None:
+        # if strike is not None and dip is not None and rake is not None:
         mechanism.nodal_planes.nodal_plane_1 = {"strike": strike,
                                                 "dip": dip,
                                                 "rake": rake}
@@ -329,7 +332,7 @@ class ESMFlatfileParser(SMDatabaseReader):
         razim = valid.positive_float(metadata["epi_az"], "epi_az")
         rjb = valid.positive_float(metadata["JB_dist"], "JB_dist")
         rrup = valid.positive_float(metadata["rup_dist"], "rup_dist")
-        r_x = valid.positive_float(metadata["Rx_dist"], "Rx_dist")
+        r_x = valid.vfloat(metadata["Rx_dist"], "Rx_dist")
         ry0 = valid.positive_float(metadata["Ry0_dist"], "Ry0_dist")
         rhypo = sqrt(repi ** 2. + hypo_depth ** 2.)
         if not isinstance(rjb, float):
@@ -344,7 +347,7 @@ class ESMFlatfileParser(SMDatabaseReader):
             # In the first case Rx == -Repi (collapse to point and turn off
             # any hanging wall effect)
             r_x = copy.copy(-repi)
-        
+
         if not isinstance(ry0, float):
             # In the first case Ry0 == Repi
             ry0 = copy.copy(repi)
