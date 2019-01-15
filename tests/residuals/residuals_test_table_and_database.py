@@ -169,6 +169,8 @@ class ResidualsTestCase(unittest.TestCase):
                     # attributes are not coimparable (e.g. mehtods)
                     pass
                 except Exception as _:  # pylint: disable=broad-except
+                    # just a breakpoint for inspecting assertion errors
+                    # when debugging in editor
                     raise
 
         for cont1, cont2 in zip(contexts_old, contexts_new):

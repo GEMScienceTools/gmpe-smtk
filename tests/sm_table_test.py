@@ -626,9 +626,14 @@ class GroundMotionTableTestCase(unittest.TestCase):
         self.assertTrue(missingvals['rjb'] == missingvals['rrup'] ==
                         missingvals['rupture_length'] ==
                         missingvals['ry0'] == missingvals['rx'] ==
-                        missingvals['strike_1'] == missingvals['dip_1'] ==
                         missingvals['rupture_width'] == 97)
-        self.assertEqual(missingvals['_duration_5_75_components'], 98)
+        self.assertTrue(missingvals['strike_1'] == missingvals['dip_1'] ==
+                        missingvals['rake_1'] == missingvals['duration_5_75']
+                        == 98)
+        self.assertTrue(all(_ not in missingvals
+                            for _ in ('pga', 'pgv', 'sa', 'duration_5_95')))
+        self.assertTrue(all(_ + '_components' not in missingvals
+                            for _ in ('pga', 'pgv', 'sa', 'duration_5_95')))
         self.assertEqual(missingvals['duration_5_75'], 98)
         self.assertTrue(missingvals['magnitude'] == 
                         missingvals['magnitude_type'] == 13)
@@ -644,13 +649,14 @@ class GroundMotionTableTestCase(unittest.TestCase):
         # underlying HDF5 file not open (ValueError):
         with self.assertRaises(ValueError):
             for rec in gmdb2.records:
-                rec
+                pass
+
         # check that we correctly wrote default attrs:
         with gmdb2:
             tbl = gmdb2.table.attrs
             self.assertTrue(isinstance(tbl.parser_stats, dict))
             self.assertEqual(tbl.filename, 'template_basic_flatfile.hd5')
-            self.assertEqual(len(gmdb2.attrnames()), 5)
+            self.assertEqual(len(gmdb2.attrnames()), 6)
 
         # now it works:
         with gmdb2:
@@ -669,10 +675,10 @@ class GroundMotionTableTestCase(unittest.TestCase):
         self.assertTrue(mag_le_4 + mag_gt_4 == 98 - 13)
 
         # just open and set some selections to check it
-        with GroundMotionTable(self.output_file, 'esm_sa_flatfile_2018') as gmdb:
-            table = gmdb.table
-            total = table.nrows
-            gmdb.filter
+#         with GroundMotionTable(self.output_file, 'esm_sa_flatfile_2018') as gmdb:
+#             table = gmdb.table
+#             total = table.nrows
+#             gmdb.filter
 
 # def get_interpolated_periods(target_periods, periods, values, sort=True,
 #                              check_bounds=True):

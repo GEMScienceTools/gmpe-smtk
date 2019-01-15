@@ -117,18 +117,20 @@ class StringCol(_StringCol):
         self.min_value, self.max_value = min, max
 
 
-# Instead of implementing a static GMDatabase as `pytable.IsDescription` class.
+# Instead of implementing a static GMDatabase as `pytable.IsDescription` class,
 # which does not allow to dynamically set the length of array columns, write
 # a dict here of SCALAR values only. Array columns (i.e., 'sa') will be added
 # later. This also permits to have the scalar columns in one place, as scalar
-# columns only are selectable in pytables by default. NOTE: columns whose
-# names starts with '_' should be hidden from the user
+# columns only are selectable in pytables by default
 GMTableDescription = dict(
-    record_id=UInt32Col(),  # max id: 4,294,967,295
-    event_id=StringCol(20),
+    # These three columns are created and filled by default
+    # (see GroundMotionTable.write_record):
+    #     record_id=UInt32Col(),  # max id: 4,294,967,295
+    #     event_id=StringCol(20),
+    #     station_id=StringCol(itemsize=20),
     event_name=StringCol(itemsize=40),
     event_country=StringCol(itemsize=30),
-    event_time=DateTimeCol(),  # In ISO Format YYYY-MM-DDTHH:mm:ss
+    event_time=DateTimeCol(),
     event_latitude=Float64Col(min=-90, max=90),
     event_longitude=Float64Col(min=-180, max=180),
     hypocenter_depth=Float64Col(),
@@ -146,7 +148,6 @@ GMTableDescription = dict(
     depth_top_of_rupture=Float32Col(),
     rupture_length=Float32Col(),
     rupture_width=Float32Col(),
-    station_id=StringCol(itemsize=20),
     station_name=StringCol(itemsize=40),
     station_country=StringCol(itemsize=30),
     station_latitude=Float64Col(min=-90, max=90),
@@ -181,22 +182,16 @@ GMTableDescription = dict(
     highest_usable_frequency_h2=Float32Col(),
     highest_usable_frequency_avg=Float32Col(),
     backarc=BoolCol(dflt=False),
+    # imts:
     pga=Float64Col(),
-    _pga_components=Float64Col(shape=(3,)),
     pgv=Float64Col(),
-    _pgv_components=Float64Col(shape=(3,)),
-    sa=Float64Col(),
-    _sa_components=Float64Col(shape=(3,)),
+    # sa=Float64Col(),  # this columns will be overridden with an array column
+    # whose shape depends on the number of sa periods in the flat file
     pgd=Float64Col(),
-    _pgd_components=Float64Col(shape=(3,)),
     duration_5_75=Float64Col(),
-    _duration_5_75_components=Float64Col(shape=(3,)),
     duration_5_95=Float64Col(),
-    _duration_5_95_components=Float64Col(shape=(3,)),
     arias_intensity=Float64Col(),
-    _arias_intensity_components=Float64Col(shape=(3,)),
     cav=Float64Col(),
-    _cav_components=Float64Col(shape=(3,))
 )
 
 
@@ -220,6 +215,17 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
     # the csv delimiter:
     csv_delimiter = ';'
 
+    # Tells if the parsed flat file provides components for any of the given
+    # IMTs. This will store for each IMT an additional field:
+    # <imt>_components (e.g., 'pga_components') of length 3 denoting the
+    # two horizontal components and the vertical (in this order.
+    # 'sa_components' will be an array of shape [3 x sa_periods]).
+    # If components are specified, the associated scalar values
+    # will be used for selection/filtering only, and the user should put
+    # therein any meaningful value (usually geometric mean of the two
+    # horizontal components)
+    has_imt_components = False
+
     # The csv column names will be then converted according to the
     # `mappings` dict below, where a csv flatfile column is mapped to its
     # corresponding Gm database column name. The mapping is the first
@@ -231,7 +237,7 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
         '''Parses a flat file and writes its content in the file
         `output_path`, which is a HDF file organized hierarchically in groups
         (sort of sub-directories) each of which identifies a
-        :class:`GroundMotionTable`, later accessible 
+        :class:`GroundMotionTable`, later accessible
         with the module's :function:`get_dbnames`.
 
         :param flatfile_path: string denoting the path to the input CSV
@@ -264,6 +270,8 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
         '''
         if dbname is None:
             dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
+
+        initialized = False
         with GroundMotionTable(output_path, dbname, 'w') as gmdb:
 
             i, error, missing, bad, outofbound = \
@@ -272,7 +280,11 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
             for i, (rowdict, sa_periods) in \
                     enumerate(cls._rows(flatfile_path, delimiter)):
 
-                # write sa_periods only the first time
+                if not initialized:
+                    # write sa_periods only the first time
+                    gmdb.create_table(sa_periods, cls.has_imt_components)
+                    initialized = True
+
                 written, missingcols, badcols, outofboundcols = \
                     gmdb.write_record(rowdict, sa_periods)
 
@@ -369,18 +381,16 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
            here for some custom operation, in order to convert strings to
            floats or timestamps (floats denoting date-times) you can use the
            static methods `timestamp` and `float`. Both methods accept also
-           lists or tuples to convert arrays and silenttly coerce unparsable
+           lists or tuples to convert arrays and silently coerce unparsable
            values to nan (Note that nan represents a missing value for any
-           numeric or timestamp column).
-        4. the `rowdict` keys 'event_id', 'station_id' and 'record_id' are
-           reserved and their values will be overridden anyway
+           numeric or timestamp column)
 
         :param rowdict: a row of the csv flatfile, as Python dict
 
         :param sa_colnames: a list of strings of the column
             names denoting the SA values. The list is sorted ascending
             according to the relative numeric period defined in
-            :method:`get_sa_periods`
+            :method:`get_sa_columns`
         '''
         pass
 
@@ -389,14 +399,13 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
         '''converts value to timestamp (numpy float64). Silently coerces
             erros to NaN(s) when needed
 
-        :param value: string representing a datetime in iso-8601 format,
+        :param value: string representing a UTC datetime in iso-8601 format,
             or datetime, or any list/tuple of the above two types.
             If string, the formats can be:
-            '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%Y'
-            '%Y' (e.g. '2006' == '2006-01-01T00:00:00')
-            '%Y-%m-%d' (e.g., '2006-01-01' == '2006-01-01T00:00:00')
-            '%Y-%m-%dT%H:%M:%S' or
-            '%Y-%m-%d %H:%M:%S'
+            1. '%Y' (e.g. '2006' == '2006-01-01T00:00:00')
+            2. '%Y-%m-%d' (e.g., '2006-01-01' == '2006-01-01T00:00:00')
+            3. '%Y-%m-%d %H:%M:%S'
+            4. '%Y-%m-%dT%H:%M:%S'
 
         :return: a numpy float64 (array or scalar depending on the input type)
         '''
@@ -544,11 +553,12 @@ def _normalize_condition(condition):
         "(pga <= 0.5) & (pgv > 9.5)". This function raises if the logical
         operators are not preceeded by a ")" or not followed by a "("
     1b. Recognizes date time **strings** (i.e. quoted) in any format recognized
-        by GmDatabase parser: 2006-12-31T00:00:00 (with or without T),
-        2006-12-31, or simply 2006.
-    1c. Does a fast check on correct comparison columns (fields) types
+        by GmDatabase parser: '2006-12-31T00:00:00', '2006-12-31 00:00:00',
+        '2006-12-31', or simply '2006'.
+    1c. Does a fast check on correct comparison according to columns (fields)
+        types
     2. Accepts expressions like 'col_name != nan' or 'col_name == nan' by
-        converting it to the numexpr correct syntax:
+        converting it to the numexpr correct syntax, e.g.:
         "pga != pga"  (pga is nan)
         "pga == pga"  (pga is not nan)
     3. Converts string column type values (e.g., 'event_country') to
@@ -755,7 +765,7 @@ class GroundMotionTable(object):
     @raises_if_file_is_open
     def delete(self):
         '''Deletes the HDF data related to this table stored in the underlying
-        HDF file. Example:
+        HDF file. USE WITH CARE. Example:
             GroundMotionTable(filepath, dbname, 'w').delete()
         '''
         with self:
@@ -796,6 +806,7 @@ class GroundMotionTable(object):
         gmdb._condition = condition  # pylint: disable=protected-access
         return gmdb
 
+    @raises_if_file_is_open
     def __enter__(self):
         '''Yields a pytable Group object representing a Gm database
         in the given hdf5 file `filepath`. If such a group does not exist
@@ -823,7 +834,7 @@ class GroundMotionTable(object):
         try:
             group = h5file.get_node(grouppath, classname=Group.__name__)
             if mode == 'w':
-                for node in group:  # make node empty
+                for node in group:  # make group empty
                     h5file.remove_node(node, recursive=True)
         except NoSuchNodeError as _:
             if mode == 'r':
@@ -889,10 +900,61 @@ class GroundMotionTable(object):
                                                  classname=Group.__name__)
             return node
 
+    def create_table(self, sa_periods, has_imt_components=False):
+        '''
+            Creates the HDF table representing this Ground motion table
+            where to write records.
+
+            NOTE: This method must be called when this
+            object is opened in 'w' mode and inside a `with` statement, PRIOR
+            to any call to `self.write_record`. If a table mapping this object
+            already exists on the underlying HDF file, it will be overwritten
+
+            :param sa_periods: a **monotonically increasing** numeric array of
+                the periods (x values) for the SA
+            :param has_imt_components: boolean telling if this table supports
+                imts with components, i.e. for each IMT a 3-length vector
+                is asslocated where to store the imt components (two horizontal
+                and vertical, in this order). The SA will be stored as a
+                [3 X len(sa_periods)] matrix, in case
+        '''
+        try:
+            table = self.table  # table exists, overwrite
+            self._h5file.remove_node(table, recursive=True)
+        except NoSuchNodeError:
+            pass
+
+        comps = {}
+        sa_length = len(sa_periods)
+        comps['sa'] = Float64Col(shape=(sa_length,))
+        if has_imt_components:
+            comps = {comp + '_components': Float64Col(shape=(3,))
+                     for comp in ('pga', 'pgv', 'sa', 'pgd', 'duration_5_75',
+                                  'duration_5_95', 'arias_intensity', 'cav')}
+            comps['sa_components'] = Float64Col(shape=(3, sa_length))
+
+        # add internal ids (populated automatically for each written record):
+        comps['record_id'] = UInt32Col()  # max id: 4,294,967,295
+        comps['station_id'] = StringCol(itemsize=20)
+        comps['event_id'] = StringCol(20)
+
+        desc = dict(GMTableDescription, **comps)
+        self._table = table = self._h5file.create_table(self._root, "table",
+                                                        description=desc)
+        table.attrs.sa_periods = np.asarray(sa_periods, dtype=float)
+        table.attrs._current_row_id = 1
+        table.attrs.filename = os.path.basename(self.filepath)
+        table.attrs._has_imt_components = has_imt_components
+        return self
+
     def write_record(self, csvrow, sa_periods):
         '''writes the content of `csvrow` into tablerow  on the table mapped
         to this object in the undelrying HDF file, which must be open
         (i.e., the user must be inside a with statement) in write mode.
+
+        NOTE: `self.create_table` must have been called ONCE prior to this
+            method call
+
         Returns the tuple:
         ```written, missing_colnames, bad_colnames, outofbounds_colnames```
         where the last three elements are lists of strings (the record
@@ -909,10 +971,7 @@ class GroundMotionTable(object):
         if not self._sanity_check(csvrow):
             return False, missing_colnames, bad_colnames, outofbounds_colnames
 
-        try:
-            table = self.table
-        except NoSuchNodeError:
-            table = self._create_table(len(sa_periods))
+        table = self.table
 
         # build a record hashes as ids:
         evid, staid, recid = self._get_ids(csvrow)
@@ -961,7 +1020,8 @@ class GroundMotionTable(object):
                     continue  # actually useless, but if we add code below ...
 
             except (ValueError, TypeError):
-                if csvrow[col] in ('', b''):
+                if isinstance(csvrow[col], (str, bytes)) and \
+                        csvrow[col] in ('', b''):
                     missing_colnames.append(col)
                 else:
                     bad_colnames.append(col)
@@ -1021,8 +1081,8 @@ class GroundMotionTable(object):
         '''Returns this object attribute names, i.e. the attribute
             names of the underlying pytables table attributes object:
             `self.table.attrs`.
-            Modification of attribute values should not happen outside
-            this class, unless you know what you are doing
+            The table attributes are intended to be read only, modify them
+            only if you know what you are doing
 
         :param key: string in ('sys', 'user', 'all'), default: 'user'.
             'user' returns the user-defined attributes set e.g. by this object
@@ -1047,21 +1107,17 @@ class GroundMotionTable(object):
             and the path does not exists, a :class:`NoSuchNode` exception is
             raised
         '''
+        # TODO: Currently NOT USED. For future potential development
         _splitpath = relative_path.split('/')
         group = self.get_group("/".join(_splitpath[:-1]), create_path)
         self._h5file.create_array(group, _splitpath[-1],
                                   obj=np.asarray(values))
 
-    # ----- IO PRIVATE METHODS  ----- #
+    @property
+    def has_imt_components(self):
+        return self.table.attrs._has_imt_components
 
-    def _create_table(self, sa_length):
-        desc = dict(GMTableDescription, sa=Float64Col(shape=(sa_length,)),
-                    _sa_components=Float64Col(shape=(3, sa_length)))
-        self._table = self._h5file.create_table(self._root, "table",
-                                                description=desc)
-        self._table.attrs._current_row_id = 1
-        self._table.attrs.filename = os.path.basename(self.filepath)
-        return self._table
+    # ----- IO PRIVATE METHODS  ----- #
 
     @property
     def _h5file(self):
@@ -1133,35 +1189,6 @@ class GroundMotionTable(object):
         return value
 
     # ---- RESIDUALS ANALYSIS ---- #
-
-#     def get_contexts(self, nodal_plane_index=1):
-#         """
-#         Returns a list of dictionaries, each containing the site, distance
-#         and rupture contexts for individual records
-#         """
-#         wfid_list = np.array([rec.event.id for rec in self.records])
-#         eqid_list = self._get_event_id_list()
-#         context_dicts = []
-#         for eqid in eqid_list:
-#             idx = np.where(wfid_list == eqid)[0]
-#             context_dicts.append({
-#                 'EventID': eqid,
-#                 'EventIndex': idx.tolist(),
-#                 'Sites': self._get_sites_context_event(idx),
-#                 'Distances': self._get_distances_context_event(idx),
-#                 'Rupture': self._get_event_context(idx, nodal_plane_index)})
-#         return context_dicts
-#
-#     @staticmethod
-#     def _get_event_id_list(self):
-#         """
-#         Returns the list of unique event keys from the database
-#         """
-#         event_list = []
-#         for record in self.records:
-#             if not record.event.id in event_list:
-#                 event_list.append(record.event.id)
-#         return np.array(event_list)
 
     @property
     def records(self):
@@ -1262,9 +1289,6 @@ class GroundMotionTable(object):
         # whereas this method is called ONCE PER RECORD and appends records
         # data to an already created SitesContext
 
-        # FIXME:
-        # deal with non attached attributes
-
         append, isnan = GroundMotionTable._append, np.isnan
 
         append(sctx, 'lons', record['station_longitude'])
@@ -1279,62 +1303,6 @@ class GroundMotionTable(object):
         append(sctx, 'z2pt5',  vs30_to_z2pt5_cb14(vs30)
                if isnan(record['z2pt5']) else record['z2pt5'])
         append(sctx, 'backarc', record['backarc'])
-
-    # def _get_sites_context_event(self, idx):
-    #     """
-    #     Returns the site context for a particular event
-    #     """
-    #     sctx = SitesContext()
-    #     longs = []
-    #     lats = []
-    #     depths = []
-    #     vs30 = []
-    #     vs30_measured = []
-    #     z1pt0 = []
-    #     z2pt5 = []
-    #     backarc = []
-    #     azimuth = []
-    #     hanging_wall = []
-    #     for idx_j in idx:
-    #         # Site parameters
-    #         rup = self.records[idx_j]
-    #         longs.append(rup.site.longitude)
-    #         lats.append(rup.site.latitude)
-    #         if rup.site.altitude:
-    #             depths.append(rup.site.altitude * -1.0E-3)
-    #         else:
-    #             depths.append(0.0)
-    #         vs30.append(rup.site.vs30)
-    #         if rup.site.vs30_measured is not None:
-    #             vs30_measured.append(rup.site.vs30_measured)
-    #         else:
-    #             vs30_measured.append(0)
-    #         if rup.site.z1pt0 is not None:
-    #             z1pt0.append(rup.site.z1pt0)
-    #         else:
-    #             z1pt0.append(vs30_to_z1pt0_cy14(rup.site.vs30))
-    #         if rup.site.z2pt5 is not None:
-    #             z2pt5.append(rup.site.z2pt5)
-    #         else:
-    #             z2pt5.append(vs30_to_z2pt5_cb14(rup.site.vs30))
-    #         if ("backarc" in dir(rup.site)) and rup.site.backarc is not None:
-    #             backarc.append(rup.site.backarc)
-    #     setattr(sctx, 'vs30', np.array(vs30))
-    #     if len(longs) > 0:
-    #         setattr(sctx, 'lons', np.array(longs))
-    #     if len(lats) > 0:
-    #         setattr(sctx, 'lats', np.array(lats))
-    #     if len(depths) > 0:
-    #         setattr(sctx, 'depths', np.array(depths))
-    #     if len(vs30_measured) > 0:
-    #         setattr(sctx, 'vs30measured', np.array(vs30_measured))
-    #     if len(z1pt0) > 0:
-    #         setattr(sctx, 'z1pt0', np.array(z1pt0))
-    #     if len(z2pt5) > 0:
-    #         setattr(sctx, 'z2pt5', np.array(z2pt5))
-    #     if len(backarc) > 0:
-    #         setattr(sctx, 'backarc', np.array(backarc))
-    #     return sctx
 
     @staticmethod
     def _set_distances_context_event(record, dctx):
@@ -1352,57 +1320,6 @@ class GroundMotionTable(object):
         # returns an openquake's SitesContext
         # whereas this method is called ONCE PER RECORD and appends records
         # data to an already created SitesContext
-
-        # Attributes attached to sctx in the OLD IMPLEMENTATION:
-        # if rup.distance.rjb is not None:
-        #     rjb.append(rup.distance.rjb)
-        # else:
-        #     rjb.append(rup.distance.repi)
-        # if rup.distance.rrup is not None:
-        #     rrup.append(rup.distance.rrup)
-        # else:
-        #     rrup.append(rup.distance.rhypo)
-        # if rup.distance.r_x is not None:
-        #     r_x.append(rup.distance.r_x)
-        # else:
-        #     r_x.append(rup.distance.repi)
-        # if ("ry0" in dir(rup.distance)) and rup.distance.ry0 is not None:
-        #     ry0.append(rup.distance.ry0)
-        # if ("rcdpp" in dir(rup.distance)) and\
-        #     rup.distance.rcdpp is not None:
-        #     rcdpp.append(rup.distance.rcdpp)
-        # if rup.distance.azimuth is not None:
-        #     azimuth.append(rup.distance.azimuth)
-        # if rup.distance.hanging_wall is not None:
-        #     hanging_wall.append(rup.distance.hanging_wall)
-        # if "rvolc" in dir(rup.distance) and\
-        #     rup.distance.rvolc is not None:
-        #     rvolc.append(rup.distance.rvolc)
-        # setattr(dctx, 'repi', np.array(repi))
-        # setattr(dctx, 'rhypo', np.array(rhypo))
-        # if len(rjb) > 0:
-        #     setattr(dctx, 'rjb', np.array(rjb))
-        # if len(rrup) > 0:
-        #     setattr(dctx, 'rrup', np.array(rrup))
-        # if len(r_x) > 0:
-        #     setattr(dctx, 'rx', np.array(r_x))
-        # if len(ry0) > 0:
-        #     setattr(dctx, 'ry0', np.array(ry0))
-        # if len(rcdpp) > 0:
-        #     setattr(dctx, 'rcdpp', np.array(rcdpp))
-        # if len(azimuth) > 0:
-        #     setattr(dctx, 'azimuth', np.array(azimuth))
-        # if len(hanging_wall) > 0:
-        #     setattr(dctx, 'hanging_wall', np.array(hanging_wall))
-        # if len(rvolc) > 0:
-        #     setattr(dctx, 'rvolc', np.array(rvolc))
-
-        # FIXME:
-        # 1) These three attributes are missing in current implementation!
-        # - append(dctx, 'rcdpp', rup['rcdpp'])
-        # - append(dctx, 'hanging_wall', rup['hanging_wall'])
-        # - append(dctx, 'rvolc', rup['rvolc'])
-        # 2) Old TODO maybe to be fixed NOW?
 
         append, isnan = GroundMotionTable._append, np.isnan
 
@@ -1422,7 +1339,6 @@ class GroundMotionTable(object):
         append(dctx, 'rvolc', 0.0)
         append(dctx, 'azimuth', record['azimuth'])
 
-
     def _set_event_context(self, record, rctx, nodal_plane_index=1):
         """
         Adds the record's data to the given distance context
@@ -1438,39 +1354,6 @@ class GroundMotionTable(object):
         # returns an openquake's SitesContext
         # whereas this method is called ONCE PER RECORD and appends records
         # data to an already created SitesContext
-
-        # Attributes attached to sctx in the OLD IMPLEMENTATION:
-        # if nodal_plane_index == 2:
-        #     setattr(rctx, 'strike',
-        #         rup.event.mechanism.nodal_planes.nodal_plane_2['strike'])
-        #     setattr(rctx, 'dip',
-        #         rup.event.mechanism.nodal_planes.nodal_plane_2['dip'])
-        #     setattr(rctx, 'rake',
-        #         rup.event.mechanism.nodal_planes.nodal_plane_2['rake'])
-        # else:
-        #     setattr(rctx, 'strike', 0.0)
-        #     setattr(rctx, 'dip', 90.0)
-        #     rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
-        # if rup.event.rupture.surface:
-        #     setattr(rctx, 'ztor', rup.event.rupture.surface.get_top_edge_depth())
-        #     setattr(rctx, 'width', rup.event.rupture.surface.width)
-        #     setattr(rctx, 'hypo_loc', rup.event.rupture.surface.get_hypo_location(1000))
-        # else:
-        #     setattr(rctx, 'ztor', rup.event.depth)
-        #     # Use the PeerMSR to define the area and assuming an aspect ratio
-        #     # of 1 get the width
-        #     setattr(rctx, 'width',
-        #             np.sqrt(DEFAULT_MSR.get_median_area(rctx.mag, 0)))
-        #     # Default hypocentre location to the middle of the rupture
-        #     setattr(rctx, 'hypo_loc', (0.5, 0.5))
-        # setattr(rctx, 'hypo_depth', rup.event.depth)
-        # setattr(rctx, 'hypo_lat', rup.event.latitude)
-        # setattr(rctx, 'hypo_lon', rup.event.longitude)
-
-        # FIXME: is style_of_faulting only needed for n/a rake?
-        # Then I would remove style_of_faulting and create a rake for each
-        # specific flatfile case, when parsing
-        # Missing attributes: ztor, width
 
         isnan = np.isnan
 
@@ -1520,13 +1403,14 @@ class GroundMotionTable(object):
         :param scalar_func: a function returning a scalar from two numeric
             components. See `sm_utils.SCALAR_XY`
         '''
+        has_imt_components = self.has_imt_components
         for imtx in observations.keys():
             value = np.nan
             components = [np.nan, np.nan]
             if "SA(" in imtx:
                 target_period = imt.from_string(imtx).period
-                spectrum = record['_sa_components'][:2]
-                if not np.isnan(spectrum).all():
+                if has_imt_components:
+                    spectrum = record['sa_components'][:2]
                     components[0] = get_interpolated_period(target_period,
                                                             sa_periods,
                                                             spectrum[0])
@@ -1539,44 +1423,10 @@ class GroundMotionTable(object):
                                                     spectrum)
             else:
                 imtx_ = imtx.lower()
-                components = record['_%s_components' % imtx_][:2]
+                if has_imt_components:
+                    components = record['%s_components' % imtx_][:2]
                 value = record[imtx_]
 
-            if not np.isnan(components).all():
+            if has_imt_components:
                 value = scalar_func(*components)
             observations[imtx].append(value)
-
-
-#     def get_observations(self, context, component="Geometric"):
-#         """
-#         Get the obsered ground motions from the database
-#         """
-#         select_records = self.database.select_from_event_id(context["EventID"])
-#         observations = OrderedDict([(imtx, []) for imtx in self.imts])
-#         selection_string = "IMS/H/Spectra/Response/Acceleration/"
-#         for record in select_records:
-#             fle = h5py.File(record.datafile, "r")
-#             for imtx in self.imts:
-#                 if imtx in SCALAR_IMTS:
-#                     if imtx == "PGA":
-#                         observations[imtx].append(
-#                             get_scalar(fle, imtx, component) / 981.0)
-#                     else:
-#                         observations[imtx].append(
-#                             get_scalar(fle, imtx, component))
-#
-#                 elif "SA(" in imtx:
-#                     target_period = imt.from_string(imtx).period
-#                     spectrum = fle[selection_string + component +
-#                                    "/damping_05"].value
-#                     periods = fle["IMS/H/Spectra/Response/Periods"].value
-#                     observations[imtx].append(get_interpolated_period(
-#                         target_period, periods, spectrum) / 981.0)
-#                 else:
-#                     raise "IMT %s is unsupported!" % imtx
-#             fle.close()
-#         for imtx in self.imts:
-#             observations[imtx] = np.array(observations[imtx])
-#         context["Observations"] = observations
-#         context["Num. Sites"] = len(select_records)
-#         return context

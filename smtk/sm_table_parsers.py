@@ -43,6 +43,8 @@ class UserDefinedParser(GMTableParser):
     is performed in-place on each flatfile row. For more details, see
     the :method:`parse_row` docstring
     '''
+    has_imt_components = False
+
     csv_delimiter = ';'  # the csv delimiter (same as superclass)
 
     _accel_units = ["g", "m/s/s", "m/s**2", "m/s^2",
@@ -225,6 +227,8 @@ class UserDefinedParser(GMTableParser):
 
 class EsmParser(GMTableParser):
 
+    has_imt_components = True
+
     mappings = {'ev_nation_code': 'event_country',
                 'event_id': 'event_name',
                 'ev_latitude': 'event_latitude',
@@ -317,31 +321,23 @@ class EsmParser(GMTableParser):
         # Also store in magnitude type (Mw Ms Ml)
         for mag, magtype in [('EMEC_Mw', 'Mw'), ('Mw', 'Mw'), ('Ms', 'Ms'),
                              ('Ml', 'Ml')]:
-            magnitude = rowdict.pop(mag, '').strip()
+            magnitude = rowdict.get(mag, '').strip()
             if magnitude:
                 rowdict['magnitude'] = magnitude
                 rowdict['magnitude_type'] = magtype
                 break
 
-        if cls.float(rowdict['dip_2']) > 87 and cls.float(rowdict['dip_2']) < 89:
-            asd = 9
         # If all es_strike    es_dip    es_rake are not nan use those as
         # strike dip rake.
         # Otherwise see below (all es_strike    es_dip    es_rake are nans:
         # do not set strike dip and rake and use style of faulting later
         # during residuals calc)
-        es_strike, es_dip, es_rake = cls.float([rowdict.get('es_strike', ""),
-                                                rowdict.get('es_dip', ""),
-                                                rowdict.get('es_rake', "")])
+        es_strike, es_dip, es_rake = tofloat([rowdict.get('es_strike', ""),
+                                              rowdict.get('es_dip', ""),
+                                              rowdict.get('es_rake', "")])
         if not np.isnan([es_strike, es_dip, es_rake]).any():
             rowdict['strike_1'], rowdict['dip_1'], rowdict['rake_1'] = \
                 es_strike, es_dip, es_rake
-
-#         if np.isnan([rowdict['strike_1'], rowdict['dip_1'],
-#                      rowdict['rake_1']]).any():
-#             rowdict['strike_1'], rowdict['dip_1'], rowdict['rake_1'] = \
-#                 rowdict.get('strike_1', ''), rowdict.pop('dip_1', ''), \
-#                 rowdict.get('rake_1', '')
 
         # if vs30_meas_type is not empty  then vs30_measured is True else False
         rowdict['vs30_measured'] = bool(rowdict.get('vs30_meas_type', ''))
@@ -377,53 +373,53 @@ class EsmParser(GMTableParser):
 
         # U_pga    V_pga    W_pga are the three components of pga
         # IT IS SUPPOSED TO BE ALREADY IN CM/S/S
-        rowdict['_pga_components'] = \
-            np.abs([tofloat(rowdict.pop('U_pga', dflt)),
-                    tofloat(rowdict.pop('V_pga', dflt)),
-                    tofloat(rowdict.pop('W_pga', dflt))])
-        rowdict['pga'] = geom_mean(rowdict['_pga_components'][0],
-                                   rowdict['_pga_components'][1])
+        rowdict['pga_components'] = \
+            np.abs([tofloat(rowdict.get('U_pga', dflt)),
+                    tofloat(rowdict.get('V_pga', dflt)),
+                    tofloat(rowdict.get('W_pga', dflt))])
+        rowdict['pga'] = geom_mean(rowdict['pga_components'][0],
+                                   rowdict['pga_components'][1])
 
         # U_pgv    V_pgv    W_pgv are the three components of pgv
-        rowdict['_pgv_components'] = \
-            np.abs([tofloat(rowdict.pop('U_pgv', dflt)),
-                    tofloat(rowdict.pop('V_pgv', dflt)),
-                    tofloat(rowdict.pop('W_pgv', dflt))])
-        rowdict['pgv'] = geom_mean(rowdict['_pgv_components'][0],
-                                   rowdict['_pgv_components'][1])
+        rowdict['pgv_components'] = \
+            np.abs([tofloat(rowdict.get('U_pgv', dflt)),
+                    tofloat(rowdict.get('V_pgv', dflt)),
+                    tofloat(rowdict.get('W_pgv', dflt))])
+        rowdict['pgv'] = geom_mean(rowdict['pgv_components'][0],
+                                   rowdict['pgv_components'][1])
 
         # U_pgd    V_pgd    W_pgd are the three components of pgd
-        rowdict['_pgd_components'] = \
-            np.abs([tofloat(rowdict.pop('U_pgd', dflt)),
-                    tofloat(rowdict.pop('V_pgd', dflt)),
-                    tofloat(rowdict.pop('W_pgd', dflt))])
-        rowdict['pgd'] = geom_mean(rowdict['_pgd_components'][0],
-                                   rowdict['_pgd_components'][1])
+        rowdict['pgd_components'] = \
+            np.abs([tofloat(rowdict.get('U_pgd', dflt)),
+                    tofloat(rowdict.get('V_pgd', dflt)),
+                    tofloat(rowdict.get('W_pgd', dflt))])
+        rowdict['pgd'] = geom_mean(rowdict['pgd_components'][0],
+                                   rowdict['pgd_components'][1])
 
         # U_T90    V_T90    W_T90 are the three components of duration_5_95
-        rowdict['_duration_5_95_components'] = \
-            [tofloat(rowdict.pop('U_T90', dflt)),
-             tofloat(rowdict.pop('V_T90', dflt)),
-             tofloat(rowdict.pop('W_T90', dflt))]
+        rowdict['duration_5_95_components'] = \
+            [tofloat(rowdict.get('U_T90', dflt)),
+             tofloat(rowdict.get('V_T90', dflt)),
+             tofloat(rowdict.get('W_T90', dflt))]
         rowdict['duration_5_95'] = \
-            geom_mean(rowdict['_duration_5_95_components'][0],
-                      rowdict['_duration_5_95_components'][1])
+            geom_mean(rowdict['duration_5_95_components'][0],
+                      rowdict['duration_5_95_components'][1])
 
         # U_CAV    V_CAV    W_CAV are the 3 comps for cav
-        rowdict['_cav_components'] = [tofloat(rowdict.pop('U_CAV', dflt)),
-                                      tofloat(rowdict.pop('V_CAV', dflt)),
-                                      tofloat(rowdict.pop('W_CAV', dflt))]
-        rowdict['cav'] = geom_mean(rowdict['_cav_components'][0],
-                                   rowdict['_cav_components'][1])
+        rowdict['cav_components'] = [tofloat(rowdict.get('U_CAV', dflt)),
+                                     tofloat(rowdict.get('V_CAV', dflt)),
+                                     tofloat(rowdict.get('W_CAV', dflt))]
+        rowdict['cav'] = geom_mean(rowdict['cav_components'][0],
+                                   rowdict['cav_components'][1])
 
         # U_ia    V_ia    W_ia  are the 3 comps for arias_intensity
-        rowdict['_arias_intensity_components'] = \
-            [tofloat(rowdict.pop('U_ia', dflt)),
-             tofloat(rowdict.pop('V_ia', dflt)),
-             tofloat(rowdict.pop('W_ia', dflt))]
+        rowdict['arias_intensity_components'] = \
+            [tofloat(rowdict.get('U_ia', dflt)),
+             tofloat(rowdict.get('V_ia', dflt)),
+             tofloat(rowdict.get('W_ia', dflt))]
         rowdict['arias_intensity'] = \
-            geom_mean(rowdict['_arias_intensity_components'][0],
-                      rowdict['_arias_intensity_components'][1])
+            geom_mean(rowdict['arias_intensity_components'][0],
+                      rowdict['arias_intensity_components'][1])
 
         # SA columns are defined in `get_sa_columns
         # THEY ARE SUPPOSED TO BE ALREADY IN CM/S/S
@@ -432,9 +428,9 @@ class EsmParser(GMTableParser):
                        (_.replace('U_', 'V_') for _ in sa_colnames)])
         sa_w = np.abs([tofloat(rowdict[_]) for _ in
                        (_.replace('U_', 'W_') for _ in sa_colnames)])
-        rowdict['_sa_components'] = np.array([sa_u, sa_v, sa_w])
-        rowdict['sa'] = geom_mean(rowdict['_sa_components'][0],
-                                  rowdict['_sa_components'][1])
+        rowdict['sa_components'] = np.array([sa_u, sa_v, sa_w])
+        rowdict['sa'] = geom_mean(rowdict['sa_components'][0],
+                                  rowdict['sa_components'][1])
 
         # depth_top_of_rupture = es_z_top if given else event_depth_km
         if 'es_z_top' in rowdict:
@@ -446,36 +442,9 @@ class EsmParser(GMTableParser):
         if 'es_width' in rowdict:
             rowdict['rupture_width'] = rowdict['es_width']
 
-        # All these should be nan:
-        # magnitude_uncertainty strike_1 dip_1 rake_1,
-        #  strike_2, dip_2 rake_2
-
 
 class NgaWest2Parser(GMTableParser):
     mappings: {}
-
-#     @classmethod
-#     def process_flatfile_row(cls, rowdict):
-#         '''do any further processing of the given `rowdict`, a dict
-#         represenitng a parsed csv row. At this point, `rowdict` keys are
-#         already mapped to the :class:`GMDatabaseTable` columns (see `_mappings`
-#         class attribute), spectra values are already set in `rowdict['sa']`
-#         (interpolating csv spectra columns, if needed).
-#         This method should process `rowdict` in place, the returned value
-#         is ignored. Any exception is wrapped in the caller method.
-# 
-#         :param rowdict: a row of the csv flatfile, as Python dict. Values
-#             are strings and will be casted to the matching Table column type
-#             after this method call
-#         '''
-#         # convert event time from cells into a datetime string:
-#         evtime = cls.datetime(rowdict.pop('Year'),
-#                               rowdict.pop('Month'),
-#                               rowdict.pop('Day'),
-#                               rowdict.pop('Hour', None) or 0,
-#                               rowdict.pop('Minute', None) or 0,
-#                               rowdict.pop('Second', None) or 0)
-#         rowdict['event_time'] = evtime
 
 
 class NgaEast2Parser(GMTableParser):
