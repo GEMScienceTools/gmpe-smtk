@@ -137,41 +137,7 @@ class ResidualsTestCase(unittest.TestCase):
         self.assertEqual(len(contexts_old),
                          len(contexts_new))
 
-        def cmp(obj1, obj2, exclude=None, rtol=.5e-3):
-            '''compares equality of objects'''
-            exclude = set() if not exclude else set(exclude)
-            self.assertEqual(type(obj1), type(obj2))
-            compare_dicts = isinstance(obj1, dict)
-            if compare_dicts:
-                keys1, keys2 = obj1.keys(), obj2.keys()
-            else:
-                keys1, keys2 = dir(obj1), dir(obj2)
-            atts1 = [_ for _ in keys1 if _[:1] != '_' and _ not in exclude]
-            atts2 = [_ for _ in keys2 if _[:1] != '_' and _ not in exclude]
-            # assert attrs are the same:
-            self.assertFalse(set(atts1)-set(atts2))
-            # compare att values:
-            for att in atts1:
-                if att in exclude:
-                    continue
-                if compare_dicts:
-                    val1, val2 = obj1[att], obj2[att]
-                else:
-                    val1, val2 = getattr(obj1, att), getattr(obj2, att)
-                try:
-                    self.assertTrue(np.allclose(val1, val2, rtol=rtol,
-                                                equal_nan=True))
-                except TypeError:
-                    # if isinstance(val1, dict) and isinstance(val2, dict):
-                    #     # sub-array have a relaxed condition: rtol = .5e-1,
-                    #     # meaning they must not differ by 50% of the rel value:
-                    #     cmp(val1, val2, None, rtol=1e-1)
-                    # attributes are not coimparable (e.g. mehtods)
-                    pass
-                except Exception as _:  # pylint: disable=broad-except
-                    # just a breakpoint for inspecting assertion errors
-                    # when debugging in editor
-                    raise
+        cmp = self._cmp_objects
 
         for cont1, cont2 in zip(contexts_old, contexts_new):
             sites1, sites2 = cont1['Sites'], cont2['Sites']
@@ -186,6 +152,42 @@ class ResidualsTestCase(unittest.TestCase):
             cmp(expected1, expected2)
             res1, res2 = cont1['Residual'], cont2['Residual']
             cmp(res1, res2)
+
+    def _cmp_objects(self, obj1, obj2, exclude=None, rtol=1e-4):
+        '''compares (deeply) equality of objects attributes or dicts keys'''
+        exclude = set() if not exclude else set(exclude)
+        self.assertEqual(type(obj1), type(obj2))
+        compare_dicts = isinstance(obj1, dict)
+        if compare_dicts:
+            keys1, keys2 = obj1.keys(), obj2.keys()
+        else:
+            keys1, keys2 = dir(obj1), dir(obj2)
+        atts1 = [_ for _ in keys1 if _[:1] != '_' and _ not in exclude]
+        atts2 = [_ for _ in keys2 if _[:1] != '_' and _ not in exclude]
+        # assert attrs are the same:
+        self.assertFalse(set(atts1)-set(atts2))
+        # compare att values:
+        for att in atts1:
+            if att in exclude:
+                continue
+            if compare_dicts:
+                val1, val2 = obj1[att], obj2[att]
+            else:
+                val1, val2 = getattr(obj1, att), getattr(obj2, att)
+            try:
+                self.assertTrue(np.allclose(val1, val2, rtol=rtol,
+                                            equal_nan=True))
+            except TypeError:
+                if isinstance(val1, dict) and isinstance(val2, dict):
+                    # sub-array have a relaxed condition: rtol = .5e-1,
+                    # meaning they must not differ by 50% of the rel value:
+                    self._cmp_objects(val1, val2, None, rtol=rtol)
+                # attributes are not coimparable (e.g. mehtods)
+                pass
+            except Exception as _:  # pylint: disable=broad-except
+                # just a breakpoint for inspecting assertion errors
+                # when debugging in editor
+                raise
 
     def test_residuals_execution(self):
         """
@@ -220,6 +222,7 @@ class ResidualsTestCase(unittest.TestCase):
 
         self._check_new_context_vs_old(residuals1.contexts,
                                        residuals2.contexts)
+        self._cmp_objects(stats1, stats2)
 
     def test_likelihood_execution(self):
         """
