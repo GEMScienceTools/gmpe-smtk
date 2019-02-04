@@ -195,7 +195,7 @@ def get_conditional_gmfs(
         for imtx in imts])
     gmfs = OrderedDict([(gmpe, imt_dict) for gmpe in gsims])
     gmpe_list = [GSIM_LIST[gmpe]() for gmpe in gsims]
-    cmaker = ContextMaker(gmpe_list)
+    cmaker = ContextMaker(rupture.tectonic_region_type, gmpe_list)
     sctx, dctx = cmaker.make_contexts(sites, rupture)
     for gsim in gmpe_list:
         gmpe = gsim.__class__.__name__
