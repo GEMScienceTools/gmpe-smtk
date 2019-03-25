@@ -21,20 +21,17 @@
 Basic Pseudo-database built on top of hdf5 for a set of processed strong
 motion records
 """
-import numpy as np
 import json
 from datetime import datetime
 from collections import OrderedDict
+import numpy as np
 from openquake.hazardlib.gsim.base import (
     SitesContext, DistancesContext, RuptureContext)
 from openquake.hazardlib.site import Site, SiteCollection
 from openquake.hazardlib.geo.point import Point
-from openquake.hazardlib.scalerel import PeerMSR
 from smtk.trellis.configure import vs30_to_z1pt0_as08, z1pt0_to_z2pt5
 from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 import smtk.sm_utils as utils
-
-DEFAULT_MSR = PeerMSR()
 
 
 class Magnitude(object):
@@ -268,42 +265,6 @@ class GCMTPrincipalAxes(object):
         return pas
 
 
-MECHANISM_TYPE = {"Normal": -90.0,
-                  "Strike-Slip": 0.0,
-                  "Reverse": 90.0,
-                  "Oblique": 0.0,
-                  "Unknown": 0.0,
-                  "N": -90.0, # Flatfile conventions
-                  "S": 0.0,
-                  "R": 90.0,
-                  "U": 0.0,
-                  "NF": -90., # ESM flatfile conventions
-                  "SS": 0.,
-                  "TF": 90.,
-                  "NS": -45., # Normal with strike-slip component
-                  "TS": 45., # Reverse with strike-slip component
-                  "O": 0.0
-                  }
-
-
-DIP_TYPE = {"Normal": 60.0,
-            "Strike-Slip": 90.0,
-            "Reverse": 35.0,
-            "Oblique": 60.0,
-            "Unknown": 90.0,
-            "N": 60.0, # Flatfile conventions
-            "S": 90.0,
-            "R": 35.0,
-            "U": 90.0,
-            "NF": 60., # ESM flatfile conventions
-            "SS": 90.,
-            "TF": 35.,
-            "NS": 70., # Normal with strike-slip component
-            "TS": 45., # Reverse with strike-slip component
-            "O": 90.0
-            }
-
-
 class FocalMechanism(object):
     """
     Class to hold the full focal mechanism attribute set
@@ -338,10 +299,9 @@ class FocalMechanism(object):
         Returns an idealised "rake" based on a qualitative description of the
         style of faulting
         """
-        if self.mechanism_type in MECHANISM_TYPE:
-            return MECHANISM_TYPE[self.mechanism_type]
-        else:
-            return 0.0
+        if self.mechanism_type in utils.MECHANISM_TYPE:
+            return utils.MECHANISM_TYPE[self.mechanism_type]
+        return 0.0
 
     def to_dict(self):
         """
@@ -367,7 +327,7 @@ class FocalMechanism(object):
         else:
             nps = None
         if "eigenvalues" in keys and data["eigenvalues"]:
-            eigs =  GCMTPrincipalAxes.from_dict(data[key])
+            eigs =  GCMTPrincipalAxes.from_dict(data["eigenvalues"])
         else:
             eigs = None
         if "tensor" in keys and data["tensor"]:
@@ -1215,25 +1175,41 @@ class GroundMotionDatabase(object):
         setattr(rctx, 'mag', rup.event.magnitude.value)
         if nodal_plane_index == 2:
             setattr(rctx, 'strike',
-                rup.event.mechanism.nodal_planes.nodal_plane_2['strike'])
+                    rup.event.mechanism.nodal_planes.nodal_plane_2['strike'])
             setattr(rctx, 'dip',
-                rup.event.mechanism.nodal_planes.nodal_plane_2['dip'])
+                    rup.event.mechanism.nodal_planes.nodal_plane_2['dip'])
             setattr(rctx, 'rake',
-                rup.event.mechanism.nodal_planes.nodal_plane_2['rake'])
+                    rup.event.mechanism.nodal_planes.nodal_plane_2['rake'])
+        elif nodal_plane_index == 1:
+            setattr(rctx, 'strike',
+                    rup.event.mechanism.nodal_planes.nodal_plane_1['strike'])
+            setattr(rctx, 'dip',
+                    rup.event.mechanism.nodal_planes.nodal_plane_1['dip'])
+            setattr(rctx, 'rake',
+                    rup.event.mechanism.nodal_planes.nodal_plane_1['rake'])
         else:
             setattr(rctx, 'strike', 0.0)
             setattr(rctx, 'dip', 90.0)
             rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
+
         if rup.event.rupture.surface:
             setattr(rctx, 'ztor', rup.event.rupture.surface.get_top_edge_depth())
             setattr(rctx, 'width', rup.event.rupture.surface.width)
             setattr(rctx, 'hypo_loc', rup.event.rupture.surface.get_hypo_location(1000))
         else:
-            setattr(rctx, 'ztor', rup.event.depth)
-            # Use the PeerMSR to define the area and assuming an aspect ratio
-            # of 1 get the width
-            setattr(rctx, 'width',
-                    np.sqrt(DEFAULT_MSR.get_median_area(rctx.mag, 0)))
+            if rup.event.rupture.depth is not None:
+                setattr(rctx, 'ztor', rup.event.rupture.depth)
+            else:
+                setattr(rctx, 'ztor', rup.event.depth)
+
+            if rup.event.rupture.width is not None:
+                setattr(rctx, 'width', rup.event.rupture.width)
+            else:
+                # Use the PeerMSR to define the area and assuming an aspect ratio
+                # of 1 get the width
+                setattr(rctx, 'width',
+                        np.sqrt(utils.DEFAULT_MSR.get_median_area(rctx.mag, 0)))
+
             # Default hypocentre location to the middle of the rupture
             setattr(rctx, 'hypo_loc', (0.5, 0.5))
         setattr(rctx, 'hypo_depth', rup.event.depth)
