@@ -408,6 +408,15 @@ class GroundMotionTableTestCase(unittest.TestCase):
         name = os.path.splitext(os.path.basename(self.output_file))[0]
         self.assertTrue(dbnames[0] == name)
 
+        # now a delete
+        names = get_dbnames(self.output_file)
+        assert len(names) > 0
+        GroundMotionTable(self.output_file, name, 'w').delete()
+
+        names = get_dbnames(self.output_file)
+        assert len(names) == 0
+
+
     def test_template_basic_file_selection(self):
         '''parses a sample flatfile and tests some selection syntax on it'''
         # the test file has a comma delimiter. Test that we raise with
