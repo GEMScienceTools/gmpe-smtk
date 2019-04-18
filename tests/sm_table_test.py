@@ -408,6 +408,15 @@ class GroundMotionTableTestCase(unittest.TestCase):
         name = os.path.splitext(os.path.basename(self.output_file))[0]
         self.assertTrue(dbnames[0] == name)
 
+        # now a delete
+        names = get_dbnames(self.output_file)
+        assert len(names) > 0
+        GroundMotionTable(self.output_file, name, 'w').delete()
+
+        names = get_dbnames(self.output_file)
+        assert len(names) == 0
+
+
     def test_template_basic_file_selection(self):
         '''parses a sample flatfile and tests some selection syntax on it'''
         # the test file has a comma delimiter. Test that we raise with
@@ -489,20 +498,26 @@ class GroundMotionTableTestCase(unittest.TestCase):
     def test_normalize_condition(self):
         ''' test the _normalize_condition function'''
         # these are ok because logical operators relative position is not ok
-        with self.assertRaises(ValueError):
+        with self.assertRaises(SyntaxError) as _:
             _normalize_condition("& (")
-        with self.assertRaises(ValueError):
+        self.assertEqual(_.exception.text, '&')
+        with self.assertRaises(SyntaxError) as _:
             _normalize_condition("& (")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(SyntaxError) as _:
             _normalize_condition(" & ")
-        with self.assertRaises(ValueError):
+        self.assertEqual(_.exception.text, ' &')
+        with self.assertRaises(SyntaxError) as _:
             _normalize_condition("& (abc)")
-        with self.assertRaises(ValueError):
+        self.assertEqual(_.exception.text, '&')
+        with self.assertRaises(SyntaxError) as _:
             _normalize_condition(") & (abc) | cfd")
-        with self.assertRaises(ValueError):
+        self.assertEqual(_.exception.text, ') & (abc) | cfd')
+        with self.assertRaises(SyntaxError) as _:
             _normalize_condition(") & (abc) | (cdf) ~")
-        with self.assertRaises(ValueError):
+        self.assertEqual(_.exception.text, ") & (abc) | (cdf) ~")
+        with self.assertRaises(SyntaxError) as _:
             _normalize_condition(") & (abc) | (cdf) ~ ~ ~")
+        self.assertEqual(_.exception.text, ") & (abc) | (cdf) ~ ~ ~")
 
         # these are ok because operators relative position is ok.
         # Strings are not valid python expression, but
@@ -523,6 +538,9 @@ class GroundMotionTableTestCase(unittest.TestCase):
                          "(pkw != 0.5)")
         self.assertEqual(_normalize_condition(" (pkw != 0.5) ").strip(),
                          "(pkw != 0.5)")
+        self.assertEqual(_normalize_condition("vs30_measured == True"),
+                         _normalize_condition("vs30_measured == true"),
+                         _normalize_condition("vs30_measured == TRUE"))
 
         # set a series of types and the values you want to test:
         # for ints, supply also a float, as _normalize_condition
@@ -552,40 +570,59 @@ class GroundMotionTableTestCase(unittest.TestCase):
                         # now these cases should raise:
                         for col in ['pga', 'vs30_measured', 'npass']:
                             cond = '%s %s "%s"' % (col, opr, val)
-                            with self.assertRaises(ValueError):
+                            with self.assertRaises(SyntaxError):
                                 _normalize_condition(cond)
-                    elif cond == float:
-                        cond = 'pga %s %s' % (opr, val)
-                        self.assertEqual(_normalize_condition(cond), cond)
+                    elif key == float:
+                        if val == 'nan':
+                            if val not in ('==', '!='):
+                                with self.assertRaises(SyntaxError):
+                                    _normalize_condition(cond)
+                            else:
+                                cond = 'pga %s %s' % (opr, val)
+                                expected = 'pga != pga' if val == '==' else \
+                                    'pga != pga'
+                                self.assertEqual(_normalize_condition(cond),
+                                                 expected)
                         # now these cases should raise:
                         for col in ['event_country', 'event_time',
                                     'vs30_measured', 'npass']:
-                            cond = '%s %s "%s"' % (col, opr, val)
-                            with self.assertRaises(ValueError):
+                            if col == 'npass':
+                                continue  # skip tests if col is int (npass)
+                                # and provided value is float.
+                            cond = '%s %s %s' % (col, opr, val)
+                            with self.assertRaises(SyntaxError):
                                 _normalize_condition(cond)
-                    elif cond == bool:
+                    elif key == bool:
                         cond = 'vs30_measured %s %s' % (opr, val)
                         self.assertEqual(_normalize_condition(cond), cond)
+                        # test also for boolean given as lower case:
+                        cond = ('vs30_measured %s %s' % (opr, val)).lower()
+                        self.assertEqual(_normalize_condition(cond),
+                                         cond.replace('true', 'True').
+                                         replace('false', 'False'))
                         # now these cases should raise:
                         for col in ['event_country', 'event_time', 'pga',
                                     'npass']:
-                            cond = '%s %s "%s"' % (col, opr, val)
-                            with self.assertRaises(ValueError):
+                            cond = '%s %s %s' % (col, opr, val)
+                            with self.assertRaises(SyntaxError):
                                 _normalize_condition(cond)
-                    elif cond == int:
+                    elif key == int:
                         cond = 'npass %s %s' % (opr, val)
                         self.assertEqual(_normalize_condition(cond), cond)
                         # now these cases should raise:
                         for col in ['event_country', 'event_time', 'pga',
                                     'vs30_measured']:
-                            cond = '%s %s "%s"' % (col, opr, val)
-                            with self.assertRaises(ValueError):
+                            if col == 'pga':
+                                continue  # skip tests if col is int (npass)
+                                # and provided value is float.
+                            cond = '%s %s %s' % (col, opr, val)
+                            with self.assertRaises(SyntaxError):
                                 _normalize_condition(cond)
 
         # check nan conversion (not string). Note trailing spaces stripped
         cond = "(((pga == 'nan')) | ( pga != nan)  "
         #  'pga' values must be floats or nan:
-        with self.assertRaises(ValueError):
+        with self.assertRaises(SyntaxError):
             _normalize_condition(cond)
         # Parse both nans Note trailing spaces stripped
         cond = "(((pga == nan)) | ( pga != nan)  "

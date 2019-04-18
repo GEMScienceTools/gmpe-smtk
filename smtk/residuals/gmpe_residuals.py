@@ -643,8 +643,8 @@ class Residuals(object):
             the given `gmpe`
         """
         residuals = self.residuals[gmpe][imtx]
-        return {res_type: {"Mean": np.mean(residuals[res_type]),
-                           "Std Dev": np.std(residuals[res_type])}
+        return {res_type: {"Mean": np.nanmean(residuals[res_type]),
+                           "Std Dev": np.nanstd(residuals[res_type])}
                 for res_type in self.types[gmpe][imtx]}
 
     def pretty_print(self, filename=None, sep=","):
@@ -791,7 +791,7 @@ class Residuals(object):
         for res_type in self.types[gmpe][imt]:
             zvals = np.fabs(self.residuals[gmpe][imt][res_type])
             l_h = 1.0 - erf(zvals / sqrt(2.))
-            median_lh = scoreatpercentile(l_h, 50.0)
+            median_lh = np.nanpercentile(l_h, 50.0)
             ret[res_type] = l_h, median_lh
         return ret
 

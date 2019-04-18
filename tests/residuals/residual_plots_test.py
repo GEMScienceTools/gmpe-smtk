@@ -13,7 +13,7 @@ import smtk.residuals.gmpe_residuals as res
 from smtk.database_visualiser import DISTANCES
 from smtk.residuals.residual_plots import residuals_density_distribution,\
     likelihood, residuals_with_depth, residuals_with_magnitude,\
-    residuals_with_vs30, residuals_with_distance
+    residuals_with_vs30, residuals_with_distance, _tojson
 
 
 if sys.version_info[0] >= 3:
@@ -232,6 +232,14 @@ class ResidualsTestCase(unittest.TestCase):
                         self._scatter_data_check(residuals, gsim, imt,
                                                  data1)
 
+
+    def test_json(self):
+        with self.assertRaises(AttributeError):
+            # only np arrays allowed:
+            self.assertEqual(_tojson([1, np.nan, 3.7]), [1, None, 3.7])
+        self.assertEqual(_tojson(np.array([1, np.nan, 3.7]))[0], [1, None, 3.7])
+        self.assertEqual(_tojson(np.nan, np.float64(3.7)), [None, 3.7])
+        
     @classmethod
     def tearDownClass(cls):
         """

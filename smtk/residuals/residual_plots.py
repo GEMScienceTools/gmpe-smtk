@@ -31,8 +31,22 @@ from scipy.stats import linregress
 def _tojson(*numpy_objs):
     '''Utility function which returns a list where each element of numpy_objs
     is converted to its python equivalent (float or list)'''
-    # note: numpy.float64(N).tolist() returns a python float, so:
-    return tuple(_.tolist() for _ in numpy_objs)
+    ret = []
+    # problem: browsers might not be happy with JSON 'NAN', so convert
+    # NaNs to None. Unfortunately, the conversion must be done element wise
+    # in numpy (seems not to exist a pandas na filter):
+    for obj in numpy_objs:
+        isscalar = np.isscalar(obj)
+        nan_indices = None if isscalar else \
+            np.argwhere(np.isnan(obj)).flatten()
+        # note: numpy.float64(N).tolist() returns a python float, so:
+        obj = None if isscalar and np.isnan(obj) else obj.tolist()
+        if nan_indices is not None:
+            for idx in nan_indices:
+                obj[idx] = None
+        ret.append(obj)
+
+    return ret  # tuple(_.tolist() for _ in numpy_objs)
 
 
 def residuals_density_distribution(residuals, gmpe, imt, bin_width=0.5,
@@ -79,10 +93,12 @@ def _get_histogram_data(data, bin_width=0.5):
     """
     Retreives the histogram of the residuals
     """
-    bins = np.arange(np.floor(np.min(data)),
-                     np.ceil(np.max(data)) + bin_width,
+    # ignore nans otherwise max and min raise:
+    bins = np.arange(np.floor(np.nanmin(data)),
+                     np.ceil(np.nanmax(data)) + bin_width,
                      bin_width)
-    vals = np.histogram(data, bins, density=True)[0]
+    # work on finite numbers to prevent np.histogram raising:
+    vals = np.histogram(data[np.isfinite(data)], bins, density=True)[0]
     return vals.astype(float), bins
 
 
@@ -124,10 +140,12 @@ def likelihood(residuals, gmpe, imt, bin_width=0.1, as_json=False):
 
 def _get_lh_histogram_data(lh_values, bin_width=0.1):
     """
-
+    Retreives the histogram of the likelihoods
     """
     bins = np.arange(0.0, 1.0 + bin_width, bin_width)
-    vals = np.histogram(lh_values, bins, density=True)[0]
+    # work on finite numbers to prevent np.histogram raising:
+    vals = np.histogram(lh_values[np.isfinite(lh_values)],
+                        bins, density=True)[0]
     return vals.astype(float), bins
 
 

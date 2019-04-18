@@ -502,8 +502,10 @@ def records_where(table, condition, limit=None):
         condition = ("(pga < 0.14) | (pga > 1.1) & (pgv != nan) &
                       (event_time < '2006-01-01T00:00:00'")
 
-        for record in records_where(tabke, condition):
-            # loop through matching records
+        with GroundMotionTable(<intput_file>, <dbname>).filter(condition) \
+                as gmdb:
+            for record in records_where(gmdb.table, condition):
+                # loop through matching records
     ```
     For user trying to build expressions from input variables as python
     objects, simply use the `str(object)` function which supports datetime's,
@@ -516,7 +518,8 @@ def records_where(table, condition, limit=None):
             (str(pgamin), str(pgamax), str(float('nan')), str(dtime))
     ```
 
-    :param table: The pytables Table object. See module function `get_table`
+    :param table: The pytables Table object. E.g., the `table`
+        property of a `GroundMotionTable` object
     :param condition: a string expression denoting a selection condition.
         See https://www.pytables.org/usersguide/tutorials.html#reading-and-selecting-data-in-a-table
         If None or the empty string, no filter is applied and all records are
@@ -575,10 +578,14 @@ def _normalize_condition(condition):
     nan_indices = []
     str_indices = []
     dtime_indices = []
-    result = []
+    bool_indices = []
+    result = []  # list of tokens
 
     def last_tokenstr():
         return '' if not result else result[-1][1]
+
+    _logical_op_errmsg = ('Logical operators (&|~) allowed only with '
+                          'parenthezised expressions')
 
     def raise_invalid_logical_op_if(bool_value):
         if bool_value:
@@ -592,25 +599,34 @@ def _normalize_condition(condition):
         for token in generate_tokens(StringIO(condition).readline):
             tokentype, tokenstr = token[0], token[1]
 
-            raise_invalid_logical_op_if(tokenstr in ('&', '|')
-                                        and last_tokenstr() != ')')
-            raise_invalid_logical_op_if(last_tokenstr() in ('~', '|', '&')
-                                        and tokenstr not in ('~', '('))
+            # check logical operators not around brackets. I do not know how
+            # numexpr handles that but it might be misleading for the user as
+            # these operator take priority and might lead to unwxpected results
+            if (tokenstr in ('&', '|') and last_tokenstr() != ')') or \
+                    (last_tokenstr() in ('~', '|', '&')
+                     and tokenstr not in ('~', '(')):
+                raise _syntaxerr(('Logical operators (&|~) allowed only with '
+                                  'parenthezised expressions'), token)
 
             if colname is not None:
                 if colname != tokenstr or tokentype != ttypes['NAME']:
                     is_dtime_col = getattr(dbcolumns[colname],
                                            "is_datetime_str", False)
                     if not is_dtime_col:
-                        _type_check(tokentype, tokenstr, colname,
+                        _type_check(token, colname,
                                     dbcolumns[colname], ttypes['STR'],
-                                    ttypes['NUM'])
-                    if is_dtime_col and tokentype == ttypes['STR']:
+                                    ttypes['NUM'], ttypes['NAME'])
+                    elif tokentype != ttypes['STR']:
+                        raise _syntaxerr("'%s' value must be date time ISO "
+                                         "strings (quoted)" % colname, token)
+                    if is_dtime_col:
                         dtime_indices.append(len(result))
                     elif py3 and tokentype == ttypes['STR']:
                         str_indices.append(len(result))
                     elif tokenstr == 'nan' and tokentype == ttypes['NAME']:
                         nan_indices.append(len(result))
+                    elif dbcolumns[colname].__class__.__name__.startswith('Bool'):
+                        bool_indices.append(len(result))
                 colname = None
             else:
                 if tokentype == ttypes['OP'] and tokenstr in oprs \
@@ -626,46 +642,59 @@ def _normalize_condition(condition):
         # We do not want to raise this kind of stuff, as the idea here is
         # to check only for logical operatorsm, nans, and bytes conversion
         if untokenize(result).strip() != condition.strip():
-            raise ValueError(str(terr))
+            # provide a syntaxerror with the whole string to be parsed
+            # (see function _syntaxerr below)
+            raise SyntaxError(str(terr), ('', 1, len(condition), condition))
 
-    raise_invalid_logical_op_if(last_tokenstr() in ('&', '|', '~'))
+    if last_tokenstr() in ('&', '|', '~'):
+        # provide a syntaxerror with the whole string to be parsed
+        # (see function _syntaxerr below)
+        raise SyntaxError(('Logical operators (&|~) allowed only with '
+                           'parenthezised expressions'),
+                          ('', 1, len(condition), condition))
+
     # replace nans, datetimes and strings at the real end:
-    _normalize_tokens(result, dtime_indices, str_indices, nan_indices)
+    _normalize_tokens(result, dtime_indices, str_indices, nan_indices,
+                      bool_indices)
     # return the new normalized string by untokenizing back: aside changed
     # variables, spaces are preserved except trailing ones (a the end):
     return untokenize(result)
 
 
-def _type_check(tokentype, tokenstr,  # pylint: disable=too-many-arguments
-                colname, colobj,  str_code, num_code):
+def _type_check(token, colname, colobj,  str_code, num_code, name_code):
+    tokentype, tokenstr = token[0], token[1]
     colobj_name = colobj.__class__.__name__
     if colobj_name.startswith('String') and tokentype != str_code:
-        raise ValueError("'%s' value must be strings (quoted)" %
-                         colname)
+        raise _syntaxerr("'%s' value must be strings (quoted)" % colname,
+                         token)
     elif (colobj_name.startswith('UInt')
           or colobj_name.startswith('Int')) and \
             tokentype != num_code:
-        raise ValueError("'%s' values must be integers" %
-                         colname)
+        raise _syntaxerr("'%s' values must be integers" % colname, token)
     elif colobj_name.startswith('Float'):
         if tokentype != num_code and tokenstr != 'nan':
-            raise ValueError("'%s' values must be floats or nan" %
-                             colname)
-    elif colobj_name.startswith('Bool') and tokenstr not in \
-            ('True', 'False'):
-        raise ValueError("Boolean required with '%s'" %
-                         colname)
+            raise _syntaxerr("'%s' values must be floats / nan" % colname,
+                             token)
+    elif colobj_name.startswith('Bool') and (tokentype != name_code or
+                                             tokenstr.lower() not in
+                                             ('true', 'false')):
+        raise _syntaxerr("'%s' values must be boolean (True or False, "
+                         "case insensitive)" % colname, token)
 
 
-def _normalize_tokens(tokens, dtime_indices, str_indices, nan_indices):
+def _normalize_tokens(tokens, dtime_indices, str_indices, nan_indices,
+                      bool_indices):
     for i in dtime_indices:
         tokenstr = tokens[i][1]  # it is quoted, e.g. '"string"', so use shlex:
         if tokenstr[0:1] == 'b':
             tokenstr = tokenstr[1:]
-        string = shlex.split(tokenstr)[0]
-        value = GMTableParser.timestamp(string)
+        if tokenstr[0:1] in ('"', "'"):
+            string = shlex.split(tokenstr)[0]
+            value = GMTableParser.timestamp(string)
+        else:
+            value = np.nan
         if np.isnan(value):
-            raise ValueError('not a date-time: %s' % string)
+            raise _syntaxerr('not a date-time formatted string', tokens[i])
         tokens[i][1] = str(value)
 
     for i in str_indices:
@@ -674,16 +703,41 @@ def _normalize_tokens(tokens, dtime_indices, str_indices, nan_indices):
             string = shlex.split(tokenstr)[0]
             tokens[i][1] = str(string.encode('utf8'))
 
+    for i in bool_indices:
+        # just make the boolean python compatible:
+        tokens[i][1] = tokens[i][1].lower().title()
+
     if nan_indices:
         nan_operators = {'==': '!=', '!=': '=='}
         for i in nan_indices:
             varname = tokens[i-2][1]
             operator = tokens[i-1][1]
             if operator not in nan_operators:
-                raise ValueError('only != and == can be compared with nan')
+                raise _syntaxerr('only != and == can be compared with nan',
+                                 tokens[i])
             tokens[i-1][1] = nan_operators[operator]
             tokens[i][1] = varname
 
+
+def _syntaxerr(message, token):
+    '''Build a python syntax error from the given token, with the
+    given message. Token can be a list or a Token object. If list, it must
+    have 5 elements:
+    0 type (int)
+    1 string (the token string)
+    2 start (2-element tuple: (line_start, offset_start))
+    3 end (2-element tuple: (line_end, offset_end))
+    4 line: (the currently parsed line, as string. It includes 'string')
+    '''
+    if isinstance(token, list):
+        token_line_num, token_offset = token[3]
+        token_line = token[-1]
+    else:
+        token_line_num, token_offset = token.end
+        token_line = token.line
+    # the tuple passed is (filename, lineno, offset, text)
+    return SyntaxError(message, ('', token_line_num, token_offset,
+                                 token_line[:token_offset]))
 
 ##########################################
 # GroundMotionTable/ Residuals calculation
