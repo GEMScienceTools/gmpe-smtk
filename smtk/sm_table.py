@@ -502,8 +502,10 @@ def records_where(table, condition, limit=None):
         condition = ("(pga < 0.14) | (pga > 1.1) & (pgv != nan) &
                       (event_time < '2006-01-01T00:00:00'")
 
-        for record in records_where(tabke, condition):
-            # loop through matching records
+        with GroundMotionTable(<intput_file>, <dbname>).filter(condition) \
+                as gmdb:
+            for record in records_where(gmdb.table, condition):
+                # loop through matching records
     ```
     For user trying to build expressions from input variables as python
     objects, simply use the `str(object)` function which supports datetime's,
@@ -516,7 +518,8 @@ def records_where(table, condition, limit=None):
             (str(pgamin), str(pgamax), str(float('nan')), str(dtime))
     ```
 
-    :param table: The pytables Table object. See module function `get_table`
+    :param table: The pytables Table object. E.g., the `table`
+        property of a `GroundMotionTable` object
     :param condition: a string expression denoting a selection condition.
         See https://www.pytables.org/usersguide/tutorials.html#reading-and-selecting-data-in-a-table
         If None or the empty string, no filter is applied and all records are
