@@ -171,7 +171,7 @@ def residuals_with_magnitude(residuals, gmpe, imt, as_json=False):
     for res_type in data.keys():
 
         x = _get_magnitudes(residuals, gmpe, imt, res_type)
-        slope, intercept, _, pval, _ = linregress(x, data[res_type])
+        slope, intercept, _, pval, _ = _nanlinregress(x, data[res_type])
         y = data[res_type]
 
         if as_json:
@@ -229,7 +229,7 @@ def residuals_with_vs30(residuals, gmpe, imt, as_json=False):
     for res_type in data.keys():
 
         x = _get_vs30(residuals, gmpe, imt, res_type)
-        slope, intercept, _, pval, _ = linregress(x, data[res_type])
+        slope, intercept, _, pval, _ = _nanlinregress(x, data[res_type])
         y = data[res_type]
 
         if as_json:
@@ -281,7 +281,7 @@ def residuals_with_distance(residuals, gmpe, imt, distance_type="rjb",
     for res_type in data.keys():
 
         x = _get_distances(residuals, gmpe, imt, res_type, distance_type)
-        slope, intercept, _, pval, _ = linregress(x, data[res_type])
+        slope, intercept, _, pval, _ = _nanlinregress(x, data[res_type])
         y = data[res_type]
 
         if as_json:
@@ -338,7 +338,7 @@ def residuals_with_depth(residuals, gmpe, imt, as_json=False):
     for res_type in data.keys():
 
         x = _get_depths(residuals, gmpe, imt, res_type)
-        slope, intercept, _, pval, _ = linregress(x, data[res_type])
+        slope, intercept, _, pval, _ = _nanlinregress(x, data[res_type])
         y = data[res_type]
 
         if as_json:
@@ -372,3 +372,13 @@ def _get_depths(residuals, gmpe, imt, res_type):
             depths = np.hstack([depths,
                                 ctxt["Rupture"].hypo_depth * nvals])
     return depths
+
+
+def _nanlinregress(x, y):
+    '''Calls scipy linregress only on finite numbers of x and y'''
+    finite = np.isfinite(x) & np.isfinite(y)
+    if not finite.any():
+        # empty arrays passed to linreg raise ValueError:
+        # force returning an object with nans:
+        return linregress([np.nan], [np.nan])
+    return linregress(x[finite], y[finite])
