@@ -31,9 +31,9 @@ install:
   - pip install -e .
 
 script:
-  - nosetests -vsx tests/hazard/conditional_simulation_test.py
-  - nosetests -vsx tests/intensity_measures_test.py
-  - nosetests -vsx tests/trellis/trellis_test.py
-  - nosetests -vsx tests/parsers/asa_parser_test.py
-  - nosetests -vsx tests/parsers/esm_flatfile_parser_test.py
-  - nosetests -vsx tests/residuals/residuals_test.py
+  - pytest -vsx tests/hazard/conditional_simulation_test.py
+  - pytest -vsx tests/intensity_measures_test.py
+  - pytest -vsx tests/trellis/trellis_test.py
+  - pytest -vsx tests/parsers/asa_parser_test.py
+  - pytest -vsx tests/parsers/esm_flatfile_parser_test.py
+  - pytest -vsx tests/residuals/residuals_test.py
