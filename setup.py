@@ -34,7 +34,7 @@ setup(
     packages=find_packages(exclude=['tests', 'tests.*']),
     # Minimal requirements, for a complete list see requirements-*.txt
     install_requires=[
-        'openquake.engine ==3.6',
+        'openquake.engine >=3.6',
         'PyYAML',
         'matplotlib >=1.5',
         'tables >=3.4.4',
