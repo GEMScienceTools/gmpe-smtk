@@ -16,16 +16,37 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 import os
-import sys
-import json
+import pickle
+import subprocess
 from smtk.sm_database import GroundMotionDatabase
-from openquake.hazardlib import __version__
 
 
-if sys.version_info[0] >= 3:
-    import pickle
-else:
-    import cPickle as pickle
+def git_suffix(fname):
+    """
+    :returns: `<short git hash>` if Git repository found
+    """
+    # we assume that the .git folder is one levels above
+    git_path = os.path.join(os.path.dirname(fname), '..', '.git')
+
+    # macOS complains if we try to execute git and it's not available.
+    # Code will run, but a pop-up offering to install bloatware (Xcode)
+    # is raised. This is annoying in end-users installations, so we check
+    # if .git exists before trying to execute the git executable
+    if os.path.isdir(git_path):
+        try:
+            gh = subprocess.check_output(
+                ['git', 'rev-parse', '--short', 'HEAD'],
+                stderr=open(os.devnull, 'w'),
+                cwd=os.path.dirname(git_path)).strip()
+            gh = "-git" + gh.decode() if gh else ''
+            return gh
+        except Exception:
+            # trapping everything on purpose; git may not be installed or it
+            # may not work properly
+            pass
+
+    return ''
+
 
 def load_database(directory):
     """
@@ -41,8 +62,9 @@ def load_database(directory):
             filetype = ftype
             break
     if not metadata_file:
-        raise IOError("Expected metadata file of supported type not found in %s"
-                      % directory)
+        raise IOError(
+            "Expected metadata file of supported type not found in %s"
+            % directory)
     metadata_path = os.path.join(directory, metadata_file)
     if filetype == "json":
         # json metadata filetype
@@ -53,3 +75,9 @@ def load_database(directory):
             return pickle.load(f)
     else:
         raise ValueError("Metadata filetype %s not supported" % ftype)
+
+
+# version is used by the setup.py
+__version__ = '0.9.0'
+__version__ += git_suffix(__file__)
+#

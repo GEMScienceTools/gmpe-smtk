@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (C) 2014-2017 GEM Foundation
+# Copyright (C) 2014-2019 GEM Foundation
 #
 # OpenQuake is free software: you can redistribute it and/or modify it
 # under the terms of the GNU Affero General Public License as published
@@ -15,29 +15,29 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
+from smtk import __version__
 from setuptools import setup, find_packages
-from openquake.hazardlib import __version__
 
 url = "https://github.com/GEMScienceTools/gmpe-smtk"
 
 README = """
 Python and OpenQuake-based Toolkit for Analysis of Strong Motions and
 Interpretation of GMPEs.
-Copyright (C) 2014-2017 GEM Foundation
+Copyright (C) 2014-2019 GEM Foundation
 """
 
 setup(
     name='smtk',
-    version=__version__,  # same version as hazardlib
+    version=__version__,
     description=README,
     url=url,
     packages=find_packages(exclude=['tests', 'tests.*']),
     # Minimal requirements, for a complete list see requirements-*.txt
     install_requires=[
-        'openquake.engine>3.0',
+        'openquake.engine >=3.6',
         'PyYAML',
         'matplotlib >=1.5',
-	'tables>=3.4.4',
+        'tables >=3.4.4',
     ],
     author='GEM Foundation',
     author_email='hazard@globalquakemodel.org',
@@ -49,7 +49,7 @@ setup(
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: GNU Affero General Public License v3',
         'Operating System :: OS Independent',
-        'Programming Language :: Python :: 2',
+        'Programming Language :: Python :: 3',
         'Topic :: Scientific/Engineering',
     ),
     keywords="seismic hazard",

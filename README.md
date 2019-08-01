@@ -76,6 +76,5 @@ For users interested in developing new features or contributing code to the
 repository we strongly recommend to install the OpenQuake-engine according to
 the instructions for [installing OpenQuake for development](https://github.com/gem/oq-engine/blob/master/doc/installing/development.md).
 
-The gmpe-smtk is currently written in Python 2.7 and work is now underway to
-port this to Python 3.5.
+The gmpe-smtk requires Python 3.6.
 
