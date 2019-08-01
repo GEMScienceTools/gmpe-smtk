@@ -242,7 +242,7 @@ class SMDatabaseBuilder(object):
                                      scalar_fields, spectra_fields, component,
                                      damping, units):
         fle = h5py.File(output_file, "w-")
-        ts_grp = fle.create_group("Time Series")
+        fle.create_group("Time Series")
         ims_grp = fle.create_group("IMS")
         h_grp = ims_grp.create_group("H")
         scalar_grp = h_grp.create_group("Scalar")
@@ -250,7 +250,7 @@ class SMDatabaseBuilder(object):
         for f_attr, imt in scalar_fields:
             dset = scalar_grp.create_dataset(imt, (1,), dtype="f")
             dset.attrs["Component"] = component
-            input_units = re.search('\((.*?)\)', f_attr).group(1)
+            input_units = re.search(r'\((.*?)\)', f_attr).group(1)
             if imt == "PGA":
                 # Convert acceleration from reported units to cm/s/s
                 dset.attrs["Units"] = "cm/s/s"
