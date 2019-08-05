@@ -66,7 +66,7 @@ def _check_gsim_list(gsim_list):
     for gsim in gsim_list:
         if isinstance(gsim, GMPE):
             # Is an instantated GMPE, so pass directly to list
-            output_gsims.append((str(gsim), gsim))
+            output_gsims.append((_get_gmpe_name(gsim), gsim))
         elif gsim.startswith("GMPETable"):
             # Get filename
             match = re.match(r'^GMPETable\(([^)]+?)\)$', gsim)
