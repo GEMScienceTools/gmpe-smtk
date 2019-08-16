@@ -7,13 +7,14 @@ import sys
 import shutil
 import unittest
 import numpy as np
+from scipy.stats import linregress
 
 from smtk.parsers.esm_flatfile_parser import ESMFlatfileParser
 import smtk.residuals.gmpe_residuals as res
 from smtk.database_visualiser import DISTANCES
 from smtk.residuals.residual_plots import residuals_density_distribution,\
     likelihood, residuals_with_depth, residuals_with_magnitude,\
-    residuals_with_vs30, residuals_with_distance
+    residuals_with_vs30, residuals_with_distance, _tojson, _nanlinregress
 
 
 if sys.version_info[0] >= 3:
@@ -231,6 +232,39 @@ class ResidualsTestCase(unittest.TestCase):
                         # assert histogram data is ok:
                         self._scatter_data_check(residuals, gsim, imt,
                                                  data1)
+
+
+    def test_json(self):
+        with self.assertRaises(AttributeError):
+            # only np arrays allowed:
+            self.assertEqual(_tojson([1, np.nan, 3.7]), [1, None, 3.7])
+        self.assertEqual(_tojson(np.array([1, np.nan, 3.7]))[0], [1, None, 3.7])
+        self.assertEqual(_tojson(np.nan, np.float64(3.7)), [None, 3.7])
+
+    def test_nanlinregress(self):
+        self._assert_linreg([1, 2], [3.5, -4], [1, 2], [3.5, -4])
+        self._assert_linreg([1, np.nan], [3.5, -4], [1], [3.5])
+        self._assert_linreg([1, 2], [np.nan, -4], [2], [4])
+        self._assert_linreg([1, np.nan], [np.nan, -4], [np.nan], [np.nan])
+        # a less edgy test case:
+        self._assert_linreg([1, np.nan, 4.5, 6], [np.nan, -4, 11, 0.005],
+                            [4.5, 6], [11, 0.005])
+    
+    def _assert_linreg(self, nanx, nany, x, y):
+        '''nanx, nany: values for _nanlinreg. x, y: values for scipy linreg.
+        Asserts the results are the same'''
+        l_1 = linregress(np.asarray(x), np.asarray(y))
+        l_2 = _nanlinregress(np.asarray(nanx), np.asarray(nany))
+
+        if np.isnan(l_1.slope):
+            self.assertTrue(np.isnan(l_2.slope))
+        else:
+            self.assertEqual(l_1.slope, l_2.slope)
+
+        if np.isnan(l_1.intercept):
+            self.assertTrue(np.isnan(l_2.intercept))
+        else:
+            self.assertEqual(l_1.intercept, l_2.intercept)
 
     @classmethod
     def tearDownClass(cls):

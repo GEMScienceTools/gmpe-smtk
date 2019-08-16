@@ -30,7 +30,6 @@ import h5py
 import smtk.intensity_measures as ims
 import smtk.sm_utils as utils
 from smtk.parsers.base_database_parser import get_float
-SCALAR_LIST = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia", "D5-95", "Housner"]
 
 if sys.version_info[0] >= 3:
     # In Python 3 pickle uses cPickle by default
@@ -38,6 +37,9 @@ if sys.version_info[0] >= 3:
 else:
     # In Python 2 use cPickle
     import cPickle as pickle
+
+
+SCALAR_LIST = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia", "D5-95", "Housner"]
 
 
 def _get_fieldnames_from_csv(reader):
@@ -240,7 +242,7 @@ class SMDatabaseBuilder(object):
                                      scalar_fields, spectra_fields, component,
                                      damping, units):
         fle = h5py.File(output_file, "w-")
-        ts_grp = fle.create_group("Time Series")
+        fle.create_group("Time Series")
         ims_grp = fle.create_group("IMS")
         h_grp = ims_grp.create_group("H")
         scalar_grp = h_grp.create_group("Scalar")
@@ -248,7 +250,7 @@ class SMDatabaseBuilder(object):
         for f_attr, imt in scalar_fields:
             dset = scalar_grp.create_dataset(imt, (1,), dtype="f")
             dset.attrs["Component"] = component
-            input_units = re.search('\((.*?)\)', f_attr).group(1)
+            input_units = re.search(r'\((.*?)\)', f_attr).group(1)
             if imt == "PGA":
                 # Convert acceleration from reported units to cm/s/s
                 dset.attrs["Units"] = "cm/s/s"
@@ -456,12 +458,6 @@ SCALAR_IMS = ["PGA", "PGV", "PGD", "CAV", "CAV5", "Ia", "T90", "Housner"]
 SPECTRAL_IMS = ["Geometric", "Arithmetic", "Envelope", "Larger PGA"]
 
 
-SCALAR_XY = {"Geometric": lambda x, y : np.sqrt(x * y),
-             "Arithmetic": lambda x, y : (x + y) / 2.,
-             "Larger": lambda x, y: np.max(np.array([x, y])),
-             "Vectorial": lambda x, y : np.sqrt(x ** 2. + y ** 2.)}
-
-
 ORDINARY_SA_COMBINATION = {
     "Geometric": ims.geometric_mean_spectrum,
     "Arithmetic": ims.arithmetic_mean_spectrum,
@@ -523,7 +519,7 @@ class AddPGA(HorizontalMotion):
                                                         dtype=float)
         h_pga.attrs["Units"] = "cm/s/s"
         h_pga.attrs["Component"] = self.component
-        h_pga[:] = SCALAR_XY[self.component](x_pga, y_pga)
+        h_pga[:] = utils.SCALAR_XY[self.component](x_pga, y_pga)
 
     def _get_pga_from_time_series(self, time_series_location, target_location):
         """
@@ -565,7 +561,7 @@ class AddPGV(HorizontalMotion):
                                                         dtype=float)
         h_pgv.attrs["Units"] = "cm/s"
         h_pgv.attrs["Component"] = self.component
-        h_pgv[:] = SCALAR_XY[self.component](x_pgv, y_pgv)
+        h_pgv[:] = utils.SCALAR_XY[self.component](x_pgv, y_pgv)
 
     def _get_pgv_from_time_series(self, time_series_location, target_location):
         """

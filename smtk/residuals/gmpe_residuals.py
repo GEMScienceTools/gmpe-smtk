@@ -16,7 +16,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
-
 """
 Module to get GMPE residuals - total, inter and intra
 {'GMPE': {'IMT1': {'Total': [], 'Inter event': [], 'Intra event': []},
@@ -42,7 +41,9 @@ import smtk.intensity_measures as ims
 from openquake.hazardlib import imt
 from smtk.strong_motion_selector import SMRecordSelector
 from smtk.trellis.trellis_plots import _get_gmpe_name
-
+from smtk.sm_table import GroundMotionTable
+from smtk.sm_utils import SCALAR_XY, get_interpolated_period,\
+    convert_accel_units
 
 GSIM_LIST = get_available_gsims()
 GSIM_KEYS = set(GSIM_LIST.keys())
@@ -78,31 +79,6 @@ def _check_gsim_list(gsim_list):
         else:
             output_gsims.append((gsim, GSIM_LIST[gsim]()))
     return OrderedDict(output_gsims)
-
-
-def get_interpolated_period(target_period, periods, values):
-    """
-    Returns the spectra interpolated in loglog space
-    :param float target_period:
-        Period required for interpolation
-    :param np.ndarray periods:
-        Spectral Periods
-    :param np.ndarray values:
-        Ground motion values
-    """
-    if (target_period < np.min(periods)) or (target_period > np.max(periods)):
-        return None, "Period not within calculated range %s"
-    lval = np.where(periods <= target_period)[0][-1]
-    uval = np.where(periods >= target_period)[0][0]
-    if (uval - lval) == 0:
-        return values[lval]
-    else:
-        dy = np.log10(values[uval]) - np.log10(values[lval])
-        dx = np.log10(periods[uval]) - np.log10(periods[lval])
-        return 10.0 ** (
-            np.log10(values[lval]) +
-            (np.log10(target_period) - np.log10(periods[lval])) * dy / dx
-            )
 
 
 def get_geometric_mean(fle):
@@ -234,12 +210,6 @@ SPECTRA_FROM_FILE = {"Geometric": get_geometric_mean,
                      "GMRotI50": get_gmroti50,
                      "GMRotD50": get_gmrotd50,
                      "RotD50": get_rotd50}
-
-
-SCALAR_XY = {"Geometric": lambda x, y: np.sqrt(x * y),
-             "Arithmetic": lambda x, y: (x + y) / 2.,
-             "Larger": lambda x, y: np.max(np.array([x, y])),
-             "Vectorial": lambda x, y: np.sqrt(x ** 2. + y ** 2.)}
 
 
 def get_scalar(fle, i_m, component="Geometric"):
@@ -408,7 +378,6 @@ class Residuals(object):
             self.modelled.append([gmpe, gmpe_dict_2])
         self.residuals = OrderedDict(self.residuals)
         self.modelled = OrderedDict(self.modelled)
-        self.database = None
         self.number_records = None
         self.contexts = None
 
@@ -416,14 +385,45 @@ class Residuals(object):
                       component="Geometric", normalise=True):
         """
         Calculate the residuals for a set of ground motion records
+
+        :param database: a record database. It can be either a
+            :class:`smtk.sm_database.GroundMotionDatabase` or a
+            :class:`smtk.sm_table.GroundMotionTable`
         """
-        # Contexts is a list of dictionaries
-        contexts = database.get_contexts(nodal_plane_index)
-        self.database = SMRecordSelector(database)
+        # FIXME: this is hacky. One should merge sm and gm databases into
+        # a single storage interface backed by a common storage type:
+        calculate_observations = True
+        if isinstance(database, GroundMotionTable):
+            contexts = database.get_contexts(self.imts,
+                                             nodal_plane_index,
+                                             component)
+            calculate_observations = False
+        else:
+            contexts = database.get_contexts(nodal_plane_index)
+
+        # Fetch now outside the loop for efficiency the IMTs which need
+        # acceleration units conversion from cm/s/s to g. Conversion will be
+        # done inside the loop:
+        accel_imts = tuple([imtx for imtx in self.imts if
+                            (imtx == "PGA" or "SA(" in imtx)])
+
+        # Contexts is in either case a list of dictionaries
         self.contexts = []
         for context in contexts:
-            # Get the observed strong ground motions
-            context = self.get_observations(context, component)
+            # Get the observed strong ground motions if database is a
+            # sm_database.GroundMotionDatabase (if a
+            # sm_table.GroundMotionTable, observations are already calculated)
+            if calculate_observations:
+                context = self.get_observations(SMRecordSelector(database),
+                                                context, component)
+
+            # convert all IMTS with acceleration units, which are supposed to
+            # be in cm/s/s, to g:
+            for a_imt in accel_imts:
+                context['Observations'][a_imt] = \
+                    convert_accel_units(context['Observations'][a_imt],
+                                        'cm/s/s', 'g')
+
             # Get the expected ground motions
             context = self.get_expected_motions(context)
             context = self.calculate_residuals(context, normalise)
@@ -473,31 +473,31 @@ class Residuals(object):
                 self.modelled[gmpe][imtx]["Mean"] = np.array(
                     self.modelled[gmpe][imtx]["Mean"])
 
-    def get_observations(self, context, component="Geometric"):
+    def get_observations(self, sm_record_selector, context,
+                         component="Geometric"):
         """
-        Get the obsered ground motions from the database
+        Get the obsered ground motions from the database. *NOTE*: IMTs in
+        acceleration units (e.g. PGA, SA) are supposed to return their
+        values in cm/s/s (which is by default the unit in which they are
+        stored)
         """
-        select_records = self.database.select_from_event_id(context["EventID"])
+        select_records = \
+            sm_record_selector.select_from_event_id(context["EventID"])
         observations = OrderedDict([(imtx, []) for imtx in self.imts])
         selection_string = "IMS/H/Spectra/Response/Acceleration/"
         for record in select_records:
             fle = h5py.File(record.datafile, "r")
             for imtx in self.imts:
                 if imtx in SCALAR_IMTS:
-                    if imtx == "PGA":
-                        observations[imtx].append(
-                            get_scalar(fle, imtx, component) / 981.0)
-                    else:
-                        observations[imtx].append(
-                            get_scalar(fle, imtx, component))
-
+                    observations[imtx].append(
+                        get_scalar(fle, imtx, component))
                 elif "SA(" in imtx:
                     target_period = imt.from_string(imtx).period
                     spectrum = fle[selection_string + component +
                                    "/damping_05"].value
                     periods = fle["IMS/H/Spectra/Response/Periods"].value
                     observations[imtx].append(get_interpolated_period(
-                        target_period, periods, spectrum) / 981.0)
+                        target_period, periods, spectrum))
                 else:
                     raise "IMT %s is unsupported!" % imtx
             fle.close()
@@ -506,6 +506,42 @@ class Residuals(object):
         context["Observations"] = observations
         context["Num. Sites"] = len(select_records)
         return context
+
+#     def get_observations(self, sm_record_selector, context,
+#                          component="Geometric"):
+#         """
+#         Get the obsered ground motions from the database
+#         """
+#         select_records = \
+#             sm_record_selector.select_from_event_id(context["EventID"])
+#         observations = OrderedDict([(imtx, []) for imtx in self.imts])
+#         selection_string = "IMS/H/Spectra/Response/Acceleration/"
+#         for record in select_records:
+#             fle = h5py.File(record.datafile, "r")
+#             for imtx in self.imts:
+#                 if imtx in SCALAR_IMTS:
+#                     if imtx == "PGA":
+#                         observations[imtx].append(
+#                             get_scalar(fle, imtx, component) / 981.0)
+#                     else:
+#                         observations[imtx].append(
+#                             get_scalar(fle, imtx, component))
+# 
+#                 elif "SA(" in imtx:
+#                     target_period = imt.from_string(imtx).period
+#                     spectrum = fle[selection_string + component +
+#                                    "/damping_05"].value
+#                     periods = fle["IMS/H/Spectra/Response/Periods"].value
+#                     observations[imtx].append(get_interpolated_period(
+#                         target_period, periods, spectrum) / 981.0)
+#                 else:
+#                     raise "IMT %s is unsupported!" % imtx
+#             fle.close()
+#         for imtx in self.imts:
+#             observations[imtx] = np.array(observations[imtx])
+#         context["Observations"] = observations
+#         context["Num. Sites"] = len(select_records)
+#         return context
 
     def get_expected_motions(self, context):
         """
@@ -580,8 +616,7 @@ class Residuals(object):
         intra_res = obs - (mean + inter_res)
         if normalise:
             return inter_res / inter, intra_res / intra
-        else:
-            return inter_res, intra_res
+        return inter_res, intra_res
 
     def get_residual_statistics(self):
         """
@@ -608,8 +643,8 @@ class Residuals(object):
             the given `gmpe`
         """
         residuals = self.residuals[gmpe][imtx]
-        return {res_type: {"Mean": np.mean(residuals[res_type]),
-                           "Std Dev": np.std(residuals[res_type])}
+        return {res_type: {"Mean": np.nanmean(residuals[res_type]),
+                           "Std Dev": np.nanstd(residuals[res_type])}
                 for res_type in self.types[gmpe][imtx]}
 
     def pretty_print(self, filename=None, sep=","):
@@ -756,7 +791,7 @@ class Residuals(object):
         for res_type in self.types[gmpe][imt]:
             zvals = np.fabs(self.residuals[gmpe][imt][res_type])
             l_h = 1.0 - erf(zvals / sqrt(2.))
-            median_lh = scoreatpercentile(l_h, 50.0)
+            median_lh = np.nanpercentile(l_h, 50.0)
             ret[res_type] = l_h, median_lh
         return ret
 

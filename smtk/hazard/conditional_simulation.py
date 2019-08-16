@@ -137,7 +137,7 @@ def conditional_simulation(
     # Make sure that sites are at the surface (to check!)
     known_sites.depths = np.zeros_like(known_sites.depths)
     unknown_sites.depths = np.zeros_like(unknown_sites.depths)
-    cov_kk = correlation_model(known_sites, imt).I
+    cov_kk = np.linalg.inv(correlation_model(known_sites, imt))
     cov_uu = correlation_model(unknown_sites, imt)
     d_k_uk = np.zeros([len(known_sites), len(unknown_sites)],
                       dtype=float)
@@ -147,15 +147,15 @@ def conditional_simulation(
         d_k_uk[iloc, :] = geodetic_distance(klons[iloc], klats[iloc],
                                             ulons, ulats)
     cov_ku = correlation_model(d_k_uk, imt)
-    mu = cov_ku.T * cov_kk * np.matrix(residuals).T
-    stddev = cov_uu - (cov_ku.T * cov_kk * cov_ku)
-    unknown_residuals = np.matrix(np.random.normal(
-        0., 1., [len(unknown_sites), nsim]))
+    mu = cov_ku.T @ cov_kk @ residuals.T
+    stddev = cov_uu - (cov_ku.T @ cov_kk @ cov_ku)
+    unknown_residuals = np.random.normal(
+        0., 1., [len(unknown_sites), nsim])
     lower_matrix = np.linalg.cholesky(stddev)
     output_residuals = np.zeros_like(unknown_residuals)
     for iloc in range(0, nsim):
         output_residuals[:, iloc] = mu + \
-            lower_matrix * unknown_residuals[:, iloc]
+            lower_matrix @ unknown_residuals[:, iloc]
     return output_residuals
 
 
@@ -195,7 +195,7 @@ def get_conditional_gmfs(
         for imtx in imts])
     gmfs = OrderedDict([(gmpe, imt_dict) for gmpe in gsims])
     gmpe_list = [GSIM_LIST[gmpe]() for gmpe in gsims]
-    cmaker = ContextMaker(gmpe_list)
+    cmaker = ContextMaker(rupture.tectonic_region_type, gmpe_list)
     sctx, dctx = cmaker.make_contexts(sites, rupture)
     for gsim in gmpe_list:
         gmpe = gsim.__class__.__name__
@@ -220,7 +220,7 @@ def get_conditional_gmfs(
                     gmfs[gmpe][imtx][:, iloc] = np.exp(
                         mean +
                         (tau * stddev_inter) +
-                        (epsilon[:, iloc].A1 * stddev_intra))
+                        (epsilon[:, iloc] * stddev_intra))
             else:
                 epsilon = conditional_simulation(
                     known_sites,
@@ -235,5 +235,5 @@ def get_conditional_gmfs(
                     ["Total"])
                 for iloc in range(0, number_simulations):
                     gmfs[gmpe][imtx][:, iloc] = np.exp(
-                        mean + epsilon[:, iloc].A1 * stddev_total.flatten())
+                        mean + epsilon[:, iloc] * stddev_total.flatten())
     return gmfs
