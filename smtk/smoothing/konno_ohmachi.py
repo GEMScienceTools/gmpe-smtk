@@ -204,7 +204,7 @@ def konnoOhmachiSmoothing(spectra, frequencies, bandwidth=40, count=1,
         np.seterr(**temp)
         new_spec = np.dot(spectra, smoothing_matrix)
         # Eventually apply more than once.
-        for _i in xrange(count - 1):
+        for _i in range(count - 1):
             new_spec = np.dot(new_spec, smoothing_matrix)
         return new_spec
     # Otherwise just calculate the smoothing window every time and apply it.
@@ -216,7 +216,7 @@ def konnoOhmachiSmoothing(spectra, frequencies, bandwidth=40, count=1,
             # zero/logarithms of zero.
             temp = np.geterr()
             np.seterr(all='ignore')
-            for _i in xrange(len(frequencies)):
+            for _i in range(len(frequencies)):
                 window = konnoOhmachiSmoothingWindow(frequencies,
                         frequencies[_i], bandwidth, normalize=normalize)
                 new_spec[_i] = (window * spectra).sum()
@@ -227,7 +227,7 @@ def konnoOhmachiSmoothing(spectra, frequencies, bandwidth=40, count=1,
             # zero/logarithms of zero.
             temp = np.geterr()
             np.seterr(all='ignore')
-            for _i in xrange(len(frequencies)):
+            for _i in range(len(frequencies)):
                 window = konnoOhmachiSmoothingWindow(frequencies,
                         frequencies[_i], bandwidth, normalize=normalize)
                 for _j, spec in enumerate(spectra):
@@ -274,3 +274,9 @@ class KonnoOhmachi(BaseSpectralSmoother):
                                      self.params["enforce_no_matrix"],
                                      self.params["max_memory_usage"],
                                      self.params["normalize"])
+
+    def __call__(self, spectra, frequencies):
+        """
+        Also applies the smoothing
+        """
+        return self.apply_smoothing(spectra, frequencies)
