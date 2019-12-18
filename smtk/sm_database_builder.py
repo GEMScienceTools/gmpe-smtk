@@ -153,11 +153,12 @@ class SMDatabaseBuilder(object):
             has_spectra = isinstance(record.spectra_file, list) and\
                 (spectra_parser is not None)
             # Parse strong motion record
+            print(record.time_series_file)
             sm_parser = time_series_parser(record.time_series_file,
                                            self.dbreader.record_folder,
                                            units)
             if len(sm_parser.input_files) < 2:
-                print("Record contains < 2 components - skipping!")
+                print("Record not found check path- skipping!")
                 continue
             sm_data = sm_parser.parse_records(record)
             if not sm_data.get("X", {}).get("Original", {}):

@@ -375,6 +375,7 @@ class SimpleAsciiTimeseriesReader(SMTimeSeriesReader):
     contains the number of values and the time-step. Whilst the rest of the
     file contains the acceleration record
     """
+    print('problem in simple_flatfile_parser.py')
     def parse_records(self):
         """
         Parses the record set
