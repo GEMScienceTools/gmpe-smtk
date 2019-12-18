@@ -1192,26 +1192,7 @@ class GroundMotionDatabase(object):
             setattr(rctx, 'dip', 90.0)
             rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
 
-        if rup.event.rupture.surface:
-            setattr(rctx, 'ztor', rup.event.rupture.surface.get_top_edge_depth())
-            setattr(rctx, 'width', rup.event.rupture.surface.width)
-            setattr(rctx, 'hypo_loc', rup.event.rupture.surface.get_hypo_location(1000))
-        else:
-            if rup.event.rupture.depth is not None:
-                setattr(rctx, 'ztor', rup.event.rupture.depth)
-            else:
-                setattr(rctx, 'ztor', rup.event.depth)
 
-            if rup.event.rupture.width is not None:
-                setattr(rctx, 'width', rup.event.rupture.width)
-            else:
-                # Use the PeerMSR to define the area and assuming an aspect ratio
-                # of 1 get the width
-                setattr(rctx, 'width',
-                        np.sqrt(utils.DEFAULT_MSR.get_median_area(rctx.mag, 0)))
-
-            # Default hypocentre location to the middle of the rupture
-            setattr(rctx, 'hypo_loc', (0.5, 0.5))
         setattr(rctx, 'hypo_depth', rup.event.depth)
         setattr(rctx, 'hypo_lat', rup.event.latitude)
         setattr(rctx, 'hypo_lon', rup.event.longitude)
