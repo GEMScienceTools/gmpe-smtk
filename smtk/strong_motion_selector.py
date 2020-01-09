@@ -141,6 +141,16 @@ class SMRecordSelector(object):
                 idx.append(iloc)
         return self.select_records(idx, as_db)
 
+    def exclude_time_series(self, time_series, as_db=False):
+        """
+        Selects records corresponding to a set of site IDs
+        """
+        idx = []
+        for iloc, record in enumerate(self.database.records):
+            if not record.time_series_file[0][:4] in time_series:
+                idx.append(iloc)
+        return self.select_records(idx, as_db)
+
     def select_from_event_id(self, event_id, as_db=False):
         """
         Returns a set of records from a common event
