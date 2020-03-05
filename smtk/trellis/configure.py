@@ -950,7 +950,7 @@ class GSIMRupture(object):
         Produces a 3D plot of the current model configuration
         """
         fig = plt.figure(figsize=figure_size)
-        ax = fig.add_subplot(111, projection='3d')
+        ax = fig.add_subplot(111)#, projection='3d')
         # Wireframe rupture surface mesh
         lons = []
         lats = []
