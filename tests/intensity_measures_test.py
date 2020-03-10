@@ -25,6 +25,7 @@ import h5py
 import numpy as np
 import smtk.response_spectrum as rsp
 import smtk.intensity_measures as ims
+import smtk.smoothing.konno_ohmachi as ko
 
 
 BASE_DATA_PATH = os.path.dirname(__file__)
@@ -222,3 +223,26 @@ class ScalarIntensityMeasureTestCase(BaseIMSTestCase):
         self.assertAlmostEqual(housner, 121.3103787, 3)
         asi = ims.get_acceleration_spectrum_intensity(sax)
         self.assertAlmostEqual(asi, 432.5134666, 3)
+
+
+class FourierSpectrumBuildSmooth(BaseIMSTestCase):
+
+    def test_create_fas(self):
+        x_record = self.fle["INPUTS/RECORD1/XRECORD"][:]
+        x_timestep = self.fle["INPUTS/RECORD1/XRECORD"].attrs["timestep"]
+        ftime, fas = ims.get_fourier_spectrum(x_record, x_timestep)
+        np.testing.assert_array_almost_equal(
+            fas, self.fle["TEST2/FAS_UNSMOOTHED"][:], 5)
+
+    def test_konno_ohmachi_smoothing(self):
+        # Builds the FAS
+        x_record = self.fle["INPUTS/RECORD1/XRECORD"][:]
+        x_timestep = self.fle["INPUTS/RECORD1/XRECORD"].attrs["timestep"]
+        freq, fas = ims.get_fourier_spectrum(x_record, x_timestep)
+        # Smoother inputs
+        smoother_config = {"bandwidth": 30., "count": 1, "normalize": True}
+        # Smooth the FAS
+        smoother = ko.KonnoOhmachi(smoother_config)
+        smoothed_fas = smoother(fas, freq)
+        np.testing.assert_array_almost_equal(
+            smoothed_fas, self.fle["TEST2/FAS_SMOOTHED"][:], 5)

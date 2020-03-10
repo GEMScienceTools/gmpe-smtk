@@ -348,7 +348,7 @@ class SigmaRecordParser(SMTimeSeriesReader):
         """
 
         """
-        f = open(ifile, "r")
+
         output = {}
         acc_hist = []
         cases = {0: self._get_datetime,
@@ -361,12 +361,12 @@ class SigmaRecordParser(SMTimeSeriesReader):
                  7: self._get_number_steps,
                  8: self._get_pga,
                  9: self._get_units}
-        
-        for iloc, line in enumerate(f.readlines()):
-            if iloc in cases:
-                output = cases[iloc](output, line.rstrip("\n"))
-            else:
-                acc_hist.extend(self._get_timehist_line(line.rstrip("\n")))
+        with open(ifile, "r", encoding="ISO-8859-1") as f:
+            for iloc, line in enumerate(f.readlines()):
+                if iloc in cases:
+                    output = cases[iloc](output, line.rstrip("\n"))
+                else:
+                    acc_hist.extend(self._get_timehist_line(line.rstrip("\n")))
             
         output["Acceleration"] = 100.0 * np.array(acc_hist)
         output["Time"] = np.cumsum(
