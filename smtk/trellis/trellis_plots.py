@@ -35,6 +35,7 @@ import matplotlib.pyplot as plt
 from openquake.hazardlib import gsim, imt
 from openquake.hazardlib.gsim.base import RuptureContext
 from openquake.hazardlib.gsim.gmpe_table import GMPETable
+from openquake.hazardlib.gsim.base import GMPE
 from openquake.hazardlib.scalerel.wc1994 import WC1994
 from smtk.sm_utils import _save_image_tight
 import smtk.trellis.trellis_utils as utils
@@ -118,7 +119,19 @@ def _get_gmpe_name(gsim):
         filepath = match.group(1).split("=")[1][1:-1]
         return os.path.splitext(filepath.split("/")[-1])[0]
     else:
-        return gsim.__class__.__name__
+        gsim_name = gsim.__class__.__name__
+        additional_args = []
+        for key in gsim.__dict__:
+            if key.startswith("kwargs"):
+                continue
+            additional_args.append("{:s}={:s}".format(key,
+                                   str(gsim.__dict__[key])))
+        if len(additional_args):
+            gsim_name_str = "({:s})".format(", ".join(additional_args))
+            gsim_name_str = gsim_name_str.replace("_", " ")
+            return gsim_name + gsim_name_str
+        else:
+            return gsim_name
 
 
 def _check_gsim_list(gsim_list):
@@ -131,7 +144,10 @@ def _check_gsim_list(gsim_list):
     """
     output_gsims = []
     for gs in gsim_list:
-        if gs.startswith("GMPETable"):
+        if isinstance(gs, GMPE):
+            # Is an instantated GMPE, so pass directly to list
+            output_gsims.append(gs)
+        elif gs.startswith("GMPETable"):
             # Get filename
             match = re.match(r'^GMPETable\(([^)]+?)\)$', gs)
             filepath = match.group(1).split("=")[1]
