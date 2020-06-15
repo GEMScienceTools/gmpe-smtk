@@ -67,7 +67,7 @@ git clone https://github.com/GEMScienceTools/gmpe-smtk
 Then [inside the virtualenv](https://packaging.python.org/tutorials/installing-packages/#creating-virtual-environments) of the engine:
 ```bash
 cd gmpe-smtk
-# NB: first activate the virtualenv if it is not already active!
+# NB: first activate the virtualenv if it is not already active
 python setup.py install
 ```
 
