@@ -57,18 +57,17 @@ Installation
 The gmpe-smtk is built on top of the [OpenQuake-engine](https://github.com/gem/oq-engine).
 
 To install the toolkit, and ensure that it is aligned with the OpenQuake-engine
-we recommend to install the OpenQuake-engine according to the instructions
-given for your specific operating system. The full installation instructions for
-OpenQuake can be found here: [https://github.com/gem/oq-engine](https://github.com/gem/oq-engine).
+we recommend to install the OpenQuake-engine for development. The full installation instructions for OpenQuake can be found here: [https://github.com/gem/oq-engine](https://github.com/gem/oq-engine/blob/master/doc/installing/development.md).
 
 Once the OpenQuake-engine is installed, the gmpe-smtk repository is cloned by:
 ```bash
 git clone https://github.com/GEMScienceTools/gmpe-smtk
 ```
 
-Then:
+Then [inside the virtualenv](https://packaging.python.org/tutorials/installing-packages/#creating-virtual-environments) of the engine:
 ```bash
 cd gmpe-smtk
+# NB: first activate the virtualenv if is not already active!
 python setup.py install
 ```
 
