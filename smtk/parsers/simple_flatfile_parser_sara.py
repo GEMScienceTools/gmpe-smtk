@@ -25,7 +25,6 @@ import csv
 import numpy as np
 import copy
 import h5py
-from sets import Set
 from linecache import getline
 from collections import OrderedDict
 from datetime import datetime
@@ -47,7 +46,7 @@ from smtk.parsers.base_database_parser import (get_float, get_int,
                                                SMTimeSeriesReader,
                                                SMSpectraReader)
 
-HEADER_LIST = Set([
+HEADER_LIST = set([
     'Record Sequence Number', 'EQID', 'Earthquake Name', 'Country', 'Year', 
     'Month', 'Day', 'Hour', 'Minute', 'Second', 
     'Epicenter Latitude (deg; positive N)',
@@ -124,7 +123,7 @@ class SimpleFlatfileParserV9(SMDatabaseReader):
         Also informs the user of redundent headers in the input file.
         """
         # Check which of the pre-defined headers are missing
-        headers = Set((getline(self.filename, 1).rstrip("\n")).split(","))
+        headers = set((getline(self.filename, 1).rstrip("\n")).split(","))
         missing_headers = headerslist.difference(headers)
         if len(missing_headers) > 0:
             output_string = ", ".join([value for value in missing_headers])
