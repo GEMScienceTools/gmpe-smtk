@@ -26,7 +26,7 @@ import numpy as np
 from math import sqrt, pi, sin, cos, fabs
 from copy import deepcopy
 import matplotlib.pyplot as plt
-from openquake.baselib.slots import with_slots
+#from openquake.baselib.slots import with_slots
 from openquake.hazardlib.geo import (Point, Line, Polygon, Mesh,
                                      PlanarSurface, NodalPlane)
 from openquake.hazardlib.scalerel.wc1994 import WC1994
@@ -46,7 +46,7 @@ DEFAULT_POINT = Point(45.18333, 9.15, 0.)
 
 # This object was original from the OQ-Hazardlib. It has now been removed to
 # a direct copy and paste is found here
-@with_slots
+#@with_slots
 class Rupture(object):
     """
     Rupture object represents a single earthquake rupture.
