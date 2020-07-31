@@ -24,6 +24,7 @@ Example of conditional simulation of ground motion fields with the OQ-hazardlib
 import numpy as np
 from collections import OrderedDict
 from shapely import wkt
+from openquake import hazardlib
 from openquake.hazardlib.geo.point import Point
 from openquake.hazardlib.geo.surface import PlanarSurface
 from openquake.hazardlib.geo.geodetic import geodetic_distance
@@ -196,7 +197,11 @@ def get_conditional_gmfs(
     gmfs = OrderedDict([(gmpe, imt_dict) for gmpe in gsims])
     gmpe_list = [GSIM_LIST[gmpe]() for gmpe in gsims]
     cmaker = ContextMaker(rupture.tectonic_region_type, gmpe_list)
-    rctx, sctx, dctx = cmaker.make_contexts(sites, rupture)
+    if hazardlib.__version__ < '3.10':
+        sctx, dctx = cmaker.make_contexts(sites, rupture)
+        rctx = rupture
+    else:
+        rctx, sctx, dctx = cmaker.make_contexts(sites, rupture)
     for gsim in gmpe_list:
         gmpe = gsim.__class__.__name__
         for imtx in imts:
