@@ -37,9 +37,9 @@ from openquake.hazardlib.sourceconverter import RuptureConverter
 from openquake.hazardlib import nrml
 from smtk.residuals.gmpe_residuals import Residuals
 
-
 DEFAULT_CORRELATION = jbcorrelation
 GSIM_LIST = get_available_gsims()
+V3_10 = (3, 10, 0)
 
 
 def build_planar_surface(geometry):
@@ -197,11 +197,14 @@ def get_conditional_gmfs(
     gmfs = OrderedDict([(gmpe, imt_dict) for gmpe in gsims])
     gmpe_list = [GSIM_LIST[gmpe]() for gmpe in gsims]
     cmaker = ContextMaker(rupture.tectonic_region_type, gmpe_list)
-    if hazardlib.__version__ < '3.10':
-        sctx, dctx = cmaker.make_contexts(sites, rupture)
-        rctx = rupture
+    if '-git' in hazardlib.__version__:  # remove -git suffix
+        version = hazardlib.__version__.split('-git')[0].split('.')
     else:
-        rctx, sctx, dctx = cmaker.make_contexts(sites, rupture)
+        version = hazardlib.__version__.split('.')
+    if tuple(int(v) for v in version) < (3, 10, 0):
+        sctx, dctx = cmaker.make_contexts(sites, rupture)
+    else:  # v3.10+
+        _, sctx, dctx = cmaker.make_contexts(sites, rupture)
     for gsim in gmpe_list:
         gmpe = gsim.__class__.__name__
         for imtx in imts:
