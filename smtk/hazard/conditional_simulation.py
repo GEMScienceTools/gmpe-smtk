@@ -39,7 +39,6 @@ from smtk.residuals.gmpe_residuals import Residuals
 
 DEFAULT_CORRELATION = jbcorrelation
 GSIM_LIST = get_available_gsims()
-V3_10 = (3, 10, 0)
 
 
 def build_planar_surface(geometry):
