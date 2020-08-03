@@ -25,7 +25,6 @@ import numpy as np
 import copy
 import h5py
 from math import sqrt
-#from sets import Set
 from linecache import getline
 from collections import OrderedDict
 from datetime import datetime
