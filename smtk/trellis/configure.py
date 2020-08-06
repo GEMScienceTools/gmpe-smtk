@@ -26,6 +26,7 @@ import numpy as np
 from math import sqrt, pi, sin, cos, fabs
 from copy import deepcopy
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from openquake.hazardlib.geo import Point, Line, Polygon, Mesh, PlanarSurface
 from openquake.hazardlib.scalerel.wc1994 import WC1994
 from openquake.hazardlib.site import Site, SiteCollection
