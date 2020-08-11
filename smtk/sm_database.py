@@ -1010,6 +1010,7 @@ class GroundMotionDatabase(object):
         Returns a list of dictionaries, each containing the site, distance
         and rupture contexts for individual records
         """
+#        import pdb; pdb.set_trace()
         wfid_list = np.array([rec.event.id for rec in self.records])
         eqid_list = self._get_event_id_list()
         context_dicts = []
@@ -1195,7 +1196,7 @@ class GroundMotionDatabase(object):
         if rup.event.rupture.surface:
             setattr(rctx, 'ztor', rup.event.rupture.surface.get_top_edge_depth())
             setattr(rctx, 'width', rup.event.rupture.surface.width)
-            setattr(rctx, 'hypo_loc', rup.event.rupture.surface.get_hypo_location(1000))
+            setattr(rctx, 'hypo_loc', rup.event.rupture.surface.get_middle_point())
         else:
             if rup.event.rupture.depth is not None:
                 setattr(rctx, 'ztor', rup.event.rupture.depth)
