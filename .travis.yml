@@ -8,7 +8,6 @@ notifications:
     - gweather@gfz-potsdam.de
 
 python:
- - "3.6"
  - "3.8"
 
 addons:
