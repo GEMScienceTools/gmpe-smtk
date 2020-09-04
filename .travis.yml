@@ -26,7 +26,7 @@ install:
   # Make sure pip is up-to-date and has support for wheels
   - pip -q install -U pip
   # Install oq-engine dependencies
-  - pip install -r oq-engine/requirements-py36-linux64.txt
+  - pip install -r oq-engine/requirements-py38-linux64.txt
   - pip install -e oq-engine/
   - pip install -e .
 
