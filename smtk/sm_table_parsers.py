@@ -1,5 +1,5 @@
 '''
-NgaWest2 try (FIXME write doc)
+NgaWest2 try (FIXME write doc))
 '''
 from collections import OrderedDict
 import re
