@@ -211,26 +211,26 @@ SPECTRA_FROM_FILE = {"Geometric": get_geometric_mean,
                      "GMRotD50": get_gmrotd50,
                      "RotD50": get_rotd50}
 
-
-def get_scalar(fle, i_m, component="Geometric"):
-    """
-    Retrieves the scalar IM from the database
-    :param fle:
-        Instance of :class: h5py.File
-    :param str i_m:
-        Intensity measure
-    :param str component:
-        Horizontal component of IM
-    """
-    if not ("H" in fle["IMS"].keys()):
-        x_im = fle["IMS/X/Scalar/" + i_m].value[0]
-        y_im = fle["IMS/Y/Scalar/" + i_m].value[0]
-        return SCALAR_XY[component](x_im, y_im)
-    else:
-        if i_m in fle["IMS/H/Scalar"].keys():
-            return fle["IMS/H/Scalar/" + i_m].value[0]
-        else:
-            raise ValueError("Scalar IM %s not in record database" % i_m)
+# Moved to GroundMotionDatabase:
+# def get_scalar(fle, i_m, component="Geometric"):
+#     """
+#     Retrieves the scalar IM from the database
+#     :param fle:
+#         Instance of :class: h5py.File
+#     :param str i_m:
+#         Intensity measure
+#     :param str component:
+#         Horizontal component of IM
+#     """
+#     if not ("H" in fle["IMS"].keys()):
+#         x_im = fle["IMS/X/Scalar/" + i_m].value[0]
+#         y_im = fle["IMS/Y/Scalar/" + i_m].value[0]
+#         return SCALAR_XY[component](x_im, y_im)
+#     else:
+#         if i_m in fle["IMS/H/Scalar"].keys():
+#             return fle["IMS/H/Scalar/" + i_m].value[0]
+#         else:
+#             raise ValueError("Scalar IM %s not in record database" % i_m)
 
 
 # The following methods are used for the MultivariateLLH function
