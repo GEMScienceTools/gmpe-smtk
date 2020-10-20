@@ -35,8 +35,8 @@ from smtk.sm_utils import SCALAR_XY, get_interpolated_period,\
     convert_accel_units, MECHANISM_TYPE, DIP_TYPE, DEFAULT_MSR
 
 
-class ResidualsCompliantRecordSet:
-    
+class ResidualsCompliantDatabase:
+
     SCALAR_IMTS = ["PGA", "PGV"]
 
     sites_context_attrs = ('vs30', 'lons', 'lats', 'depths',
@@ -87,7 +87,7 @@ class ResidualsCompliantRecordSet:
     def update_rupture_context(self, record, context, nodal_plane_index=1):
         '''Updates the attributes of `context` with the given `record` data.
         `context` is a :class:`openquake.hazardlib.contexts.RuptureContext`
-        object. In the typical implementation it  has the attributes defined in
+        object. In the typical implementation it has the attributes defined in
         `self.sites_context_attrs` all initialized to NaN (numpy.nan).
         Here you should set those attributes with the relative record value:
         ```
@@ -302,7 +302,7 @@ class ResidualsCompliantRecordSet:
             observations[imtx] = np.asarray(values, dtype=float)
 
 
-class GroundMotionDatabase(ResidualsDatabase):
+class GroundMotionDatabase(ResidualsCompliantDatabase):
 
     ####################################################
     # ABSTRACT METHODS TO BE IMPLEMENTED IN SUBCLASSES #
@@ -392,7 +392,7 @@ class GroundMotionDatabase(ResidualsDatabase):
     def update_rupture_context(self, record, context, nodal_plane_index=1):
         '''Updates the attributes of `context` with the given `record` data.
         `context` is a :class:`openquake.hazardlib.contexts.RuptureContext`
-        object. In the typical implementation it  has the attributes defined in
+        object. In the typical implementation it has the attributes defined in
         `self.sites_context_attrs` all initialized to NaN (numpy.nan).
         Here you should set those attributes with the relative record value:
         ```
@@ -506,7 +506,7 @@ class GroundMotionDatabase(ResidualsDatabase):
                 raise ValueError("Scalar IM %s not in record database" % i_m)
 
 
-class GroundMotionTable(ResidualsDatabase):
+class GroundMotionTable(ResidualsCompliantDatabase):
 
     ####################################################
     # ABSTRACT METHODS TO BE IMPLEMENTED IN SUBCLASSES #
@@ -532,14 +532,14 @@ class GroundMotionTable(ResidualsDatabase):
         context.lons.append(record['station_longitude'])
         context.lats.append(record['station_latitude'])
         context.depths.append(0.0 if isnan(record['station_elevation'])
-                           else record['station_elevation'] * -1.0E-3)
+                              else record['station_elevation'] * -1.0E-3)
         vs30 = record['vs30']
         context.vs30.append(vs30)
         context.vs30measured.append(record['vs30_measured'])
         context.z1pt0.append(vs30_to_z1pt0_cy14(vs30)
-                          if isnan(record['z1']) else record['z1'])
+                             if isnan(record['z1']) else record['z1'])
         context.z2pt5.append(vs30_to_z2pt5_cb14(vs30)
-                          if isnan(record['z2pt5']) else record['z2pt5'])
+                             if isnan(record['z2pt5']) else record['z2pt5'])
         context.backarc.append(record['backarc'])
 
     def update_distances_context(self, record, context):
@@ -574,7 +574,7 @@ class GroundMotionTable(ResidualsDatabase):
     def update_rupture_context(self, record, context, nodal_plane_index=1):
         '''Updates the attributes of `context` with the given `record` data.
         `context` is a :class:`openquake.hazardlib.contexts.RuptureContext`
-        object. In the typical implementation it  has the attributes defined in
+        object. In the typical implementation it has the attributes defined in
         `self.sites_context_attrs` all initialized to NaN (numpy.nan).
         Here you should set those attributes with the relative record value:
         ```
