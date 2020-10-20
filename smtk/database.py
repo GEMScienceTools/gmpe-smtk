@@ -32,10 +32,10 @@ from openquake.hazardlib.contexts import DistancesContext, RuptureContext, \
 from smtk import sm_utils
 from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 from smtk.sm_utils import SCALAR_XY, get_interpolated_period,\
-    convert_accel_units
+    convert_accel_units, MECHANISM_TYPE, DIP_TYPE, DEFAULT_MSR
 
 
-class ResidualsDatabase:
+class ResidualsCompliantRecordSet:
     
     SCALAR_IMTS = ["PGA", "PGV"]
 
@@ -124,8 +124,8 @@ class ResidualsDatabase:
                      imts=None, component="Geometric"):
         """
         Returns an iterable of dictionaries, each containing the site, distance
-        and rupture contexts for individual records. Each context dict is of the
-        form:
+        and rupture contexts for individual records. Each context dict is of
+        the form:
         ```
         {
          'EventID': earthquake id,
@@ -133,9 +133,10 @@ class ResidualsDatabase:
          'Distances': :class:`openquake.hazardlib.contexts.DistancesContext`,
          'Rupture': :class:`openquake.hazardlib.contexts.RuptureContext`
         }
-        If `imts` is not None but a list of Intensity measure types,
+        If `imts` is not None but a list of Intensity measure types (strings),
         other two arguments are required 'Observation' (dict of imts mapped
-        to each record imt value),a and 'Num. Sites' (the length of records)
+        to a numpy array of imt values, one per record,
+        and 'Num. Sites' (the records count)
         ```
         """
         # contexts are dicts which will temporarily be stored in a wrapping
@@ -231,8 +232,15 @@ class ResidualsDatabase:
 
         :param context: a :class:`openquake.hazardlib.contexts.SitesContext`
         '''
-        for _ in self.sites_context_attrs:
-            setattr(context, _, np.array(getattr(context, _)))
+        for attname in self.sites_context_attrs:
+            attval = getattr(context, attname)
+            # remove attribute if its value is empty-like
+            if attval is None or not len(attval):
+                delattr(context, attname)
+            else:
+                # FIXME: dtype=float forces Nones to be safely converted to nan
+                # but it assumes obviously all attval elements to be numeric
+                setattr(context, attname, np.asarray(attval, dtype=float))
 
     def finalize_distances_context(self, context):
         '''
@@ -243,8 +251,15 @@ class ResidualsDatabase:
 
         :param context: a :class:`openquake.hazardlib.contexts.DistancesContext`
         '''
-        for _ in self.distances_context_attrs:
-            setattr(context, _, np.array(getattr(context, _)))
+        for attname in self.distances_context_attrs:
+            attval = getattr(context, attname)
+            # remove attribute if its value is empty-like
+            if attval is None or not len(attval):
+                delattr(context, attname)
+            else:
+                # FIXME: dtype=float forces Nones to be safely converted to nan
+                # but it assumes obviously all attval elements to be numeric
+                setattr(context, attname, np.asarray(attval, dtype=float))
 
     def finalize_rupture_context(self, context):
         '''
@@ -257,44 +272,19 @@ class ResidualsDatabase:
         '''
         pass
 
-    def get_observations(self, imts, records, component="Geometric"):
-        """
-        This method is not used but it's here for backward compatibility.
-        Get the obsered ground motions from the database. *NOTE*: IMTs in
-        acceleration units (e.g. PGA, SA) are supposed to return their
-        values in cm/s/s (which is by default the unit in which they are
-        stored)
-        """
-        observations = self.create_observations_dict(imts)
-        for record in records:
-            self.update_observations(observations, record, component)
-        self.finalize_observations_dict(observations)
-        return observations
-#         select_records = \
-#             sm_record_selector.select_from_event_id(context["EventID"])
-#         observations = OrderedDict([(imtx, []) for imtx in self.imts])
-#         selection_string = "IMS/H/Spectra/Response/Acceleration/"
-#         for record in select_records:
-#             fle = h5py.File(record.datafile, "r")
-#             for imtx in self.imts:
-#                 if imtx in SCALAR_IMTS:
-#                     observations[imtx].append(
-#                         get_scalar(fle, imtx, component))
-#                 elif "SA(" in imtx:
-#                     target_period = imt.from_string(imtx).period
-#                     spectrum = fle[selection_string + component +
-#                                    "/damping_05"].value
-#                     periods = fle["IMS/H/Spectra/Response/Periods"].value
-#                     observations[imtx].append(get_interpolated_period(
-#                         target_period, periods, spectrum))
-#                 else:
-#                     raise "IMT %s is unsupported!" % imtx
-#             fle.close()
-#         for imtx in self.imts:
-#             observations[imtx] = np.array(observations[imtx])
-#         context["Observations"] = observations
-#         context["Num. Sites"] = len(select_records)
-#         return context
+#     def get_observations(self, imts, records, component="Geometric"):
+#         """
+#         This method is not used but it's here for backward compatibility.
+#         Get the obsered ground motions from the database. *NOTE*: IMTs in
+#         acceleration units (e.g. PGA, SA) are supposed to return their
+#         values in cm/s/s (which is by default the unit in which they are
+#         stored)
+#         """
+#         observations = self.create_observations_dict(imts)
+#         for record in records:
+#             self.update_observations(observations, record, component)
+#         self.finalize_observations_dict(observations)
+#         return observations
 
     def create_observations(self, imts):
         '''
@@ -312,7 +302,7 @@ class ResidualsDatabase:
             observations[imtx] = np.asarray(values, dtype=float)
 
 
-class GroundMotionDatabase(object):
+class GroundMotionDatabase(ResidualsDatabase):
 
     ####################################################
     # ABSTRACT METHODS TO BE IMPLEMENTED IN SUBCLASSES #
@@ -357,7 +347,7 @@ class GroundMotionDatabase(object):
         else:
             z2pt5 = vs30_to_z2pt5_cb14(record.site.vs30)
         context.z2pt5.append(z2pt5)
-        if ("backarc" in dir(record.site)) and record.site.backarc is not None:
+        if getattr(record.site, "backarc", None) is not None:
             context.backarc.append(record.site.backarc)
 
     def update_distances_context(self, record, context):
@@ -399,7 +389,7 @@ class GroundMotionDatabase(object):
         if getattr(record.distance, "rvolc", None) is not None:
             context.rvolc.append(record.distance.rvolc)
 
-    def update_rupture_context(self, rup, rctx, nodal_plane_index=1):
+    def update_rupture_context(self, record, context, nodal_plane_index=1):
         '''Updates the attributes of `context` with the given `record` data.
         `context` is a :class:`openquake.hazardlib.contexts.RuptureContext`
         object. In the typical implementation it  has the attributes defined in
@@ -411,49 +401,52 @@ class GroundMotionDatabase(object):
             ... and so on ...
         ```
         '''
-        rctx.mag = rup.event.magnitude.value
+        context.mag = record.event.magnitude.value
         if nodal_plane_index == 2:
-            rctx.strike = \
-                rup.event.mechanism.nodal_planes.nodal_plane_2['strike']
-            rctx.dip = \
-                rup.event.mechanism.nodal_planes.nodal_plane_2['dip']
-            rctx.rake = \
-                rup.event.mechanism.nodal_planes.nodal_plane_2['rake']
+            context.strike = \
+                record.event.mechanism.nodal_planes.nodal_plane_2['strike']
+            context.dip = \
+                record.event.mechanism.nodal_planes.nodal_plane_2['dip']
+            context.rake = \
+                record.event.mechanism.nodal_planes.nodal_plane_2['rake']
         elif nodal_plane_index == 1:
-            rctx.strike = \
-                rup.event.mechanism.nodal_planes.nodal_plane_1['strike']
-            rctx.dip = \
-                rup.event.mechanism.nodal_planes.nodal_plane_1['dip']
-            rctx.rake = \
-                rup.event.mechanism.nodal_planes.nodal_plane_1['rake']
+            context.strike = \
+                record.event.mechanism.nodal_planes.nodal_plane_1['strike']
+            context.dip = \
+                record.event.mechanism.nodal_planes.nodal_plane_1['dip']
+            context.rake = \
+                record.event.mechanism.nodal_planes.nodal_plane_1['rake']
         else:
-            rctx.strike = 0.0
-            rctx.dip = 90.0
-            rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
+            context.strike = 0.0
+            context.dip = 90.0
+            context.rake = \
+                record.event.mechanism.get_rake_from_mechanism_type()
 
-        if rup.event.rupture.surface:
-            rctx.ztor = rup.event.rupture.surface.get_top_edge_depth()
-            rctx.width = rup.event.rupture.surface.width
-            rctx.hypo_loc = rup.event.rupture.surface.get_hypo_location(1000)
+        if record.event.rupture.surface:
+            context.ztor = record.event.rupture.surface.get_top_edge_depth()
+            context.width = record.event.rupture.surface.width
+            context.hypo_loc = \
+                record.event.rupture.surface.get_hypo_location(1000)
         else:
-            if rup.event.rupture.depth is not None:
-                rctx.ztor = rup.event.rupture.depth
+            if record.event.rupture.depth is not None:
+                context.ztor = record.event.rupture.depth
             else:
-                rctx.ztor = rup.event.depth
+                context.ztor = record.event.depth
 
-            if rup.event.rupture.width is not None:
-                rctx.width = rup.event.rupture.width
+            if record.event.rupture.width is not None:
+                context.width = record.event.rupture.width
             else:
                 # Use the PeerMSR to define the area and assuming an aspect ratio
                 # of 1 get the width
-                rctx.width = \
-                    np.sqrt(sm_utils.DEFAULT_MSR.get_median_area(rctx.mag, 0))
+                context.width = \
+                    np.sqrt(sm_utils.DEFAULT_MSR.get_median_area(context.mag,
+                                                                 0))
 
             # Default hypocentre location to the middle of the rupture
-            rctx.hypo_loc = (0.5, 0.5)
-        rctx.hypo_depth = rup.event.depth
-        rctx.hypo_lat = rup.event.latitude
-        rctx.hypo_lon = rup.event.longitude
+            context.hypo_loc = (0.5, 0.5)
+        context.hypo_depth = record.event.depth
+        context.hypo_lat = record.event.latitude
+        context.hypo_lon = record.event.longitude
 
     def update_observations(self, record, observations, component="Geometric"):
         '''Updates the observed intensity measures types (imt) with the given
@@ -511,3 +504,169 @@ class GroundMotionDatabase(object):
                 return fle["IMS/H/Scalar/" + i_m].value[0]
             else:
                 raise ValueError("Scalar IM %s not in record database" % i_m)
+
+
+class GroundMotionTable(ResidualsDatabase):
+
+    ####################################################
+    # ABSTRACT METHODS TO BE IMPLEMENTED IN SUBCLASSES #
+    ####################################################
+
+    def get_record_eventid(self, record):
+        '''Returns the record event id (usually int) of the given record'''
+        return record['event_id']
+
+    def update_sites_context(self, record, context):
+        '''Updates the attributes of `context` with the given `record` data.
+        `context` is a :class:`openquake.hazardlib.contexts.SitesContext`
+        object. In the typical implementation it has the attributes defined in
+        `self.sites_context_attrs` all initialized to empty lists.
+        Here you should append to those attributes the relative record value:
+        ```
+            vs30 = ... get the vs30 from `record` ...
+            context.vs30.append(vs30)
+            ... and so on ...
+        ```
+        '''
+        isnan = np.isnan
+        context.lons.append(record['station_longitude'])
+        context.lats.append(record['station_latitude'])
+        context.depths.append(0.0 if isnan(record['station_elevation'])
+                           else record['station_elevation'] * -1.0E-3)
+        vs30 = record['vs30']
+        context.vs30.append(vs30)
+        context.vs30measured.append(record['vs30_measured'])
+        context.z1pt0.append(vs30_to_z1pt0_cy14(vs30)
+                          if isnan(record['z1']) else record['z1'])
+        context.z2pt5.append(vs30_to_z2pt5_cb14(vs30)
+                          if isnan(record['z2pt5']) else record['z2pt5'])
+        context.backarc.append(record['backarc'])
+
+    def update_distances_context(self, record, context):
+        '''Updates the attributes of `context` with the given `record` data.
+        `context` is a :class:`openquake.hazardlib.contexts.DistancesContext`
+        object. In the typical implementation it has the attributes defined in
+        `self.distances_context_attrs` all initialized to empty lists.
+        Here you should append to those attributes the relative record value:
+        ```
+            rjb = ... get the rjb from `record` ...
+            context.rjb.append(rjb)
+            ... and so on ...
+        ```
+        '''
+        isnan = np.isnan
+        # TODO Setting Rjb == Repi and Rrup == Rhypo when missing value
+        # is a hack! Need feedback on how to fix
+        context.repi.append(record['repi'])
+        context.rhypo.append(record['rhypo'])
+        context.rjb.append(record['repi'] if isnan(record['rjb']) else
+                           record['rjb'])
+        context.rrup.append(record['rhypo'] if isnan(record['rrup']) else
+                            record['rrup'])
+        context.rx.append(-record['repi'] if isnan(record['rx']) else
+                          record['rx'])
+        context.ry0.append(record['repi'] if isnan(record['ry0']) else
+                           record['ry0'])
+        context.rcdpp.append(0.0)
+        context.rvolc.append(0.0)
+        context.azimuth.append(record['azimuth'])
+
+    def update_rupture_context(self, record, context, nodal_plane_index=1):
+        '''Updates the attributes of `context` with the given `record` data.
+        `context` is a :class:`openquake.hazardlib.contexts.RuptureContext`
+        object. In the typical implementation it  has the attributes defined in
+        `self.sites_context_attrs` all initialized to NaN (numpy.nan).
+        Here you should set those attributes with the relative record value:
+        ```
+            mag = ... get the magnitude from `record` ...
+            context.mag = mag
+            ... and so on ...
+        ```
+        '''
+        # FIXME: nodal_plane_index not used??
+        isnan = np.isnan
+
+        strike, dip, rake = \
+            record['strike_1'], record['dip_1'], record['rake_1']
+
+        if np.isnan([strike, dip, rake]).any():
+            strike, dip, rake = \
+                record['strike_2'], record['dip_2'], record['rake_2']
+
+        if np.isnan([strike, dip, rake]).any():
+            strike = 0.0
+            dip = 90.0
+            try:
+                sof = record['style_of_faulting']
+                # might be bytes:
+                if hasattr(sof, 'decode'):
+                    sof = sof.decode('utf8')
+                rake = MECHANISM_TYPE[sof]
+                dip = DIP_TYPE[sof]
+            except KeyError:
+                rake = 0.0
+
+        context.mag = record['magnitude']
+        context.strike = strike
+        context.dip = dip
+        context.rake = rake
+        context.hypo_depth = record['hypocenter_depth']
+        _ = record['depth_top_of_rupture']
+        context.ztor = context.hypo_depth if isnan(_) else _
+        rec_width = record['rupture_width']
+        if np.isnan(rec_width):
+            rec_width = np.sqrt(DEFAULT_MSR.get_median_area(context.mag, 0))
+        context.width = rec_width
+        context.hypo_lat = record['event_latitude']
+        context.hypo_lon = record['event_longitude']
+        context.hypo_loc = (0.5, 0.5)
+
+    def update_observations(self, record, observations, component="Geometric"):
+        '''Updates the observed intensity measures types (imt) with the given
+        `record` data. `observations` is a `dict` of imts (string) mapped to
+        numeric lists. Here you should append to each list the imt value
+        derived from `record`, ususally numeric or NaN (`numpy.nan`):
+        ```
+            for imt, values in observations.items():
+                if imtx in self.SCALAR_IMTS:  # currently, 'PGA' or 'PGV'
+                    val = ... get the imt scalar value from record ...
+                elif "SA(" in imtx:
+                    val = ... get the SA numeric array / list from record ...
+                else:
+                    raise ValueError("IMT %s is unsupported!" % imtx)
+                values.append(val)
+        ```
+        '''
+        has_imt_components = self.has_imt_components
+        scalar_func = SCALAR_XY[component]
+        sa_periods = self.table.attrs.sa_periods
+        for imtx in observations.keys():
+            value = np.nan
+            components = [np.nan, np.nan]
+            if "SA(" in imtx:
+                target_period = imt.from_string(imtx).period
+                if has_imt_components:
+                    spectrum = record['sa_components'][:2]
+                    components[0] = get_interpolated_period(target_period,
+                                                            sa_periods,
+                                                            spectrum[0])
+                    components[1] = get_interpolated_period(target_period,
+                                                            sa_periods,
+                                                            spectrum[1])
+                else:
+                    spectrum = record['sa']
+                    value = get_interpolated_period(target_period, sa_periods,
+                                                    spectrum)
+            else:
+                imtx_ = imtx.lower()
+                if has_imt_components:
+                    components = record['%s_components' % imtx_][:2]
+                value = record[imtx_]
+
+            if has_imt_components:
+                value = scalar_func(*components)
+            observations[imtx].append(value)
+
+    ###########################
+    # END OF ABSTRACT METHODS #
+    ###########################
