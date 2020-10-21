@@ -17,8 +17,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 """
-Abstract class for a ground motion database. Any container of observations
-used for the residuals calculation should inherit from :class:`GMDatabase`
+module defining the skeleton implementation of a ResidualsCompliantDatabase,
+the asbtract class which should be inherited by any records database supporting
+residuals computation
 """
 import sys
 from collections import OrderedDict  # FIXME In Python3.7+, dict is sufficient
@@ -36,6 +37,12 @@ from smtk.sm_utils import SCALAR_XY, get_interpolated_period,\
 
 
 class ResidualsCompliantDatabase:
+    '''
+    `ResidualsCompliantDatabase`s are iterables of records which can be used in
+    :meth:`gmpe_residuals.Residuals.get_residuals` to compute the records
+    residuals. Subclasses need to implement few abstract-like methods defining
+    how to get the input data required for the residuals computation
+    '''
 
     SCALAR_IMTS = ["PGA", "PGV"]
 
@@ -48,13 +55,18 @@ class ResidualsCompliantDatabase:
     # ABSTRACT METHODS TO BE IMPLEMENTED IN SUBCLASSES #
     ####################################################
 
+    @property
+    def records(self):
+        '''Returns an iterable of records from this database (e.g. list, tuple,
+        generator). Note that as any iterable, the returned object does not
+        need to define a length whereby `len(self.records)` will work: this
+        will depend on subclasses implementation
+        '''
+        raise NotImplementedError('')
+
     def get_record_eventid(self, record):
         '''Returns the record event id (usually int) of the given record'''
         raise NotImplementedError('')
-
-#     def get_record_id(self, record):
-#         '''Returns the unique id (usually int) of the given record'''
-#         raise NotImplementedError('')
 
     def update_sites_context(self, record, context):
         '''Updates the attributes of `context` with the given `record` data.
@@ -120,7 +132,15 @@ class ResidualsCompliantDatabase:
     # END OF ABSTRRACT-LIKE METHODS #
     #################################
 
-    def get_contexts(self, records, nodal_plane_index=1,
+    def __iter__(self):
+        """
+        Make this object iterable, i.e.
+        `for rec in self` is equalto `for rec in self.records`
+        """
+        for record in self.records:
+            yield record
+
+    def get_contexts(self, nodal_plane_index=1,
                      imts=None, component="Geometric"):
         """
         Returns an iterable of dictionaries, each containing the site, distance
@@ -144,7 +164,7 @@ class ResidualsCompliantDatabase:
         # event_id:
         context_dicts = {}
         compute_observations = imts is not None and len(imts)
-        for rec in records:
+        for rec in self.records:
             evt_id = self.get_record_eventid(rec)  # rec['event_id']
             dic = context_dicts.get(evt_id, None)
             if dic is None:
@@ -272,24 +292,22 @@ class ResidualsCompliantDatabase:
         '''
         pass
 
-#     def get_observations(self, imts, records, component="Geometric"):
-#         """
-#         This method is not used but it's here for backward compatibility.
-#         Get the obsered ground motions from the database. *NOTE*: IMTs in
-#         acceleration units (e.g. PGA, SA) are supposed to return their
-#         values in cm/s/s (which is by default the unit in which they are
-#         stored)
-#         """
-#         observations = self.create_observations_dict(imts)
-#         for record in records:
-#             self.update_observations(observations, record, component)
-#         self.finalize_observations_dict(observations)
-#         return observations
+    def get_observations(self, imts, component="Geometric"):
+        """
+        This method is not used but it's here for backward compatibility.
+        Get the obsered ground motions from the database. *NOTE*: IMTs in
+        acceleration units (e.g. PGA, SA) are supposed to return their
+        values in cm/s/s (which is by default the unit in which they are
+        stored)
+        """
+        observations = self.create_observations_dict(imts)
+        for record in self.records:
+            self.update_observations(observations, record, component)
+        self.finalize_observations_dict(observations)
+        return observations
 
     def create_observations(self, imts):
-        '''
-        creates and returns a `dict` from the given imts
-        '''
+        '''creates and returns an observations `dict` from the given imts'''
         return OrderedDict([(imtx, []) for imtx in imts])
 
     def finalize_observations(self, observations):
@@ -304,9 +322,28 @@ class ResidualsCompliantDatabase:
 
 class GroundMotionDatabase(ResidualsCompliantDatabase):
 
+    def __init__(self, db_id, db_name, db_directory=None, records=[],
+                 site_ids=[]):
+        """
+        """
+        self.id = db_id
+        self.name = db_name
+        self.directory = db_directory
+        self._records = [rec for rec in records]
+        self.site_ids = site_ids
+
     ####################################################
     # ABSTRACT METHODS TO BE IMPLEMENTED IN SUBCLASSES #
     ####################################################
+
+    @property
+    def records(self):
+        '''Returns an iterable of records from this database (e.g. list, tuple,
+        generator). Note that as any iterable, the returned object does not
+        need to define a length whereby `len(self.records)` will work: this
+        will depend on subclasses implementation
+        '''
+        return self._records
 
     def get_record_eventid(self, record):
         '''Returns the record event id (usually int) of the given record'''
@@ -508,9 +545,32 @@ class GroundMotionDatabase(ResidualsCompliantDatabase):
 
 class GroundMotionTable(ResidualsCompliantDatabase):
 
+    def get_contexts(self, nodal_plane_index=1, imts=None, component="Geometric"):
+        '''
+        overrides super implementation to execute it inside a `with self`
+        opening the underlying hdf and assuring it is not already open
+        '''
+        with self:
+            super().get_contexts(nodal_plane_index, imts, component)
+
     ####################################################
     # ABSTRACT METHODS TO BE IMPLEMENTED IN SUBCLASSES #
     ####################################################
+    
+    @property
+    def records(self):
+        '''Yields an iterator of the records according to the specified filter
+        `condition`. The underlying HDF file (including each yielded record)
+        must not be modified while accessing this property, and thus must
+        be opened in read mode.
+        ```
+        with GroundMotionTable(filepath, name, 'r').filter(condition) as dbase:
+            # ... do your operation here
+            for record in dbase.records:
+                ...
+        ```
+        '''
+        return records_where(self.table, self._condition)
 
     def get_record_eventid(self, record):
         '''Returns the record event id (usually int) of the given record'''
