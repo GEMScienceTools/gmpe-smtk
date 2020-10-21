@@ -17,9 +17,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 """
-module defining the skeleton implementation of a ResidualsCompliantDatabase,
-the asbtract class which should be inherited by any records database supporting
-residuals computation
+module housing the ResidualsCompliantRecordsCollection abstract-like class which should
+be inherited by any database/set/collection supporting residuals computation on
+its records
 """
 import sys
 from collections import OrderedDict  # FIXME In Python3.7+, dict is sufficient
@@ -36,14 +36,14 @@ from smtk.sm_utils import SCALAR_XY, get_interpolated_period,\
     convert_accel_units, MECHANISM_TYPE, DIP_TYPE, DEFAULT_MSR
 
 
-class ResidualsCompliantDatabase:
-    '''
-    `ResidualsCompliantDatabase`s are iterables of records which can be used in
-    :meth:`gmpe_residuals.Residuals.get_residuals` to compute the records
-    residuals. Subclasses need to implement few abstract-like methods defining
-    how to get the input data required for the residuals computation
+class ResidualsCompliantRecordsCollection:
+    '''This abstract-like class implements an iterables of records which can be
+    used in :meth:`gmpe_residuals.Residuals.get_residuals` to compute the
+    records residuals. Subclasses need to implement few abstract-like methods
+    defining how to get the input data required for the residuals computation
     '''
 
+    # SCALAR_IMTS = ["PGA", "PGV", "PGD", "CAV", "Ia"]
     SCALAR_IMTS = ["PGA", "PGV"]
 
     sites_context_attrs = ('vs30', 'lons', 'lats', 'depths',
@@ -304,7 +304,7 @@ class ResidualsCompliantDatabase:
             observations[imtx] = np.asarray(values, dtype=float)
 
 
-class GroundMotionDatabase(ResidualsCompliantDatabase):
+class GroundMotionDatabase(ResidualsCompliantRecordsCollection):
 
     def __init__(self, db_id, db_name, db_directory=None, records=[],
                  site_ids=[]):
@@ -515,7 +515,7 @@ class GroundMotionDatabase(ResidualsCompliantDatabase):
                 raise ValueError("Scalar IM %s not in record database" % i_m)
 
 
-class GroundMotionTable(ResidualsCompliantDatabase):
+class GroundMotionTable(ResidualsCompliantRecordsCollection):
 
     def get_contexts(self, nodal_plane_index=1, imts=None, component="Geometric"):
         '''
