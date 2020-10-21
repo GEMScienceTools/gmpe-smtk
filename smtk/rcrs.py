@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 """
-module housing the ResidualsCompliantRecordsCollection abstract-like class which should
+module housing the ResidualsCompliantRecordSet abstract-like class which should
 be inherited by any database/set/collection supporting residuals computation on
 its records
 """
@@ -36,7 +36,7 @@ from smtk.sm_utils import SCALAR_XY, get_interpolated_period,\
     convert_accel_units, MECHANISM_TYPE, DIP_TYPE, DEFAULT_MSR
 
 
-class ResidualsCompliantRecordsCollection:
+class ResidualsCompliantRecordSet:
     '''This abstract-like class implements an iterables of records which can be
     used in :meth:`gmpe_residuals.Residuals.get_residuals` to compute the
     records residuals. Subclasses need to implement few abstract-like methods
@@ -304,7 +304,7 @@ class ResidualsCompliantRecordsCollection:
             observations[imtx] = np.asarray(values, dtype=float)
 
 
-class GroundMotionDatabase(ResidualsCompliantRecordsCollection):
+class GroundMotionDatabase(ResidualsCompliantRecordSet):
 
     def __init__(self, db_id, db_name, db_directory=None, records=[],
                  site_ids=[]):
@@ -515,7 +515,7 @@ class GroundMotionDatabase(ResidualsCompliantRecordsCollection):
                 raise ValueError("Scalar IM %s not in record database" % i_m)
 
 
-class GroundMotionTable(ResidualsCompliantRecordsCollection):
+class GroundMotionTable(ResidualsCompliantRecordSet):
 
     def get_contexts(self, nodal_plane_index=1, imts=None, component="Geometric"):
         '''
