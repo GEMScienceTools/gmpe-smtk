@@ -73,12 +73,8 @@ class ResidualsCompliantDatabase:
         `context` is a :class:`openquake.hazardlib.contexts.SitesContext`
         object. In the typical implementation it has the attributes defined in
         `self.sites_context_attrs` all initialized to empty lists.
-        Here you should append to those attributes the relative record value:
-        ```
-            vs30 = ... get the vs30 from `record` ...
-            context.vs30.append(vs30)
-            ... and so on ...
-        ```
+        Here you should append to those attributes the relative record value,
+        e.g. `context.vs30.append(record.vs30)`
         '''
         raise NotImplementedError('')
 
@@ -87,12 +83,8 @@ class ResidualsCompliantDatabase:
         `context` is a :class:`openquake.hazardlib.contexts.DistancesContext`
         object. In the typical implementation it has the attributes defined in
         `self.distances_context_attrs` all initialized to empty lists.
-        Here you should append to those attributes the relative record value:
-        ```
-            rjb = ... get the rjb from `record` ...
-            context.rjb.append(rjb)
-            ... and so on ...
-        ```
+        Here you should append to those attributes the relative record value,
+        e.g. `context.rjb.append(record.rjb)`
         '''
         raise NotImplementedError('')
 
@@ -101,12 +93,8 @@ class ResidualsCompliantDatabase:
         `context` is a :class:`openquake.hazardlib.contexts.RuptureContext`
         object. In the typical implementation it has the attributes defined in
         `self.sites_context_attrs` all initialized to NaN (numpy.nan).
-        Here you should set those attributes with the relative record value:
-        ```
-            mag = ... get the magnitude from `record` ...
-            context.mag = mag
-            ... and so on ...
-        ```
+        Here you should set those attributes with the relative record value,
+        e.g. `context.mag = record.event.mag`
         '''
         raise NotImplementedError('')
 
@@ -116,7 +104,7 @@ class ResidualsCompliantDatabase:
         numeric lists. Here you should append to each list the imt value
         derived from `record`, ususally numeric or NaN (`numpy.nan`):
         ```
-            for imt, values in observations.items():
+            for imtx, values in observations.items():
                 if imtx in self.SCALAR_IMTS:  # currently, 'PGA' or 'PGV'
                     val = ... get the imt scalar value from record ...
                 elif "SA(" in imtx:
@@ -125,6 +113,9 @@ class ResidualsCompliantDatabase:
                     raise ValueError("IMT %s is unsupported!" % imtx)
                 values.append(val)
         ```
+        *IMPORTANT*: IMTs in acceleration units (e.g. PGA, SA) are supposed to
+        return their values in cm/s/s (which is generally the unit in which
+        they are stored)
         '''
         raise NotImplementedError('')
 
@@ -142,10 +133,9 @@ class ResidualsCompliantDatabase:
 
     def get_contexts(self, nodal_plane_index=1,
                      imts=None, component="Geometric"):
-        """
-        Returns an iterable of dictionaries, each containing the site, distance
-        and rupture contexts for individual records. Each context dict is of
-        the form:
+        """Returns an iterable of dicts, each containing the site, distance
+        and rupture contexts for individual records. Each context dict
+        represents an earthquake event and is of the form:
         ```
         {
          'EventID': earthquake id,
@@ -153,10 +143,10 @@ class ResidualsCompliantDatabase:
          'Distances': :class:`openquake.hazardlib.contexts.DistancesContext`,
          'Rupture': :class:`openquake.hazardlib.contexts.RuptureContext`
         }
-        If `imts` is not None but a list of Intensity measure types (strings),
-        other two arguments are required 'Observation' (dict of imts mapped
-        to a numpy array of imt values, one per record,
-        and 'Num. Sites' (the records count)
+        Additionally, if `imts` is not None but a list of Intensity measure
+        types (strings), each dict will contain two additional keys:
+        'Observation' (dict of imts mapped to a numpy array of imt values,
+        one per record) and 'Num. Sites' (the records count)
         ```
         """
         # contexts are dicts which will temporarily be stored in a wrapping
@@ -174,11 +164,11 @@ class ResidualsCompliantDatabase:
                      # 'EventIndex': [],  # FIXME: we do not use it right?
                     'Sites': self.create_sites_context(),
                     'Distances': self.create_distances_context(),
-                    'Rupture': self.create_rupture_context(),
-                    "Num. Sites": 0
+                    'Rupture': self.create_rupture_context()
                 }
                 if compute_observations:
                     dic["Observations"] = self.create_observations_dict(imts)
+                    dic["Num. Sites"] = 0
                 # set Rupture only once:
                 self.update_rupture_context(rec, dic['Rupture'],
                                             nodal_plane_index)
@@ -190,7 +180,7 @@ class ResidualsCompliantDatabase:
             self.update_distances_context(rec, dic['Distances'])
             if compute_observations:
                 self.update_observations(rec, dic['Observations'], component)
-            dic["Num. Sites"] += 1
+                dic["Num. Sites"] += 1
 
         # converts to numeric arrays (once at the end is faster, see
         # https://stackoverflow.com/questions/7133885/fastest-way-to-grow-a-numpy-numeric-array
@@ -205,8 +195,7 @@ class ResidualsCompliantDatabase:
         return context_dicts.values()
 
     def create_sites_context(self):
-        '''
-        Creates, initializes and returns a sites context by setting the
+        '''Creates, initializes and returns a sites context by setting the
         default values of the attributes defined in `self.sites_context_attrs`.
         The returned context is intended to be used in `self.get_contexts`.
 
@@ -218,8 +207,7 @@ class ResidualsCompliantDatabase:
         return ctx
 
     def create_distances_context(self):
-        '''
-        Creates, initializes and returns a distances context by setting the
+        '''Creates, initializes and returns a distances context by setting the
         default values of the attributes defined in `self.distances_context_attrs`.
         The returned context is intended to be used in `self.get_contexts`.
 
@@ -231,8 +219,7 @@ class ResidualsCompliantDatabase:
         return ctx
 
     def create_rupture_context(self, evt_id):
-        '''
-        Creates, initializes and returns a rupture context by setting the
+        '''Creates, initializes and returns a rupture context by setting the
         default values of the attributes defined in `self.rupture_context_attrs`.
         The returned context is intended to be used in `self.get_contexts`.
 
@@ -244,8 +231,7 @@ class ResidualsCompliantDatabase:
         return ctx
 
     def finalize_sites_context(self, context):
-        '''
-        Finalizes the `context` object created with
+        '''Finalizes the `context` object created with
         `self.create_sites_context` and populated in `self.get_contexts`.
         All operations should be performed inplace on `context`, this method
         is not expected to return any value
@@ -263,8 +249,7 @@ class ResidualsCompliantDatabase:
                 setattr(context, attname, np.asarray(attval, dtype=float))
 
     def finalize_distances_context(self, context):
-        '''
-        Finalizes the `context` object created with
+        '''Finalizes the `context` object created with
         `self.create_distances_context` and populated in `self.get_contexts`.
         All operations should be performed inplace on `context`, this method
         is not expected to return any value
@@ -282,8 +267,7 @@ class ResidualsCompliantDatabase:
                 setattr(context, attname, np.asarray(attval, dtype=float))
 
     def finalize_rupture_context(self, context):
-        '''
-        Finalizes the `context` object created with
+        '''Finalizes the `context` object created with
         `self.create_rupture_context` and populated in `self.get_contexts`.
         All operations should be performed inplace on `context`, this method
         is not expected to return any value
@@ -293,12 +277,12 @@ class ResidualsCompliantDatabase:
         pass
 
     def get_observations(self, imts, component="Geometric"):
-        """
-        This method is not used but it's here for backward compatibility.
-        Get the obsered ground motions from the database. *NOTE*: IMTs in
-        acceleration units (e.g. PGA, SA) are supposed to return their
-        values in cm/s/s (which is by default the unit in which they are
-        stored)
+        """Get the observed intensity measure values from the database records,
+        returning a dict mapping each imt in `imts` (iterable of strings) to
+        the numpy array of the records intensity measure values.
+        This method is implemented for legacy code compatibility: it is not
+        called by `self.get_context`, although its returned value is the same
+        of the 'Observation' key returned by `self.get_context`
         """
         observations = self.create_observations_dict(imts)
         for record in self.records:
@@ -354,12 +338,8 @@ class GroundMotionDatabase(ResidualsCompliantDatabase):
         `context` is a :class:`openquake.hazardlib.contexts.SitesContext`
         object. In the typical implementation it has the attributes defined in
         `self.sites_context_attrs` all initialized to empty lists.
-        Here you should append to those attributes the relative record value:
-        ```
-            vs30 = ... get the vs30 from `record` ...
-            context.vs30.append(vs30)
-            ... and so on ...
-        ```
+        Here you should append to those attributes the relative record value,
+        e.g.: `context.vs30.append(record.vs30)`
         '''
         context.vs30.append(record.site.vs30)
         context.lons.append(record.site.longitude)
@@ -392,12 +372,8 @@ class GroundMotionDatabase(ResidualsCompliantDatabase):
         `context` is a :class:`openquake.hazardlib.contexts.DistancesContext`
         object. In the typical implementation it has the attributes defined in
         `self.distances_context_attrs` all initialized to empty lists.
-        Here you should append to those attributes the relative record value:
-        ```
-            rjb = ... get the rjb from `record` ...
-            context.rjb.append(rjb)
-            ... and so on ...
-        ```
+        Here you should append to those attributes the relative record value,
+        e.g.: `context.rjb.append(record.rjb)`
         '''
         context.repi.append(record.distance.repi)
         context.rhypo.append(record.distance.rhypo)
@@ -431,12 +407,8 @@ class GroundMotionDatabase(ResidualsCompliantDatabase):
         `context` is a :class:`openquake.hazardlib.contexts.RuptureContext`
         object. In the typical implementation it has the attributes defined in
         `self.sites_context_attrs` all initialized to NaN (numpy.nan).
-        Here you should set those attributes with the relative record value:
-        ```
-            mag = ... get the magnitude from `record` ...
-            context.mag = mag
-            ... and so on ...
-        ```
+        Here you should set those attributes with the relative record value,
+        e.g.: `context.mag = record.event.mag`
         '''
         context.mag = record.event.magnitude.value
         if nodal_plane_index == 2:
@@ -581,12 +553,8 @@ class GroundMotionTable(ResidualsCompliantDatabase):
         `context` is a :class:`openquake.hazardlib.contexts.SitesContext`
         object. In the typical implementation it has the attributes defined in
         `self.sites_context_attrs` all initialized to empty lists.
-        Here you should append to those attributes the relative record value:
-        ```
-            vs30 = ... get the vs30 from `record` ...
-            context.vs30.append(vs30)
-            ... and so on ...
-        ```
+        Here you should append to those attributes the relative record value,
+        e.g. `context.vs30.append(record.vs30)`
         '''
         isnan = np.isnan
         context.lons.append(record['station_longitude'])
@@ -607,12 +575,8 @@ class GroundMotionTable(ResidualsCompliantDatabase):
         `context` is a :class:`openquake.hazardlib.contexts.DistancesContext`
         object. In the typical implementation it has the attributes defined in
         `self.distances_context_attrs` all initialized to empty lists.
-        Here you should append to those attributes the relative record value:
-        ```
-            rjb = ... get the rjb from `record` ...
-            context.rjb.append(rjb)
-            ... and so on ...
-        ```
+        Here you should append to those attributes the relative record value,
+        e.g. `context.rjb.append(record.rjb)`
         '''
         isnan = np.isnan
         # TODO Setting Rjb == Repi and Rrup == Rhypo when missing value
@@ -636,12 +600,8 @@ class GroundMotionTable(ResidualsCompliantDatabase):
         `context` is a :class:`openquake.hazardlib.contexts.RuptureContext`
         object. In the typical implementation it has the attributes defined in
         `self.sites_context_attrs` all initialized to NaN (numpy.nan).
-        Here you should set those attributes with the relative record value:
-        ```
-            mag = ... get the magnitude from `record` ...
-            context.mag = mag
-            ... and so on ...
-        ```
+        Here you should set those attributes with the relative record value,
+        e.g. `context.mag = record.event.mag`
         '''
         # FIXME: nodal_plane_index not used??
         isnan = np.isnan
