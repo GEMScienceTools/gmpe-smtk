@@ -17,9 +17,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 """
-module housing the ResidualsCompliantRecordSet abstract-like class which should
-be inherited by any database/set/collection supporting residuals computation on
-its records
+Implementing the abstract-like interface to be inherited by any
+database/set/collection aiming to support residuals computation on its records
 """
 import sys
 from collections import OrderedDict  # FIXME In Python3.7+, dict is sufficient
@@ -37,7 +36,7 @@ from smtk.sm_utils import SCALAR_XY, get_interpolated_period,\
 
 
 class ResidualsCompliantRecordSet:
-    '''This abstract-like class implements an iterables of records which can be
+    '''This abstract-like class represents an iterables of records which can be
     used in :meth:`gmpe_residuals.Residuals.get_residuals` to compute the
     records residuals. Subclasses need to implement few abstract-like methods
     defining how to get the input data required for the residuals computation
@@ -114,8 +113,8 @@ class ResidualsCompliantRecordSet:
                 values.append(val)
         ```
         *IMPORTANT*: IMTs in acceleration units (e.g. PGA, SA) are supposed to
-        return their values in cm/s/s (which is generally the unit in which
-        they are stored)
+        return their values in cm/s/s (which should be by convention the unit
+        in which they are stored)
         '''
         raise NotImplementedError('')
 
@@ -126,14 +125,14 @@ class ResidualsCompliantRecordSet:
     def __iter__(self):
         """
         Make this object iterable, i.e.
-        `for rec in self` is equalto `for rec in self.records`
+        `for rec in self` is equal to `for rec in self.records`
         """
         for record in self.records:
             yield record
 
     def get_contexts(self, nodal_plane_index=1,
                      imts=None, component="Geometric"):
-        """Returns an iterable of dicts, each containing the site, distance
+        """Returns an iterable of `dict`s, each containing the site, distance
         and rupture contexts for individual records. Each context dict
         represents an earthquake event and is of the form:
         ```
@@ -145,7 +144,7 @@ class ResidualsCompliantRecordSet:
         }
         Additionally, if `imts` is not None but a list of Intensity measure
         types (strings), each dict will contain two additional keys:
-        'Observation' (dict of imts mapped to a numpy array of imt values,
+        'Observations' (dict of imts mapped to a numpy array of imt values,
         one per record) and 'Num. Sites' (the records count)
         ```
         """
@@ -278,11 +277,11 @@ class ResidualsCompliantRecordSet:
 
     def get_observations(self, imts, component="Geometric"):
         """Get the observed intensity measure values from the database records,
-        returning a dict mapping each imt in `imts` (iterable of strings) to
-        the numpy array of the records intensity measure values.
-        This method is implemented for legacy code compatibility: it is not
-        called by `self.get_context`, although its returned value is the same
-        of the 'Observation' key returned by `self.get_context`
+        returning a `dict` of imts mapped to a numpy array of the imt values,
+        one per record.
+        This method is implemented for legacy code compatibility and it is not
+        called by `self.get_context`, although it returns the same value as
+        `self.get_context(..., imts, component)["Observations"]`
         """
         observations = self.create_observations_dict(imts)
         for record in self.records:
@@ -295,8 +294,7 @@ class ResidualsCompliantRecordSet:
         return OrderedDict([(imtx, []) for imtx in imts])
 
     def finalize_observations(self, observations):
-        '''
-        finalizes a the observations `dict` after it has been populated
+        '''Finalizes a the observations `dict` after it has been populated
         with the database observed values. By default, it converts all dict
         values to numpy array
         '''
@@ -316,9 +314,9 @@ class GroundMotionDatabase(ResidualsCompliantRecordSet):
         self._records = [rec for rec in records]
         self.site_ids = site_ids
 
-    ####################################################
-    # ABSTRACT METHODS TO BE IMPLEMENTED IN SUBCLASSES #
-    ####################################################
+    ###########################################################
+    # IMPLEMENTS ResidualsCompliantRecordSet ABSTRACT METHODS #
+    ###########################################################
 
     @property
     def records(self):
@@ -525,10 +523,10 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
         with self:
             super().get_contexts(nodal_plane_index, imts, component)
 
-    ####################################################
-    # ABSTRACT METHODS TO BE IMPLEMENTED IN SUBCLASSES #
-    ####################################################
-    
+    ###########################################################
+    # IMPLEMENTS ResidualsCompliantRecordSet ABSTRACT METHODS #
+    ###########################################################
+
     @property
     def records(self):
         '''Yields an iterator of the records according to the specified filter
