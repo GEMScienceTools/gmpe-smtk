@@ -55,9 +55,10 @@ class BaseTrellisTest(unittest.TestCase):
                         1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0,
                         3.0, 4.001, 5.0, 7.5, 10.0]
 
-        self.gsims = ["AbrahamsonEtAl2014", "AbrahamsonEtAl2014NSHMPLower",
-                      "AbrahamsonEtAl2014NSHMPMean",
-                      "AbrahamsonEtAl2014NSHMPUpper",
+        self.gsims = ["AbrahamsonEtAl2014",
+                      # "AbrahamsonEtAl2014NSHMPLower",
+                      # "AbrahamsonEtAl2014NSHMPMean",
+                      # "AbrahamsonEtAl2014NSHMPUpper",
                       "AbrahamsonEtAl2014RegCHN",
                       "AbrahamsonEtAl2014RegJPN",
                       "AbrahamsonEtAl2014RegTWN",
