@@ -145,6 +145,7 @@ class ResidualsCompliantRecordSet:
          'Distances': :class:`openquake.hazardlib.contexts.DistancesContext`,
          'Rupture': :class:`openquake.hazardlib.contexts.RuptureContext`
         }
+        ```
         Additionally, if `imts` is not None but a list of Intensity measure
         types (strings), each dict will contain two additional keys:
         'Observations' (dict of imts mapped to a numpy array of imt values,
@@ -278,20 +279,6 @@ class ResidualsCompliantRecordSet:
         '''
         pass
 
-    def get_observations(self, imts, component="Geometric"):
-        """Get the observed intensity measure values from the database records,
-        returning a `dict` of imts mapped to a numpy array of the imt values,
-        one per record.
-        This method is implemented for legacy code compatibility and it is not
-        called by `self.get_context`, although it returns the same value as
-        `self.get_context(..., imts, component)["Observations"]`
-        """
-        observations = self.create_observations_dict(imts)
-        for record in self.records:
-            self.update_observations(record, observations, component)
-        self.finalize_observations_dict(observations)
-        return observations
-
     def create_observations(self, imts):
         '''creates and returns an observations `dict` from the given imts'''
         return OrderedDict([(imtx, []) for imtx in imts])
@@ -303,3 +290,17 @@ class ResidualsCompliantRecordSet:
         '''
         for imtx, values in observations.items():
             observations[imtx] = np.asarray(values, dtype=float)
+
+    def get_observations(self, imts, component="Geometric"):
+        """Get the observed intensity measure values from the database records,
+        returning a `dict` of imts mapped to a numpy array of the imt values,
+        one per record.
+        This method is implemented for legacy code compatibility and it is not
+        called by `self.get_context`, although it returns the same value as
+        `self.get_context(..., imts, component)["Observations"]`
+        """
+        observations = self.create_observations(imts)
+        for record in self.records:
+            self.update_observations(record, observations, component)
+        self.finalize_observations(observations)
+        return observations
