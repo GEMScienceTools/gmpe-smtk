@@ -166,10 +166,10 @@ class ResidualsCompliantRecordSet:
                      # 'EventIndex': [],  # FIXME: we do not use it right?
                     'Sites': self.create_sites_context(),
                     'Distances': self.create_distances_context(),
-                    'Rupture': self.create_rupture_context()
+                    'Rupture': self.create_rupture_context(evt_id)
                 }
                 if compute_observations:
-                    dic["Observations"] = self.create_observations_dict(imts)
+                    dic["Observations"] = self.create_observations(imts)
                     dic["Num. Sites"] = 0
                 # set Rupture only once:
                 self.update_rupture_context(rec, dic['Rupture'],
@@ -288,7 +288,7 @@ class ResidualsCompliantRecordSet:
         """
         observations = self.create_observations_dict(imts)
         for record in self.records:
-            self.update_observations(observations, record, component)
+            self.update_observations(record, observations, component)
         self.finalize_observations_dict(observations)
         return observations
 
@@ -303,180 +303,3 @@ class ResidualsCompliantRecordSet:
         '''
         for imtx, values in observations.items():
             observations[imtx] = np.asarray(values, dtype=float)
-
-
-class GroundMotionTable(ResidualsCompliantRecordSet):
-
-    def get_contexts(self, nodal_plane_index=1, imts=None, component="Geometric"):
-        '''
-        overrides super implementation to execute it inside a `with self`
-        opening the underlying hdf and assuring it is not already open
-        '''
-        with self:
-            super().get_contexts(nodal_plane_index, imts, component)
-
-    ###########################################################
-    # IMPLEMENTS ResidualsCompliantRecordSet ABSTRACT METHODS #
-    ###########################################################
-
-    @property
-    def records(self):
-        '''Yields an iterator of the records according to the specified filter
-        `condition`. The underlying HDF file (including each yielded record)
-        must not be modified while accessing this property, and thus must
-        be opened in read mode.
-        ```
-        with GroundMotionTable(filepath, name, 'r').filter(condition) as dbase:
-            # ... do your operation here
-            for record in dbase.records:
-                ...
-        ```
-        '''
-        return records_where(self.table, self._condition)
-
-    def get_record_eventid(self, record):
-        '''Returns the record event id (usually int) of the given record'''
-        return record['event_id']
-
-    def update_sites_context(self, record, context):
-        '''Updates the attributes of `context` with the given `record` data.
-        `context` is a :class:`openquake.hazardlib.contexts.SitesContext`
-        object. In the typical implementation it has the attributes defined in
-        `self.sites_context_attrs` all initialized to empty lists.
-        Here you should append to those attributes the relative record value,
-        e.g. `context.vs30.append(record.vs30)`
-        '''
-        isnan = np.isnan
-        context.lons.append(record['station_longitude'])
-        context.lats.append(record['station_latitude'])
-        context.depths.append(0.0 if isnan(record['station_elevation'])
-                              else record['station_elevation'] * -1.0E-3)
-        vs30 = record['vs30']
-        context.vs30.append(vs30)
-        context.vs30measured.append(record['vs30_measured'])
-        context.z1pt0.append(vs30_to_z1pt0_cy14(vs30)
-                             if isnan(record['z1']) else record['z1'])
-        context.z2pt5.append(vs30_to_z2pt5_cb14(vs30)
-                             if isnan(record['z2pt5']) else record['z2pt5'])
-        context.backarc.append(record['backarc'])
-
-    def update_distances_context(self, record, context):
-        '''Updates the attributes of `context` with the given `record` data.
-        `context` is a :class:`openquake.hazardlib.contexts.DistancesContext`
-        object. In the typical implementation it has the attributes defined in
-        `self.distances_context_attrs` all initialized to empty lists.
-        Here you should append to those attributes the relative record value,
-        e.g. `context.rjb.append(record.rjb)`
-        '''
-        isnan = np.isnan
-        # TODO Setting Rjb == Repi and Rrup == Rhypo when missing value
-        # is a hack! Need feedback on how to fix
-        context.repi.append(record['repi'])
-        context.rhypo.append(record['rhypo'])
-        context.rjb.append(record['repi'] if isnan(record['rjb']) else
-                           record['rjb'])
-        context.rrup.append(record['rhypo'] if isnan(record['rrup']) else
-                            record['rrup'])
-        context.rx.append(-record['repi'] if isnan(record['rx']) else
-                          record['rx'])
-        context.ry0.append(record['repi'] if isnan(record['ry0']) else
-                           record['ry0'])
-        context.rcdpp.append(0.0)
-        context.rvolc.append(0.0)
-        context.azimuth.append(record['azimuth'])
-
-    def update_rupture_context(self, record, context, nodal_plane_index=1):
-        '''Updates the attributes of `context` with the given `record` data.
-        `context` is a :class:`openquake.hazardlib.contexts.RuptureContext`
-        object. In the typical implementation it has the attributes defined in
-        `self.sites_context_attrs` all initialized to NaN (numpy.nan).
-        Here you should set those attributes with the relative record value,
-        e.g. `context.mag = record.event.mag`
-        '''
-        # FIXME: nodal_plane_index not used??
-        isnan = np.isnan
-
-        strike, dip, rake = \
-            record['strike_1'], record['dip_1'], record['rake_1']
-
-        if np.isnan([strike, dip, rake]).any():
-            strike, dip, rake = \
-                record['strike_2'], record['dip_2'], record['rake_2']
-
-        if np.isnan([strike, dip, rake]).any():
-            strike = 0.0
-            dip = 90.0
-            try:
-                sof = record['style_of_faulting']
-                # might be bytes:
-                if hasattr(sof, 'decode'):
-                    sof = sof.decode('utf8')
-                rake = MECHANISM_TYPE[sof]
-                dip = DIP_TYPE[sof]
-            except KeyError:
-                rake = 0.0
-
-        context.mag = record['magnitude']
-        context.strike = strike
-        context.dip = dip
-        context.rake = rake
-        context.hypo_depth = record['hypocenter_depth']
-        _ = record['depth_top_of_rupture']
-        context.ztor = context.hypo_depth if isnan(_) else _
-        rec_width = record['rupture_width']
-        if np.isnan(rec_width):
-            rec_width = np.sqrt(DEFAULT_MSR.get_median_area(context.mag, 0))
-        context.width = rec_width
-        context.hypo_lat = record['event_latitude']
-        context.hypo_lon = record['event_longitude']
-        context.hypo_loc = (0.5, 0.5)
-
-    def update_observations(self, record, observations, component="Geometric"):
-        '''Updates the observed intensity measures types (imt) with the given
-        `record` data. `observations` is a `dict` of imts (string) mapped to
-        numeric lists. Here you should append to each list the imt value
-        derived from `record`, ususally numeric or NaN (`numpy.nan`):
-        ```
-            for imt, values in observations.items():
-                if imtx in self.SCALAR_IMTS:  # currently, 'PGA' or 'PGV'
-                    val = ... get the imt scalar value from record ...
-                elif "SA(" in imtx:
-                    val = ... get the SA numeric array / list from record ...
-                else:
-                    raise ValueError("IMT %s is unsupported!" % imtx)
-                values.append(val)
-        ```
-        '''
-        has_imt_components = self.has_imt_components
-        scalar_func = SCALAR_XY[component]
-        sa_periods = self.table.attrs.sa_periods
-        for imtx in observations.keys():
-            value = np.nan
-            components = [np.nan, np.nan]
-            if "SA(" in imtx:
-                target_period = imt.from_string(imtx).period
-                if has_imt_components:
-                    spectrum = record['sa_components'][:2]
-                    components[0] = get_interpolated_period(target_period,
-                                                            sa_periods,
-                                                            spectrum[0])
-                    components[1] = get_interpolated_period(target_period,
-                                                            sa_periods,
-                                                            spectrum[1])
-                else:
-                    spectrum = record['sa']
-                    value = get_interpolated_period(target_period, sa_periods,
-                                                    spectrum)
-            else:
-                imtx_ = imtx.lower()
-                if has_imt_components:
-                    components = record['%s_components' % imtx_][:2]
-                value = record[imtx_]
-
-            if has_imt_components:
-                value = scalar_func(*components)
-            observations[imtx].append(value)
-
-    ###########################
-    # END OF ABSTRACT METHODS #
-    ###########################

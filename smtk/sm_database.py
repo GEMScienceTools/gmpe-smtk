@@ -950,7 +950,7 @@ class GroundMotionDatabase(ResidualsCompliantRecordSet):
         self.directory = db_directory
         #self.records = []
         #print(records)
-        self._records = [rec for rec in records]
+        self.records = [rec for rec in records]
         self.site_ids = site_ids
 
     ##############################################################
@@ -965,6 +965,11 @@ class GroundMotionDatabase(ResidualsCompliantRecordSet):
         will depend on subclasses implementation
         '''
         return self._records
+
+    # this is no abstract method, it makes `self.records = new_records` work:
+    @records.setter
+    def records(self, list_of_records):
+        self._records = list_of_records
 
     def get_record_eventid(self, record):
         '''Returns the record event id (usually int) of the given record'''
@@ -1111,16 +1116,15 @@ class GroundMotionDatabase(ResidualsCompliantRecordSet):
         '''
         selection_string = "IMS/H/Spectra/Response/Acceleration/"
         fle = h5py.File(record.datafile, "r")
-        for imtx in self.imts:
+        for imtx, values in observations.items():
             if imtx in self.SCALAR_IMTS:
-                observations[imtx].append(
-                    self.get_scalar(fle, imtx, component))
+                values.append(self.get_scalar(fle, imtx, component))
             elif "SA(" in imtx:
                 target_period = imt.from_string(imtx).period
                 spectrum = fle[selection_string + component +
                                "/damping_05"].value
                 periods = fle["IMS/H/Spectra/Response/Periods"].value
-                observations[imtx].append(utils.get_interpolated_period(
+                values.append(utils.get_interpolated_period(
                     target_period, periods, spectrum))
             else:
                 raise ValueError("IMT %s is unsupported!" % imtx)

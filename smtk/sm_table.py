@@ -47,6 +47,7 @@ from openquake.hazardlib import imt
 from smtk.sm_utils import MECHANISM_TYPE, get_interpolated_period, SCALAR_XY,\
     DEFAULT_MSR, DIP_TYPE
 from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
+from smtk.rcrs import ResidualsCompliantRecordSet
 
 
 # Implements here pytables column subclasses.
@@ -755,7 +756,7 @@ def raises_if_file_is_open(meth):
     return wrapped
 
 
-class GroundMotionTable(object):
+class GroundMotionTable(ResidualsCompliantRecordSet):
     '''Implements a Ground motion database in table format. This class
     differs from :class:`smtk.sm_database.GroundMotionDatabase` in that flat
     files are stored as pytables tables in a single HDF file container.
@@ -1242,7 +1243,19 @@ class GroundMotionTable(object):
             value = str(value).encode('utf8')
         return value
 
-    # ---- RESIDUALS ANALYSIS ---- #
+    ###########################################################
+    # IMPLEMENTS ResidualsCompliantRecordSet ABSTRACT METHODS #
+    ###########################################################
+
+    @raises_if_file_is_open
+    def get_contexts(self, nodal_plane_index=1, imts=None,
+                     component="Geometric"):
+        """
+        Returns an iterable of dictionaries, each containing the site, distance
+        and rupture contexts for individual records
+        """
+        with self:
+            return super().get_contexts(nodal_plane_index, imts, component)
 
     @property
     def records(self):
@@ -1259,156 +1272,66 @@ class GroundMotionTable(object):
         '''
         return records_where(self.table, self._condition)
 
-    @raises_if_file_is_open
-    def get_contexts(self, imts, nodal_plane_index=1, component="Geometric"):
-        """
-        Returns an iterable of dictionaries, each containing the site, distance
-        and rupture contexts for individual records
-        """
-        # FIXME: nodal_plane_index not used. Remove?
-        scalar_func = SCALAR_XY[component]
-        context_dicts = {}
-        with self:
-            sa_periods = self.table.attrs.sa_periods
-            for rec in self.records:
-                evt_id = rec['event_id']
-                dic = context_dicts.get(evt_id, None)
-                if dic is None:
-                    # we might use defaultdict, but like this is more readable
-                    dic = {'EventID': evt_id,
-                           'EventIndex': [],
-                           'Sites': SitesContext(),
-                           'Distances': DistancesContext(),
-                           "Observations": OrderedDict([(imtx, []) for imtx
-                                                        in imts]),
-                           "Num. Sites": 0}
-                    # set Rupture only once:
-                    dic['Rupture'] = RuptureContext()
+    def get_record_eventid(self, record):
+        '''Returns the record event id (usually int) of the given record'''
+        return record['event_id']
 
-                    self._set_event_context(rec, dic['Rupture'],
-                                            nodal_plane_index)
-                    context_dicts[evt_id] = dic
-                dic['EventIndex'].append(rec['record_id'])
-                self._set_sites_context_event(rec, dic['Sites'])
-                self._set_distances_context_event(rec, dic['Distances'])
-                self._add_observations(rec, dic['Observations'],
-                                       sa_periods, scalar_func)
-                dic["Num. Sites"] += 1
-
-        # converts to numeric arrays (once at the end is faster, see
-        # https://stackoverflow.com/questions/7133885/fastest-way-to-grow-a-numpy-numeric-array
-        # get default attributes not to be changed:
-        site_context_def_attrs = set(dir(SitesContext()))
-        distances_attrs = set(dir(DistancesContext()))
-        for dic in context_dicts.values():
-            self._lists2numpy(dic['Sites'],
-                              set(dir(dic['Sites'])) - site_context_def_attrs)
-            self._lists2numpy(dic['Distances'],
-                              set(dir(dic['Distances'])) - distances_attrs)
-            observations = dic['Observations']
-            for key, val in observations.items():
-                observations[key] = np.asarray(val, dtype=float)
-
-        return list(context_dicts.values())
-
-    @staticmethod
-    def _append(obj, att, value):
-        ret = getattr(obj, att, None)
-        if ret is None:
-            ret = []
-            setattr(obj, att, ret)
-        ret.append(value)
-
-    @staticmethod
-    def _lists2numpy(obj, att_names):
-        for att_name in att_names:
-            att_val = getattr(obj, att_name, None)
-            if isinstance(att_val, list):
-                setattr(obj, att_name, np.array(att_val))
-
-    @staticmethod
-    def _set_sites_context_event(record, sctx):
-        """
-        Adds the record's data to the given site context
-
-        :param record: a pytable record usually representing a flatfile row
-        :param sctx: a :class:`SitesContext` object
-        """
-        # From:
-        # smtk.sm_database.GroundMotionDatabase._get_sites_context_event
-        # line: 1085
-
-        # Please remember that the method above is called ONCE PER DB and
-        # returns an openquake's SitesContext
-        # whereas this method is called ONCE PER RECORD and appends records
-        # data to an already created SitesContext
-
-        append, isnan = GroundMotionTable._append, np.isnan
-
-        append(sctx, 'lons', record['station_longitude'])
-        append(sctx, 'lats', record['station_latitude'])
-        append(sctx, 'depths',  0.0 if isnan(record['station_elevation'])
-               else record['station_elevation'] * -1.0E-3)
+    def update_sites_context(self, record, context):
+        '''Updates the attributes of `context` with the given `record` data.
+        `context` is a :class:`openquake.hazardlib.contexts.SitesContext`
+        object. In the typical implementation it has the attributes defined in
+        `self.sites_context_attrs` all initialized to empty lists.
+        Here you should append to those attributes the relative record value,
+        e.g. `context.vs30.append(record.vs30)`
+        '''
+        isnan = np.isnan
+        context.lons.append(record['station_longitude'])
+        context.lats.append(record['station_latitude'])
+        context.depths.append(0.0 if isnan(record['station_elevation'])
+                              else record['station_elevation'] * -1.0E-3)
         vs30 = record['vs30']
-        append(sctx, 'vs30', vs30)
-        append(sctx, 'vs30measured', record['vs30_measured'])
-        append(sctx, 'z1pt0',  vs30_to_z1pt0_cy14(vs30)
-               if isnan(record['z1']) else record['z1'])
-        append(sctx, 'z2pt5',  vs30_to_z2pt5_cb14(vs30)
-               if isnan(record['z2pt5']) else record['z2pt5'])
-        append(sctx, 'backarc', record['backarc'])
+        context.vs30.append(vs30)
+        context.vs30measured.append(record['vs30_measured'])
+        context.z1pt0.append(vs30_to_z1pt0_cy14(vs30)
+                             if isnan(record['z1']) else record['z1'])
+        context.z2pt5.append(vs30_to_z2pt5_cb14(vs30)
+                             if isnan(record['z2pt5']) else record['z2pt5'])
+        context.backarc.append(record['backarc'])
 
-    @staticmethod
-    def _set_distances_context_event(record, dctx):
-        """
-        Adds the record's data to the given distance context
-
-        :param record: a pytable record usually representing a flatfile row
-        :param dctx: a :class:`DistancesContext` object
-        """
-        # From:
-        # smtk.sm_database.GroundMotionDatabase._get_distances_context_event
-        # line: 1141
-
-        # Please remember that the method above is called ONCE PER DB and
-        # returns an openquake's SitesContext
-        # whereas this method is called ONCE PER RECORD and appends records
-        # data to an already created SitesContext
-
-        append, isnan = GroundMotionTable._append, np.isnan
-
+    def update_distances_context(self, record, context):
+        '''Updates the attributes of `context` with the given `record` data.
+        `context` is a :class:`openquake.hazardlib.contexts.DistancesContext`
+        object. In the typical implementation it has the attributes defined in
+        `self.distances_context_attrs` all initialized to empty lists.
+        Here you should append to those attributes the relative record value,
+        e.g. `context.rjb.append(record.rjb)`
+        '''
+        isnan = np.isnan
         # TODO Setting Rjb == Repi and Rrup == Rhypo when missing value
         # is a hack! Need feedback on how to fix
-        append(dctx, 'repi', record['repi'])
-        append(dctx, 'rhypo', record['rhypo'])
-        append(dctx, 'rjb',
-               record['repi'] if isnan(record['rjb']) else record['rjb'])
-        append(dctx, 'rrup',
-               record['rhypo'] if isnan(record['rrup']) else record['rrup'])
-        append(dctx, 'rx',
-               -record['repi'] if isnan(record['rx']) else record['rx'])
-        append(dctx, 'ry0',
-               record['repi'] if isnan(record['ry0']) else record['ry0'])
-        append(dctx, 'rcdpp', 0.0)
-        append(dctx, 'rvolc', 0.0)
-        append(dctx, 'azimuth', record['azimuth'])
+        context.repi.append(record['repi'])
+        context.rhypo.append(record['rhypo'])
+        context.rjb.append(record['repi'] if isnan(record['rjb']) else
+                           record['rjb'])
+        context.rrup.append(record['rhypo'] if isnan(record['rrup']) else
+                            record['rrup'])
+        context.rx.append(-record['repi'] if isnan(record['rx']) else
+                          record['rx'])
+        context.ry0.append(record['repi'] if isnan(record['ry0']) else
+                           record['ry0'])
+        context.rcdpp.append(0.0)
+        context.rvolc.append(0.0)
+        context.azimuth.append(record['azimuth'])
 
-    def _set_event_context(self, record, rctx, nodal_plane_index=1):
-        """
-        Adds the record's data to the given distance context
-
-        :param record: a pytable record usually representing a flatfile row
-        :param rctx: a :class:`RuptureContext` object
-        """
-        # From:
-        # smtk.sm_database.GroundMotionDatabase._get_event_context
-        # line: 1208
-
-        # Please remember that the method above is called ONCE PER DB and
-        # returns an openquake's SitesContext
-        # whereas this method is called ONCE PER RECORD and appends records
-        # data to an already created SitesContext
-
+    def update_rupture_context(self, record, context, nodal_plane_index=1):
+        '''Updates the attributes of `context` with the given `record` data.
+        `context` is a :class:`openquake.hazardlib.contexts.RuptureContext`
+        object. In the typical implementation it has the attributes defined in
+        `self.sites_context_attrs` all initialized to NaN (numpy.nan).
+        Here you should set those attributes with the relative record value,
+        e.g. `context.mag = record.event.mag`
+        '''
+        # FIXME: nodal_plane_index not used??
         isnan = np.isnan
 
         strike, dip, rake = \
@@ -1431,34 +1354,41 @@ class GroundMotionTable(object):
             except KeyError:
                 rake = 0.0
 
-        setattr(rctx, 'mag', record['magnitude'])
-        setattr(rctx, 'strike', strike)
-        setattr(rctx, 'dip', dip)
-        setattr(rctx, 'rake', rake)
-        setattr(rctx, 'hypo_depth', record['hypocenter_depth'])
+        context.mag = record['magnitude']
+        context.strike = strike
+        context.dip = dip
+        context.rake = rake
+        context.hypo_depth = record['hypocenter_depth']
         _ = record['depth_top_of_rupture']
-        setattr(rctx, 'ztor', rctx.hypo_depth if isnan(_) else _)
+        context.ztor = context.hypo_depth if isnan(_) else _
         rec_width = record['rupture_width']
         if np.isnan(rec_width):
-            rec_width = np.sqrt(DEFAULT_MSR.get_median_area(rctx.mag, 0))
-        setattr(rctx, 'width', rec_width)
-        setattr(rctx, 'hypo_lat', record['event_latitude'])
-        setattr(rctx, 'hypo_lon', record['event_longitude'])
-        setattr(rctx, 'hypo_loc', (0.5, 0.5))
+            rec_width = np.sqrt(DEFAULT_MSR.get_median_area(context.mag, 0))
+        context.width = rec_width
+        context.hypo_lat = record['event_latitude']
+        context.hypo_lon = record['event_longitude']
+        context.hypo_loc = (0.5, 0.5)
 
-    def _add_observations(self, record, observations, sa_periods,
-                          scalar_func):
-        '''Fetches the given observations (IMTs) from `record` and puts it into
-        the `observations` dict. *NOTE*: IMTs in
-        acceleration units (e.g. PGA, SA) are supposed to return their
-        values in cm/s/s (which is by default the unit in which they are
-        stored)
-
-        :param scalar_func: a function returning a scalar from two numeric
-            components. See `sm_utils.SCALAR_XY`
+    def update_observations(self, record, observations, component="Geometric"):
+        '''Updates the observed intensity measures types (imt) with the given
+        `record` data. `observations` is a `dict` of imts (string) mapped to
+        numeric lists. Here you should append to each list the imt value
+        derived from `record`, ususally numeric or NaN (`numpy.nan`):
+        ```
+            for imt, values in observations.items():
+                if imtx in self.SCALAR_IMTS:  # currently, 'PGA' or 'PGV'
+                    val = ... get the imt scalar value from record ...
+                elif "SA(" in imtx:
+                    val = ... get the SA numeric array / list from record ...
+                else:
+                    raise ValueError("IMT %s is unsupported!" % imtx)
+                values.append(val)
+        ```
         '''
         has_imt_components = self.has_imt_components
-        for imtx in observations.keys():
+        scalar_func = SCALAR_XY[component]
+        sa_periods = self.table.attrs.sa_periods
+        for imtx, values in observations.items():
             value = np.nan
             components = [np.nan, np.nan]
             if "SA(" in imtx:
@@ -1483,4 +1413,9 @@ class GroundMotionTable(object):
 
             if has_imt_components:
                 value = scalar_func(*components)
-            observations[imtx].append(value)
+            values.append(value)
+
+    ###########################
+    # END OF ABSTRACT METHODS #
+    ###########################
+

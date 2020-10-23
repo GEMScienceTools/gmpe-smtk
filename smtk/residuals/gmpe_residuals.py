@@ -368,8 +368,8 @@ class Residuals(object):
             :class:`smtk.sm_database.GroundMotionDatabase` or a
             :class:`smtk.sm_table.GroundMotionTable`
         """
-        
-        contexts = database.get_contexts(self.imts, nodal_plane_index,
+
+        contexts = database.get_contexts(nodal_plane_index, self.imts,
                                          component)
 
         # Fetch now outside the loop for efficiency the IMTs which need
