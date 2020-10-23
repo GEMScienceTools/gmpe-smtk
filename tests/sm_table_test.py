@@ -416,6 +416,30 @@ class GroundMotionTableTestCase(unittest.TestCase):
         names = get_dbnames(self.output_file)
         assert len(names) == 0
 
+    def test_reading_concurrentcy(self):
+        '''Tests that it is ok to open an HDF table twice
+        (NOTE: this is currently NOT YET SUPPORTED)
+        '''
+        return
+        # the test file has a comma delimiter. Test that we raise with
+        # the default semicolon:
+        # now should be ok:
+        log = UserDefinedParser.parse(self.input_file,
+                                      output_path=self.output_file,
+                                      delimiter=',')
+
+        dbname = os.path.splitext(os.path.basename(self.output_file))[0]
+        rec1 = []
+        rec2 = []
+        for mode in ('r', 'a'):
+            with GroundMotionTable(self.output_file, dbname, mode=mode) as gmdb:
+                for r in gmdb.records:
+                    rec1.append(r['record_id'])
+                    if not rec2:
+                        for r2 in gmdb.records:
+                            rec2.append(r2['record_id'])
+            self.assertEqual(rec1, rec2)
+        asd = 9
 
     def test_template_basic_file_selection(self):
         '''parses a sample flatfile and tests some selection syntax on it'''
