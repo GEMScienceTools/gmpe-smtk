@@ -16,6 +16,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
+from itertools import chain
 """
 Basic classes for the GroundMotionTable (HDF5 database) and parsers
 """
@@ -269,25 +270,20 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
             with the column default, which is usually NaN for floats, the
             minimum possible value for integers, the empty string for strings.
         '''
-        if dbname is None:
-            dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
+        i, error, missing, bad, outofbound = \
+            0, [], defaultdict(int), defaultdict(int), defaultdict(int)
 
-        initialized = False
-        with GroundMotionTable(output_path, dbname, 'w') as gmdb:
+        rows = cls._rows(flatfile_path, delimiter)
+        for rowdict, sa_periods in rows:
+            break
 
-            i, error, missing, bad, outofbound = \
-                -1, [], defaultdict(int), defaultdict(int), defaultdict(int)
-
-            for i, (rowdict, sa_periods) in \
-                    enumerate(cls._rows(flatfile_path, delimiter)):
-
-                if not initialized:
-                    # write sa_periods only the first time
-                    gmdb.create_table(sa_periods, cls.has_imt_components)
-                    initialized = True
+        with gettable(output_path, "w", dbname, sa_periods,
+                      cls.has_imt_components) as table:
+            iter_ = enumerate(chain([(rowdict, sa_periods)], rows))
+            for i, (rowdict, sa_periods) in iter_:
 
                 written, missingcols, badcols, outofboundcols = \
-                    gmdb.write_record(rowdict, sa_periods)
+                    write_record(table, rowdict, sa_periods)
 
                 if not written:
                     error.append(i)
@@ -303,8 +299,8 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
             stats = {'total': i+1, 'written': i+1-len(error), 'error': error,
                      'bad_values': dict(bad), 'missing_values': dict(missing),
                      'outofbound_values': dict(outofbound)}
-            gmdb.table.attrs.parser = cls.__name__
-            gmdb.table.attrs.parser_stats = stats
+            table.attrs.parser = cls.__name__
+            table.attrs.parser_stats = stats
 
         return stats
 
@@ -459,6 +455,350 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
             return np.float64(value)
         except ValueError:
             return np.nan
+
+
+@contextmanager
+def openfile(filepath, mode):
+    '''
+    Returns the hdf5file form path
+
+    mode: 'w', 'r', 'a' (a not tested)
+    sa_periods must be given if mode='w'
+    name=None: basename(filepath) woithout extension
+
+    OLD DOC:
+
+    Yields a pytable Group object representing a Gm database
+    in the given hdf5 file `filepath`. If such a group does not exist
+    and mode is 'w', creates the group. In any other case
+    where such  a group does not exist, raises a :class:`NoSuchNodeError`
+
+    Example:
+    ```
+        with GroundMotionTable(filepath, name, 'r') as dbase:
+            # ... do your operation here
+    ```
+
+    :raises: :class:`tables.exceptions.NoSuchNodeError` if mode is 'r'
+        and the table was not found in `filepath`, IOError if the
+        file does not exist
+    '''
+    h5file, w_mark, was_undo_enabl = None, None, False
+    try:
+        h5file = tables.open_file(filepath, mode)
+        was_undo_enabl = h5file.is_undo_enabled()
+        if mode in ('a', 'w'):
+            h5file.enable_undo()
+            w_mark = h5file.mark()
+
+        yield h5file
+
+    except Exception as _:
+        if w_mark is not None:
+            h5file.undo(w_mark)
+        raise
+    finally:
+        if h5file is not None:
+            if was_undo_enabl is False and h5file.is_undo_enabled():
+                h5file.disable_undo()
+            h5file.close()
+
+
+@contextmanager
+def gettable(filepath, mode, name=None, sa_periods=None,
+             has_imt_components=False):
+    '''
+    Returns the table form path
+
+    mode: 'w', 'r', 'a' (a not tested)
+    sa_periods must be given if mode='w'
+    name=None: basename(filepath) woithout extension
+
+    OLD DOC:
+
+    Yields a pytable Group object representing a Gm database
+    in the given hdf5 file `filepath`. If such a group does not exist
+    and mode is 'w', creates the group. In any other case
+    where such  a group does not exist, raises a :class:`NoSuchNodeError`
+
+    Example:
+    ```
+        with GroundMotionTable(filepath, name, 'r') as dbase:
+            # ... do your operation here
+    ```
+
+    :raises: :class:`tables.exceptions.NoSuchNodeError` if mode is 'r'
+        and the table was not found in `filepath`, IOError if the
+        file does not exist
+    '''
+    if name is None:
+        name = os.path.splitext(os.path.basename(filepath))[0]
+
+    with openfile(filepath, mode) as h5file:
+
+        rootpath = f"/{name}"
+        try:
+            group = h5file.get_node(rootpath, classname=Group.__name__)
+            if mode == 'w':
+                for node in group:  # make group empty
+                    h5file.remove_node(node, recursive=True)
+        except NoSuchNodeError as _:
+            if mode == 'r':
+                raise
+            # create group node
+            group = h5file.create_group(h5file.root, name)
+
+        tablepath = f"{rootpath}/table"
+        try:
+            table = h5file.get_node(tablepath, classname=Table.__name__)
+            if mode == 'w':
+                raise ValueError('Table should not exists in "w" mode, it '
+                                 'probably could not be deleted. Retry or '
+                                 'delete the file manually')
+            try:
+                # sanity check: is it (most likely) a GroundMotionTable?
+                table.attrs.sa_periods
+                table.attrs._current_row_id
+                table.attrs._has_imt_components
+            except AttributeError:
+                raise ValueError(f'The node "{tablepath}" seems not to be '
+                                 'a valid GroundMotionTable')
+
+        except NoSuchNodeError as _:
+            if mode == 'r':
+                raise
+            if sa_periods is None:
+                raise ValueError("You need to provide 'sa_periods' in order "
+                                 f"to open the table file in '{mode}' mode")
+            # create table node
+            table = _create_table(h5file, rootpath, sa_periods,
+                                  has_imt_components)
+            table.attrs.filename = os.path.basename(filepath)
+
+        yield table
+
+        if mode != 'r':
+            table.flush()
+
+
+def _create_table(h5file, rootpath, sa_periods, has_imt_components=False):
+    '''
+        New doc: the table does not exist. called from the method above
+
+        Creates the HDF table representing this Ground motion table
+        where to write records.
+
+        NOTE: This method must be called when this
+        object is opened in 'w' mode and inside a `with` statement, PRIOR
+        to any call to `self.write_record`. If a table mapping this object
+        already exists on the underlying HDF file, it will be overwritten
+
+        :param sa_periods: a **monotonically increasing** numeric array of
+            the periods (x values) for the SA
+        :param has_imt_components: boolean telling if this table supports
+            imts with components, i.e. for each IMT a 3-length vector
+            is asslocated where to store the imt components (two horizontal
+            and vertical, in this order). The SA will be stored as a
+            [3 X len(sa_periods)] matrix, in case
+    '''
+    comps = {}
+    sa_length = len(sa_periods)
+    comps['sa'] = Float64Col(shape=(sa_length,))
+    if has_imt_components:
+        comps = {comp + '_components': Float64Col(shape=(3,))
+                 for comp in ('pga', 'pgv', 'sa', 'pgd', 'duration_5_75',
+                              'duration_5_95', 'arias_intensity', 'cav')}
+        comps['sa_components'] = Float64Col(shape=(3, sa_length))
+
+    # add internal ids (populated automatically for each written record):
+    comps['record_id'] = UInt32Col()  # max id: 4,294,967,295
+    comps['station_id'] = StringCol(itemsize=20)
+    comps['event_id'] = StringCol(20)
+
+    desc = dict(GMTableDescription, **comps)
+    table = h5file.create_table(rootpath, "table", description=desc)
+    table.attrs.sa_periods = np.asarray(sa_periods, dtype=float)
+    table.attrs._current_row_id = 1
+    #  table.attrs.filename = os.path.basename(self.filepath)
+    table.attrs._has_imt_components = has_imt_components
+    return self
+
+
+def write_record(table, csvrow, sa_periods, flush=False):
+    '''writes the content of `csvrow` into tablerow  on the table mapped
+    to this object in the undelrying HDF file, which must be open
+    (i.e., the user must be inside a with statement) in write mode.
+
+    NOTE: `self.create_table` must have been called ONCE prior to this
+        method call
+
+    Returns the tuple:
+    ```written, missing_colnames, bad_colnames, outofbounds_colnames```
+    where the last three elements are lists of strings (the record
+    column names under the given categories) and the first element is a
+    boolean inicating if the record has been written. A record might not
+    been written if the sanity check did not pass
+
+    :param csvrow: a dict representing a record, usually read froma  csv
+    file.
+    '''
+    # NOTE: if parsed from a csv reader (the usual case),
+    # values of `csvrow` the dict are all strings
+    missing_colnames, bad_colnames, outofbounds_colnames = [], [], []
+    if not _sanity_check(csvrow):
+        return False, missing_colnames, bad_colnames, outofbounds_colnames
+
+    # build a record hashes as ids:
+    evid, staid, recid = _get_ids(csvrow)
+    csvrow['event_id'] = evid
+    csvrow['station_id'] = staid
+    # do not use record id, rather an incremental integer:
+    csvrow['record_id'] = table.attrs._current_row_id
+    table.attrs._current_row_id += 1
+
+    # write sa periods (if not already written):
+    try:
+        table.attrs.sa_periods
+    except AttributeError:
+        table.attrs.sa_periods = np.asarray(sa_periods, dtype=float)
+
+    tablerow = table.row
+
+    for col, colobj in tablerow.table.coldescrs.items():
+        if col not in csvrow:
+            missing_colnames.append(col)
+            continue
+        try:
+            # remember: if val is a castable string -> ok
+            #   (e.g. table column float, val is '5.5' or '5.5 ')
+            # if val is out of bounds for the specific type, -> ok
+            #   (casted to the closest value)
+            # if val is scalar and the table column is a N length array,
+            # val it is broadcasted
+            #   (val= 5, then tablerow will have a np.array of N 5s)
+            # TypeError is raised when there is a non castable element
+            #   (e.g. 'abc' or '' for a Float column): in this case pass
+            tablerow[col] = csvrow[col]
+
+            bound = getattr(colobj, 'min_value', None)
+            if bound is not None and \
+                    (np.asarray(tablerow[col]) < bound).any():
+                tablerow[col] = colobj.dflt
+                outofbounds_colnames.append(col)
+                continue
+
+            bound = getattr(colobj, 'max_value', None)
+            if bound is not None and \
+                    (np.asarray(tablerow[col]) > bound).any():
+                tablerow[col] = colobj.dflt
+                outofbounds_colnames.append(col)
+                continue  # actually useless, but if we add code below ...
+
+        except (ValueError, TypeError):
+            if isinstance(csvrow[col], (str, bytes)) and \
+                    csvrow[col] in ('', b''):
+                missing_colnames.append(col)
+            else:
+                bad_colnames.append(col)
+
+    tablerow.append()  # pylint: disable=no-member
+    if flush:
+        table.flush()
+
+    return True, missing_colnames, bad_colnames, outofbounds_colnames
+
+
+def _sanity_check(csvrow):
+    '''performs sanity checks on the dict `csvrow` before
+    writing it. Note that  pytables does not support roll backs,
+    and when closing the file pending data is automatically flushed.
+    Therefore, the data has to be checked before, on the csv row
+
+    :param csvrow: a row of a parsed csv file representing a record to add
+    '''
+    # for the moment, just do a pga/sa[0] check for unit consistency
+    # other methods might be added in the future
+    return _pga_sa_unit_ok(csvrow)
+
+
+def _pga_sa_unit_ok(csvrow):
+    '''Checks that pga unit and sa unit are in accordance
+
+    :param csvrow: a row of a parsed csv file representing a record to add
+    '''
+    # if the PGA and the acceleration in the shortest period of the SA
+    # columns differ by more than an order of magnitude then certainly
+    # there is something wrong and the units of the PGA and SA are not
+    # in agreement and an error should be raised.
+    try:
+        pga, sa0 = float(csvrow['pga']), float(csvrow['sa'][0])
+        retol = abs(max(pga, sa0) / min(pga, sa0))
+        if not np.isnan(retol) and round(retol) >= 10:
+            return False
+    except Exception as _:  # disable=broad-except
+        # it might seem weird to return true on exceptions, but this method
+        # should only check wheather there is certainly a unit
+        # mismatch between sa and pga, when they are given (i.e., not in
+        # this case)
+        pass
+    return True
+
+
+def _get_ids(tablename, csvrow):
+    '''Returns the tuple record_id, event_id and station_id from
+    the given HDF5 row `csvrow`'''
+    # FIXME: record_id (recid) NOT USED: remove?
+    ids = (tablename,
+           _toint(csvrow['pga'], 0),  # (first two decimals of pga in g)
+           _toint(csvrow['event_longitude'], 5),
+           _toint(csvrow['event_latitude'], 5),
+           _toint(csvrow['hypocenter_depth'], 3),
+           csvrow['event_time'],
+           _toint(csvrow['station_longitude'], 5),
+           _toint(csvrow['station_latitude'], 5))
+    # return event_id, station_id, record_id:
+    evid, staid, recid = \
+        _hash(*ids[2:6]), _hash(*ids[6:]), _hash(*ids)
+    return evid, staid, recid
+
+
+def _toint(value, decimals):
+    '''returns an integer by multiplying value * 10^decimals
+    and rounding the result to int. Returns nan if value is nan'''
+    try:
+        value = float(value)
+    except ValueError:
+        value = float('nan')
+    return value if np.isnan(value) else \
+        int(round((10**decimals)*value))
+
+
+def _hash(*values):
+    '''generates a 160bit (20bytes) hash bytestring which uniquely
+    identifies the given tuple of `values`.
+    The returned string is assured to be the same for equal `values`
+    tuples (note that the order of values matters).
+    Conversely, the probability of colliding hashes, i.e., returning
+    the same bytestring for two different tuples of values, is 1 in
+    100 billion for roughly 19000 hashes (roughly 10 flatfiles with
+    all different records), and apporaches 50% for for 1.42e24 hashes
+    generated (for info, see
+    https://preshing.com/20110504/hash-collision-probabilities/#small-collision-probabilities)
+
+    :param values: a list of values, either bytes, str or numeric
+        (no support for other values sofar)
+    '''
+    hashalg = hashlib.sha1()
+    # use the slash as separator as it is unlikely to be in value(s):
+    hashalg.update(b'/'.join(_tobytestr(v) for v in values))
+    return hashalg.digest()
+
+
+def _tobytestr(value):
+    '''converts a value to bytes. value can be bytes, str or numeric'''
+    if not isinstance(value, bytes):
+        value = str(value).encode('utf8')
+    return value
 
 
 #########################################
@@ -930,7 +1270,7 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
         Returns the given Group (HDF directory-like structure) from the
         undelrying HDF file, which must be open (i.e., the user must be
         inside a with statement)
-
+ 
         :param relative_path: string, the path of the group relative to
             the path of the undelrying database storage. E.g. 'my/arrays'
         :param create: boolean (defaault: True) whether to create the group
@@ -955,172 +1295,172 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
                                                  classname=Group.__name__)
             return node
 
-    def create_table(self, sa_periods, has_imt_components=False):
-        '''
-            Creates the HDF table representing this Ground motion table
-            where to write records.
+#     def create_table(self, sa_periods, has_imt_components=False):
+#         '''
+#             Creates the HDF table representing this Ground motion table
+#             where to write records.
+# 
+#             NOTE: This method must be called when this
+#             object is opened in 'w' mode and inside a `with` statement, PRIOR
+#             to any call to `self.write_record`. If a table mapping this object
+#             already exists on the underlying HDF file, it will be overwritten
+# 
+#             :param sa_periods: a **monotonically increasing** numeric array of
+#                 the periods (x values) for the SA
+#             :param has_imt_components: boolean telling if this table supports
+#                 imts with components, i.e. for each IMT a 3-length vector
+#                 is asslocated where to store the imt components (two horizontal
+#                 and vertical, in this order). The SA will be stored as a
+#                 [3 X len(sa_periods)] matrix, in case
+#         '''
+#         try:
+#             table = self.table  # table exists, overwrite
+#             self._h5file.remove_node(table, recursive=True)
+#         except NoSuchNodeError:
+#             pass
+# 
+#         comps = {}
+#         sa_length = len(sa_periods)
+#         comps['sa'] = Float64Col(shape=(sa_length,))
+#         if has_imt_components:
+#             comps = {comp + '_components': Float64Col(shape=(3,))
+#                      for comp in ('pga', 'pgv', 'sa', 'pgd', 'duration_5_75',
+#                                   'duration_5_95', 'arias_intensity', 'cav')}
+#             comps['sa_components'] = Float64Col(shape=(3, sa_length))
+# 
+#         # add internal ids (populated automatically for each written record):
+#         comps['record_id'] = UInt32Col()  # max id: 4,294,967,295
+#         comps['station_id'] = StringCol(itemsize=20)
+#         comps['event_id'] = StringCol(20)
+# 
+#         desc = dict(GMTableDescription, **comps)
+#         self._table = table = self._h5file.create_table(self._root, "table",
+#                                                         description=desc)
+#         table.attrs.sa_periods = np.asarray(sa_periods, dtype=float)
+#         table.attrs._current_row_id = 1
+#         table.attrs.filename = os.path.basename(self.filepath)
+#         table.attrs._has_imt_components = has_imt_components
+#         return self
 
-            NOTE: This method must be called when this
-            object is opened in 'w' mode and inside a `with` statement, PRIOR
-            to any call to `self.write_record`. If a table mapping this object
-            already exists on the underlying HDF file, it will be overwritten
+#     def write_record(self, csvrow, sa_periods):
+#         '''writes the content of `csvrow` into tablerow  on the table mapped
+#         to this object in the undelrying HDF file, which must be open
+#         (i.e., the user must be inside a with statement) in write mode.
+# 
+#         NOTE: `self.create_table` must have been called ONCE prior to this
+#             method call
+# 
+#         Returns the tuple:
+#         ```written, missing_colnames, bad_colnames, outofbounds_colnames```
+#         where the last three elements are lists of strings (the record
+#         column names under the given categories) and the first element is a
+#         boolean inicating if the record has been written. A record might not
+#         been written if the sanity check did not pass
+# 
+#         :param csvrow: a dict representing a record, usually read froma  csv
+#         file.
+#         '''
+#         # NOTE: if parsed from a csv reader (the usual case),
+#         # values of `csvrow` the dict are all strings
+#         missing_colnames, bad_colnames, outofbounds_colnames = [], [], []
+#         if not self._sanity_check(csvrow):
+#             return False, missing_colnames, bad_colnames, outofbounds_colnames
+# 
+#         table = self.table
+# 
+#         # build a record hashes as ids:
+#         evid, staid, recid = self._get_ids(csvrow)
+#         csvrow['event_id'] = evid
+#         csvrow['station_id'] = staid
+#         # do not use record id, rather an incremental integer:
+#         csvrow['record_id'] = table.attrs._current_row_id
+#         table.attrs._current_row_id += 1
+# 
+#         # write sa periods (if not already written):
+#         try:
+#             table.attrs.sa_periods
+#         except AttributeError:
+#             table.attrs.sa_periods = np.asarray(sa_periods, dtype=float)
+# 
+#         tablerow = table.row
+# 
+#         for col, colobj in tablerow.table.coldescrs.items():
+#             if col not in csvrow:
+#                 missing_colnames.append(col)
+#                 continue
+#             try:
+#                 # remember: if val is a castable string -> ok
+#                 #   (e.g. table column float, val is '5.5' or '5.5 ')
+#                 # if val is out of bounds for the specific type, -> ok
+#                 #   (casted to the closest value)
+#                 # if val is scalar and the table column is a N length array,
+#                 # val it is broadcasted
+#                 #   (val= 5, then tablerow will have a np.array of N 5s)
+#                 # TypeError is raised when there is a non castable element
+#                 #   (e.g. 'abc' or '' for a Float column): in this case pass
+#                 tablerow[col] = csvrow[col]
+# 
+#                 bound = getattr(colobj, 'min_value', None)
+#                 if bound is not None and \
+#                         (np.asarray(tablerow[col]) < bound).any():
+#                     tablerow[col] = colobj.dflt
+#                     outofbounds_colnames.append(col)
+#                     continue
+# 
+#                 bound = getattr(colobj, 'max_value', None)
+#                 if bound is not None and \
+#                         (np.asarray(tablerow[col]) > bound).any():
+#                     tablerow[col] = colobj.dflt
+#                     outofbounds_colnames.append(col)
+#                     continue  # actually useless, but if we add code below ...
+# 
+#             except (ValueError, TypeError):
+#                 if isinstance(csvrow[col], (str, bytes)) and \
+#                         csvrow[col] in ('', b''):
+#                     missing_colnames.append(col)
+#                 else:
+#                     bad_colnames.append(col)
+# 
+#         tablerow.append()  # pylint: disable=no-member
+#         table.flush()
+# 
+#         return True, missing_colnames, bad_colnames, outofbounds_colnames
 
-            :param sa_periods: a **monotonically increasing** numeric array of
-                the periods (x values) for the SA
-            :param has_imt_components: boolean telling if this table supports
-                imts with components, i.e. for each IMT a 3-length vector
-                is asslocated where to store the imt components (two horizontal
-                and vertical, in this order). The SA will be stored as a
-                [3 X len(sa_periods)] matrix, in case
-        '''
-        try:
-            table = self.table  # table exists, overwrite
-            self._h5file.remove_node(table, recursive=True)
-        except NoSuchNodeError:
-            pass
-
-        comps = {}
-        sa_length = len(sa_periods)
-        comps['sa'] = Float64Col(shape=(sa_length,))
-        if has_imt_components:
-            comps = {comp + '_components': Float64Col(shape=(3,))
-                     for comp in ('pga', 'pgv', 'sa', 'pgd', 'duration_5_75',
-                                  'duration_5_95', 'arias_intensity', 'cav')}
-            comps['sa_components'] = Float64Col(shape=(3, sa_length))
-
-        # add internal ids (populated automatically for each written record):
-        comps['record_id'] = UInt32Col()  # max id: 4,294,967,295
-        comps['station_id'] = StringCol(itemsize=20)
-        comps['event_id'] = StringCol(20)
-
-        desc = dict(GMTableDescription, **comps)
-        self._table = table = self._h5file.create_table(self._root, "table",
-                                                        description=desc)
-        table.attrs.sa_periods = np.asarray(sa_periods, dtype=float)
-        table.attrs._current_row_id = 1
-        table.attrs.filename = os.path.basename(self.filepath)
-        table.attrs._has_imt_components = has_imt_components
-        return self
-
-    def write_record(self, csvrow, sa_periods):
-        '''writes the content of `csvrow` into tablerow  on the table mapped
-        to this object in the undelrying HDF file, which must be open
-        (i.e., the user must be inside a with statement) in write mode.
-
-        NOTE: `self.create_table` must have been called ONCE prior to this
-            method call
-
-        Returns the tuple:
-        ```written, missing_colnames, bad_colnames, outofbounds_colnames```
-        where the last three elements are lists of strings (the record
-        column names under the given categories) and the first element is a
-        boolean inicating if the record has been written. A record might not
-        been written if the sanity check did not pass
-
-        :param csvrow: a dict representing a record, usually read froma  csv
-        file.
-        '''
-        # NOTE: if parsed from a csv reader (the usual case),
-        # values of `csvrow` the dict are all strings
-        missing_colnames, bad_colnames, outofbounds_colnames = [], [], []
-        if not self._sanity_check(csvrow):
-            return False, missing_colnames, bad_colnames, outofbounds_colnames
-
-        table = self.table
-
-        # build a record hashes as ids:
-        evid, staid, recid = self._get_ids(csvrow)
-        csvrow['event_id'] = evid
-        csvrow['station_id'] = staid
-        # do not use record id, rather an incremental integer:
-        csvrow['record_id'] = table.attrs._current_row_id
-        table.attrs._current_row_id += 1
-
-        # write sa periods (if not already written):
-        try:
-            table.attrs.sa_periods
-        except AttributeError:
-            table.attrs.sa_periods = np.asarray(sa_periods, dtype=float)
-
-        tablerow = table.row
-
-        for col, colobj in tablerow.table.coldescrs.items():
-            if col not in csvrow:
-                missing_colnames.append(col)
-                continue
-            try:
-                # remember: if val is a castable string -> ok
-                #   (e.g. table column float, val is '5.5' or '5.5 ')
-                # if val is out of bounds for the specific type, -> ok
-                #   (casted to the closest value)
-                # if val is scalar and the table column is a N length array,
-                # val it is broadcasted
-                #   (val= 5, then tablerow will have a np.array of N 5s)
-                # TypeError is raised when there is a non castable element
-                #   (e.g. 'abc' or '' for a Float column): in this case pass
-                tablerow[col] = csvrow[col]
-
-                bound = getattr(colobj, 'min_value', None)
-                if bound is not None and \
-                        (np.asarray(tablerow[col]) < bound).any():
-                    tablerow[col] = colobj.dflt
-                    outofbounds_colnames.append(col)
-                    continue
-
-                bound = getattr(colobj, 'max_value', None)
-                if bound is not None and \
-                        (np.asarray(tablerow[col]) > bound).any():
-                    tablerow[col] = colobj.dflt
-                    outofbounds_colnames.append(col)
-                    continue  # actually useless, but if we add code below ...
-
-            except (ValueError, TypeError):
-                if isinstance(csvrow[col], (str, bytes)) and \
-                        csvrow[col] in ('', b''):
-                    missing_colnames.append(col)
-                else:
-                    bad_colnames.append(col)
-
-        tablerow.append()  # pylint: disable=no-member
-        table.flush()
-
-        return True, missing_colnames, bad_colnames, outofbounds_colnames
-
-    @classmethod
-    def _sanity_check(cls, csvrow):
-        '''performs sanity checks on the dict `csvrow` before
-        writing it. Note that  pytables does not support roll backs,
-        and when closing the file pending data is automatically flushed.
-        Therefore, the data has to be checked before, on the csv row
-
-        :param csvrow: a row of a parsed csv file representing a record to add
-        '''
-        # for the moment, just do a pga/sa[0] check for unit consistency
-        # other methods might be added in the future
-        return cls._pga_sa_unit_ok(csvrow)
-
-    @classmethod
-    def _pga_sa_unit_ok(cls, csvrow):
-        '''Checks that pga unit and sa unit are in accordance
-
-        :param csvrow: a row of a parsed csv file representing a record to add
-        '''
-        # if the PGA and the acceleration in the shortest period of the SA
-        # columns differ by more than an order of magnitude then certainly
-        # there is something wrong and the units of the PGA and SA are not
-        # in agreement and an error should be raised.
-        try:
-            pga, sa0 = float(csvrow['pga']), float(csvrow['sa'][0])
-            retol = abs(max(pga, sa0) / min(pga, sa0))
-            if not np.isnan(retol) and round(retol) >= 10:
-                return False
-        except Exception as _:  # disable=broad-except
-            # it might seem weird to return true on exceptions, but this method
-            # should only check wheather there is certainly a unit
-            # mismatch between sa and pga, when they are given (i.e., not in
-            # this case)
-            pass
-        return True
+#     @classmethod
+#     def _sanity_check(cls, csvrow):
+#         '''performs sanity checks on the dict `csvrow` before
+#         writing it. Note that  pytables does not support roll backs,
+#         and when closing the file pending data is automatically flushed.
+#         Therefore, the data has to be checked before, on the csv row
+# 
+#         :param csvrow: a row of a parsed csv file representing a record to add
+#         '''
+#         # for the moment, just do a pga/sa[0] check for unit consistency
+#         # other methods might be added in the future
+#         return cls._pga_sa_unit_ok(csvrow)
+# 
+#     @classmethod
+#     def _pga_sa_unit_ok(cls, csvrow):
+#         '''Checks that pga unit and sa unit are in accordance
+# 
+#         :param csvrow: a row of a parsed csv file representing a record to add
+#         '''
+#         # if the PGA and the acceleration in the shortest period of the SA
+#         # columns differ by more than an order of magnitude then certainly
+#         # there is something wrong and the units of the PGA and SA are not
+#         # in agreement and an error should be raised.
+#         try:
+#             pga, sa0 = float(csvrow['pga']), float(csvrow['sa'][0])
+#             retol = abs(max(pga, sa0) / min(pga, sa0))
+#             if not np.isnan(retol) and round(retol) >= 10:
+#                 return False
+#         except Exception as _:  # disable=broad-except
+#             # it might seem weird to return true on exceptions, but this method
+#             # should only check wheather there is certainly a unit
+#             # mismatch between sa and pga, when they are given (i.e., not in
+#             # this case)
+#             pass
+#         return True
 
     @property
     def table(self):
@@ -1185,63 +1525,63 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
     def _fullpath(self, path):
         return "%s/%s" % (self._root, path)
 
-    def _get_ids(self, csvrow):
-        '''Returns the tuple record_id, event_id and station_id from
-        the given HDF5 row `csvrow`'''
-        # FIXME: record_id (recid) NOT USED: remove?
-        dbname = self.dbname
-        toint = self._toint
-        ids = (dbname,
-               toint(csvrow['pga'], 0),  # (first two decimals of pga in g)
-               toint(csvrow['event_longitude'], 5),
-               toint(csvrow['event_latitude'], 5),
-               toint(csvrow['hypocenter_depth'], 3),
-               csvrow['event_time'],
-               toint(csvrow['station_longitude'], 5),
-               toint(csvrow['station_latitude'], 5))
-        # return event_id, station_id, record_id:
-        evid, staid, recid = \
-            self._hash(*ids[2:6]), self._hash(*ids[6:]), self._hash(*ids)
-        return evid, staid, recid
-
-    @classmethod
-    def _toint(cls, value, decimals):
-        '''returns an integer by multiplying value * 10^decimals
-        and rounding the result to int. Returns nan if value is nan'''
-        try:
-            value = float(value)
-        except ValueError:
-            value = float('nan')
-        return value if np.isnan(value) else \
-            int(round((10**decimals)*value))
-
-    @classmethod
-    def _hash(cls, *values):
-        '''generates a 160bit (20bytes) hash bytestring which uniquely
-        identifies the given tuple of `values`.
-        The returned string is assured to be the same for equal `values`
-        tuples (note that the order of values matters).
-        Conversely, the probability of colliding hashes, i.e., returning
-        the same bytestring for two different tuples of values, is 1 in
-        100 billion for roughly 19000 hashes (roughly 10 flatfiles with
-        all different records), and apporaches 50% for for 1.42e24 hashes
-        generated (for info, see
-        https://preshing.com/20110504/hash-collision-probabilities/#small-collision-probabilities)
-
-        :param values: a list of values, either bytes, str or numeric
-            (no support for other values sofar)
-        '''
-        hashalg = hashlib.sha1()
-        # use the slash as separator as it is unlikely to be in value(s):
-        hashalg.update(b'/'.join(cls._tobytestr(v) for v in values))
-        return hashalg.digest()
-
-    @classmethod
-    def _tobytestr(cls, value):
-        '''converts a value to bytes. value can be bytes, str or numeric'''
-        if not isinstance(value, bytes):
-            value = str(value).encode('utf8')
-        return value
+#     def _get_ids(self, csvrow):
+#         '''Returns the tuple record_id, event_id and station_id from
+#         the given HDF5 row `csvrow`'''
+#         # FIXME: record_id (recid) NOT USED: remove?
+#         dbname = self.dbname
+#         toint = self._toint
+#         ids = (dbname,
+#                toint(csvrow['pga'], 0),  # (first two decimals of pga in g)
+#                toint(csvrow['event_longitude'], 5),
+#                toint(csvrow['event_latitude'], 5),
+#                toint(csvrow['hypocenter_depth'], 3),
+#                csvrow['event_time'],
+#                toint(csvrow['station_longitude'], 5),
+#                toint(csvrow['station_latitude'], 5))
+#         # return event_id, station_id, record_id:
+#         evid, staid, recid = \
+#             self._hash(*ids[2:6]), self._hash(*ids[6:]), self._hash(*ids)
+#         return evid, staid, recid
+# 
+#     @classmethod
+#     def _toint(cls, value, decimals):
+#         '''returns an integer by multiplying value * 10^decimals
+#         and rounding the result to int. Returns nan if value is nan'''
+#         try:
+#             value = float(value)
+#         except ValueError:
+#             value = float('nan')
+#         return value if np.isnan(value) else \
+#             int(round((10**decimals)*value))
+# 
+#     @classmethod
+#     def _hash(cls, *values):
+#         '''generates a 160bit (20bytes) hash bytestring which uniquely
+#         identifies the given tuple of `values`.
+#         The returned string is assured to be the same for equal `values`
+#         tuples (note that the order of values matters).
+#         Conversely, the probability of colliding hashes, i.e., returning
+#         the same bytestring for two different tuples of values, is 1 in
+#         100 billion for roughly 19000 hashes (roughly 10 flatfiles with
+#         all different records), and apporaches 50% for for 1.42e24 hashes
+#         generated (for info, see
+#         https://preshing.com/20110504/hash-collision-probabilities/#small-collision-probabilities)
+# 
+#         :param values: a list of values, either bytes, str or numeric
+#             (no support for other values sofar)
+#         '''
+#         hashalg = hashlib.sha1()
+#         # use the slash as separator as it is unlikely to be in value(s):
+#         hashalg.update(b'/'.join(cls._tobytestr(v) for v in values))
+#         return hashalg.digest()
+# 
+#     @classmethod
+#     def _tobytestr(cls, value):
+#         '''converts a value to bytes. value can be bytes, str or numeric'''
+#         if not isinstance(value, bytes):
+#             value = str(value).encode('utf8')
+#         return value
 
     ###########################################################
     # IMPLEMENTS ResidualsCompliantRecordSet ABSTRACT METHODS #
