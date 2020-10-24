@@ -270,15 +270,21 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
             with the column default, which is usually NaN for floats, the
             minimum possible value for integers, the empty string for strings.
         '''
+        if dbname is None:
+            dbname = os.path.splitext(os.path.basename(flatfile_path))[0]
+
         i, error, missing, bad, outofbound = \
             0, [], defaultdict(int), defaultdict(int), defaultdict(int)
 
+        # iterate over the first row element to get sa_periods and build
+        # the table:
         rows = cls._rows(flatfile_path, delimiter)
         for rowdict, sa_periods in rows:
             break
 
-        with gettable(output_path, "w", dbname, sa_periods,
-                      cls.has_imt_components) as table:
+        with get_table(output_path, "w", dbname, sa_periods,
+                       cls.has_imt_components) as table:
+            # iterate over all rows but first process also the row above:
             iter_ = enumerate(chain([(rowdict, sa_periods)], rows))
             for i, (rowdict, sa_periods) in iter_:
 
@@ -458,7 +464,7 @@ class GMTableParser(object):  # pylint: disable=useless-object-inheritance
 
 
 @contextmanager
-def openfile(filepath, mode):
+def open_file(filepath, mode):
     '''
     Returns the hdf5file form path
 
@@ -505,14 +511,15 @@ def openfile(filepath, mode):
 
 
 @contextmanager
-def gettable(filepath, mode, name=None, sa_periods=None,
-             has_imt_components=False):
+def get_table(filepath, mode, name=None, sa_periods=None,
+              has_imt_components=False):
     '''
     Returns the table form path
 
     mode: 'w', 'r', 'a' (a not tested)
     sa_periods must be given if mode='w'
-    name=None: basename(filepath) woithout extension
+    name=None: => it assumes there is only one group in the hdf file with a
+        nested table (otherwise raises)
 
     OLD DOC:
 
@@ -531,22 +538,27 @@ def gettable(filepath, mode, name=None, sa_periods=None,
         and the table was not found in `filepath`, IOError if the
         file does not exist
     '''
-    if name is None:
-        name = os.path.splitext(os.path.basename(filepath))[0]
+    with open_file(filepath, mode) as h5file:
 
-    with openfile(filepath, mode) as h5file:
-
-        rootpath = f"/{name}"
-        try:
-            group = h5file.get_node(rootpath, classname=Group.__name__)
-            if mode == 'w':
-                for node in group:  # make group empty
-                    h5file.remove_node(node, recursive=True)
-        except NoSuchNodeError as _:
-            if mode == 'r':
-                raise
-            # create group node
-            group = h5file.create_group(h5file.root, name)
+        rootpath = None
+        if name is None:
+            rootpaths = get_dbnames(h5file, fullpath=True)
+            if len(rootpaths) > 0:
+                raise ValueError('Found more than one direct root child: '
+                                 'cannot infer the table')
+            rootpath = rootpaths[0]
+        else:
+            rootpath = f"/{name}"
+            try:
+                group = h5file.get_node(rootpath, classname=Group.__name__)
+                if mode == 'w':
+                    for node in group:  # make group empty
+                        h5file.remove_node(node, recursive=True)
+            except NoSuchNodeError as _:
+                if mode == 'r':
+                    raise
+                # create group node
+                group = h5file.create_group(h5file.root, name)
 
         tablepath = f"{rootpath}/table"
         try:
@@ -555,14 +567,8 @@ def gettable(filepath, mode, name=None, sa_periods=None,
                 raise ValueError('Table should not exists in "w" mode, it '
                                  'probably could not be deleted. Retry or '
                                  'delete the file manually')
-            try:
-                # sanity check: is it (most likely) a GroundMotionTable?
-                table.attrs.sa_periods
-                table.attrs._current_row_id
-                table.attrs._has_imt_components
-            except AttributeError:
-                raise ValueError(f'The node "{tablepath}" seems not to be '
-                                 'a valid GroundMotionTable')
+            # call _get_table_attrs as sanity check:
+            _get_table_attrs(table)  # if it raises => invalid table
 
         except NoSuchNodeError as _:
             if mode == 'r':
@@ -579,6 +585,18 @@ def gettable(filepath, mode, name=None, sa_periods=None,
 
         if mode != 'r':
             table.flush()
+
+
+def _get_table_attrs(table):
+    ''' returns sa_periods and has_imt_components. Raises if the table
+    has not attributes (can be used also as sanity check)'''
+    try:
+        # sanity check: is it (most likely) a GroundMotionTable?
+        table.attrs._current_row_id
+        return table.attrs.sa_periods, table.attrs._has_imt_components
+    except AttributeError:
+        raise ValueError(f'The node "{table._v_name}" seems not to be '
+                         'a valid GroundMotionTable')
 
 
 def _create_table(h5file, rootpath, sa_periods, has_imt_components=False):
@@ -621,7 +639,7 @@ def _create_table(h5file, rootpath, sa_periods, has_imt_components=False):
     table.attrs._current_row_id = 1
     #  table.attrs.filename = os.path.basename(self.filepath)
     table.attrs._has_imt_components = has_imt_components
-    return self
+    return table
 
 
 def write_record(table, csvrow, sa_periods, flush=False):
@@ -649,7 +667,8 @@ def write_record(table, csvrow, sa_periods, flush=False):
         return False, missing_colnames, bad_colnames, outofbounds_colnames
 
     # build a record hashes as ids:
-    evid, staid, recid = _get_ids(csvrow)
+    evid, staid, recid = _get_ids(table._v_pathname or table.attrs._v__nodepath,
+                                  csvrow)
     csvrow['event_id'] = evid
     csvrow['station_id'] = staid
     # do not use record id, rather an incremental integer:
@@ -802,30 +821,53 @@ def _tobytestr(value):
 
 
 #########################################
-# Database selection / maniuplation
+# Database selection / manipulation
 #########################################
 
 
-def get_dbnames(filepath):
-    '''Returns he database names of the given Gm database (HDF5 file)
-    The file should have been created with the `GMTableParser.parse`
+def get_dbnames(h5file_or_filepath, fullpath=False):
+    '''Returns a list of the database names (or full paths) of the given
+    HDF5 file which must have been created with the `GMTableParser.parse`
     method.
 
-    :param filepath: the path to the HDF5 file
+    :param h5file_or_filepath: the path to the HDF5 file or a h5file object
+        created with `tables.open_file`
     :return: a list of strings identyfying the database names in the file
     '''
-    with tables.open_file(filepath, 'r') as h5file:
-        root = h5file.get_node('/')
-        return [group._v_name for group in  # pylint: disable=protected-access
-                h5file.list_nodes(root, classname=Group.__name__)]
-        # note: h5file.walk_groups() might raise a ClosedNodeError.
-        # This error is badly documented (as much pytables stuff),
-        # the only mention is (pytables pdf doc): "CloseNodeError: The
-        # operation can not be completed because the node is closed. For
-        # instance, listing the children of a closed group is not allowed".
-        # I suspect it deals with groups deleted / overwritten and the way
-        # hdf5 files mark portions of files to be "empty". However,
-        # the list_nodes above seems not to raise anymore
+    if isinstance(h5file_or_filepath, (str, bytes)):
+        with tables.open_file(h5file_or_filepath, 'r') as h5file:
+            return _get_dbnames(h5file, fullpath)
+    return _get_dbnames(h5file_or_filepath, fullpath)
+
+
+def _get_dbnames(h5file, fullpath=False):
+    ret = []
+    for group in h5file.list_nodes('/', classname=Group.__name__):
+        # for other att info, see:
+        # https://www.pytables.org/usersguide/libref/hierarchy_classes.html#tables.Node
+        ret.append(group._v_pathname if fullpath else group._v_name)
+    # note: h5file.walk_groups() might raise a ClosedNodeError.
+    # This error is badly documented (as much pytables stuff),
+    # the only mention is (pytables pdf doc): "CloseNodeError: The
+    # operation can not be completed because the node is closed. For
+    # instance, listing the children of a closed group is not allowed".
+    # I suspect it deals with groups deleted / overwritten and the way
+    # hdf5 files mark portions of files to be "empty". However,
+    # the list_nodes above seems not to raise anymore
+    return ret
+
+
+def del_table(filepath, dbname):
+    '''Deletes the HDF data related to this table stored in the underlying
+    HDF file. USE WITH CARE. Example:
+        del_table(filepath, dbname, 'w').delete()
+    '''
+    with open_file(filepath, 'a') as h5file:
+        h5file.remove_node(f'/{dbname}', recursive=True)
+
+
+rm_table = del_table
+rm_table.__doc__ = '(Alias for `del_table`) ' + rm_table.__doc__
 
 
 def records_where(table, condition, limit=None):
@@ -1085,15 +1127,15 @@ def _syntaxerr(message, token):
 ##########################################
 
 
-def raises_if_file_is_open(meth):
-    '''decorator to be attached to the methods of GroundMotionTable
-    requiring the underlying hdf file not to be opened'''
-    def wrapped(self, *args, **kwargs):
-        if self.is_open:
-            raise ValueError('Underlying HDF file is open. Did you call '
-                             'the method inside a `with` statement?')
-        return meth(self, *args, **kwargs)
-    return wrapped
+# def raises_if_file_is_open(meth):
+#     '''decorator to be attached to the methods of GroundMotionTable
+#     requiring the underlying hdf file not to be opened'''
+#     def wrapped(self, *args, **kwargs):
+#         if self.is_open:
+#             raise ValueError('Underlying HDF file is open. Did you call '
+#                              'the method inside a `with` statement?')
+#         return meth(self, *args, **kwargs)
+#     return wrapped
 
 
 class GroundMotionTable(ResidualsCompliantRecordSet):
@@ -1111,8 +1153,11 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
     '''
     # TODO: in the future the two databases might inherit from a single
     # abstract class providing the functionalities of both
-    def __init__(self, filepath, dbname, mode='r'):
+    def __init__(self, filepath, dbname=None):
         '''
+        
+        OLD DOC:
+
         Creates a new database. The main functionality of a GroundMotionTable
         is to provide the contexts for the residuals calculations:
         ```
@@ -1146,27 +1191,42 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
         '''
         self.filepath = filepath
         self.dbname = dbname
-        self.mode = mode
-        self._root = '/%s' % dbname
+#         self.mode = mode
+#         self._root = '/%s' % dbname
         self._condition = None
-        self.__h5file = None
-        self._table = None
-        self._w_mark = None
+#         self.__h5file = None
+#         self._table = None
+#         self._w_mark = None
+        with self.table as table:
+            self._sa_periods, self._has_imt_components = \
+                _get_table_attrs(table)
+
+#     @property
+#     def is_open(self):
+#         return self.__h5file is not None
+# 
+#     @raises_if_file_is_open
+#     def delete(self):
+#         '''Deletes the HDF data related to this table stored in the underlying
+#         HDF file. USE WITH CARE. Example:
+#             GroundMotionTable(filepath, dbname, 'w').delete()
+#         '''
+#         with self:
+#             self._h5file.remove_node(self._root, recursive=True)
 
     @property
-    def is_open(self):
-        return self.__h5file is not None
+    def table(self):
+        '''Returns the underlying hdf file's table (underlying hdf file is
+        opened in 'r' mode). To be used in with statements'''
+        return get_table(self.filepath, 'r', self.dbname)
 
-    @raises_if_file_is_open
-    def delete(self):
-        '''Deletes the HDF data related to this table stored in the underlying
-        HDF file. USE WITH CARE. Example:
-            GroundMotionTable(filepath, dbname, 'w').delete()
-        '''
-        with self:
-            self._h5file.remove_node(self._root, recursive=True)
+    @property
+    def h5file(self):
+        '''Returns the underlying hdf file's pointer (in 'r' mode). To be used in with
+        statements'''
+        return open_file(self.filepath, 'r', self.dbname)
 
-    @raises_if_file_is_open
+#    @raises_if_file_is_open
     def filter(self, condition):
         '''Returns a read-only copy of this database filtered according to
         the given condition (numexpr expression on the database scalar
@@ -1197,103 +1257,103 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
             filtered_gmdb = GroundMotionTable(...).filter(condition)
         ```
         '''
-        gmdb = GroundMotionTable(self.filepath, self.dbname, 'r')
+        gmdb = GroundMotionTable(self.filepath, self.dbname)
         gmdb._condition = condition  # pylint: disable=protected-access
         return gmdb
 
-    @raises_if_file_is_open
-    def __enter__(self):
-        '''Yields a pytable Group object representing a Gm database
-        in the given hdf5 file `filepath`. If such a group does not exist
-        and mode is 'w', creates the group. In any other case
-        where such  a group does not exist, raises a :class:`NoSuchNodeError`
+#     @raises_if_file_is_open
+#     def __enter__(self):
+#         '''Yields a pytable Group object representing a Gm database
+#         in the given hdf5 file `filepath`. If such a group does not exist
+#         and mode is 'w', creates the group. In any other case
+#         where such  a group does not exist, raises a :class:`NoSuchNodeError`
+# 
+#         Example:
+#         ```
+#             with GroundMotionTable(filepath, name, 'r') as dbase:
+#                 # ... do your operation here
+#         ```
+# 
+#         :raises: :class:`tables.exceptions.NoSuchNodeError` if mode is 'r'
+#             and the table was not found in `filepath`, IOError if the
+#             file does not exist
+#         '''
+#         filepath, mode, name = self.filepath, self.mode, self.dbname
+#         h5file = self.__h5file = \
+#             tables.open_file(filepath, mode if mode == 'r' else 'a')
+#         if mode == 'w':
+#             h5file.enable_undo()
+#             self._w_mark = h5file.mark()
+# 
+#         grouppath = self._root
+#         try:
+#             group = h5file.get_node(grouppath, classname=Group.__name__)
+#             if mode == 'w':
+#                 for node in group:  # make group empty
+#                     h5file.remove_node(node, recursive=True)
+#         except NoSuchNodeError as _:
+#             if mode == 'r':
+#                 raise
+#             # create group node
+#             group = h5file.create_group(h5file.root, name)
+# 
+#         return self
+# 
+#     def __exit__(self, exc_type, exc_val, exc_tb):
+#         # make sure the dbconnection gets closed
+#         if self.__h5file is not None:
+#             if exc_val is not None and self._w_mark is not None:
+#                 self.__h5file.undo(self._w_mark)
+#             if self.__h5file.is_undo_enabled():
+#                 self.__h5file.disable_undo()
+#             self.__h5file.close()
+#         self.__h5file = None
+#         self._table = None
+#         self._w_mark = None
 
-        Example:
-        ```
-            with GroundMotionTable(filepath, name, 'r') as dbase:
-                # ... do your operation here
-        ```
-
-        :raises: :class:`tables.exceptions.NoSuchNodeError` if mode is 'r'
-            and the table was not found in `filepath`, IOError if the
-            file does not exist
-        '''
-        filepath, mode, name = self.filepath, self.mode, self.dbname
-        h5file = self.__h5file = \
-            tables.open_file(filepath, mode if mode == 'r' else 'a')
-        if mode == 'w':
-            h5file.enable_undo()
-            self._w_mark = h5file.mark()
-
-        grouppath = self._root
-        try:
-            group = h5file.get_node(grouppath, classname=Group.__name__)
-            if mode == 'w':
-                for node in group:  # make group empty
-                    h5file.remove_node(node, recursive=True)
-        except NoSuchNodeError as _:
-            if mode == 'r':
-                raise
-            # create group node
-            group = h5file.create_group(h5file.root, name)
-
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        # make sure the dbconnection gets closed
-        if self.__h5file is not None:
-            if exc_val is not None and self._w_mark is not None:
-                self.__h5file.undo(self._w_mark)
-            if self.__h5file.is_undo_enabled():
-                self.__h5file.disable_undo()
-            self.__h5file.close()
-        self.__h5file = None
-        self._table = None
-        self._w_mark = None
-
-    def get_array(self, relative_path):
-        '''
-        Returns a saved array saved on the
-        undelrying HDF file, which must be open (i.e., the user must be
-        inside a with statement). Raises a :class:`NoSuchNode` if the
-        path does not exist
-
-        :param relative_path: string, the path of the group relative to
-            the path of the undelrying database storage.
-            E.g. 'my/arrays/array_1'
-        '''
-        path = self._fullpath(relative_path)
-        return self._h5file.get_node("/".join(path[:-1]), path[-1]).read()
-
-    def get_group(self, relative_path, create=True):
-        '''
-        Returns the given Group (HDF directory-like structure) from the
-        undelrying HDF file, which must be open (i.e., the user must be
-        inside a with statement)
- 
-        :param relative_path: string, the path of the group relative to
-            the path of the undelrying database storage. E.g. 'my/arrays'
-        :param create: boolean (defaault: True) whether to create the group
-            (and all its ancestors) if it does not exists. If False, and
-            the group does not exists, a :class:`NoSuchNode` exception is
-            raised
-        '''
-        try:
-            fullpath = self._fullpath(relative_path)
-            return self._h5file.get_node(fullpath,
-                                         Group.__name__)
-        except NoSuchNodeError:
-            if not create:
-                raise
-            node = self._h5file.get_node(self._root,
-                                         classname=Group.__name__)
-            for path in relative_path.split('/'):
-                if path not in node:
-                    node = self._h5file.create_group(node, path)
-                else:
-                    node = self._h5file.get_node(node, path,
-                                                 classname=Group.__name__)
-            return node
+#     def get_array(self, relative_path):
+#         '''
+#         Returns a saved array saved on the
+#         undelrying HDF file, which must be open (i.e., the user must be
+#         inside a with statement). Raises a :class:`NoSuchNode` if the
+#         path does not exist
+# 
+#         :param relative_path: string, the path of the group relative to
+#             the path of the undelrying database storage.
+#             E.g. 'my/arrays/array_1'
+#         '''
+#         path = self._fullpath(relative_path)
+#         return self._h5file.get_node("/".join(path[:-1]), path[-1]).read()
+# 
+#     def get_group(self, relative_path, create=True):
+#         '''
+#         Returns the given Group (HDF directory-like structure) from the
+#         undelrying HDF file, which must be open (i.e., the user must be
+#         inside a with statement)
+#  
+#         :param relative_path: string, the path of the group relative to
+#             the path of the undelrying database storage. E.g. 'my/arrays'
+#         :param create: boolean (defaault: True) whether to create the group
+#             (and all its ancestors) if it does not exists. If False, and
+#             the group does not exists, a :class:`NoSuchNode` exception is
+#             raised
+#         '''
+#         try:
+#             fullpath = self._fullpath(relative_path)
+#             return self._h5file.get_node(fullpath,
+#                                          Group.__name__)
+#         except NoSuchNodeError:
+#             if not create:
+#                 raise
+#             node = self._h5file.get_node(self._root,
+#                                          classname=Group.__name__)
+#             for path in relative_path.split('/'):
+#                 if path not in node:
+#                     node = self._h5file.create_group(node, path)
+#                 else:
+#                     node = self._h5file.get_node(node, path,
+#                                                  classname=Group.__name__)
+#             return node
 
 #     def create_table(self, sa_periods, has_imt_components=False):
 #         '''
@@ -1462,68 +1522,69 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
 #             pass
 #         return True
 
-    @property
-    def table(self):
-        '''Returns the underlying hdf file's table'''
-        tab = self._table
-        if self._table is None:
-            tablepath = "%s/%s" % (self._root, "table")
-            tab = self._table = self._h5file.get_node(tablepath,
-                                                      classname=Table.__name__)
-        return tab
+#         tab = self._table
+#         if self._table is None:
+#             tablepath = "%s/%s" % (self._root, "table")
+#             tab = self._table = self._h5file.get_node(tablepath,
+#                                                       classname=Table.__name__)
+#         return tab
 
-    def attrnames(self, key='user'):
-        '''Returns this object attribute names, i.e. the attribute
-            names of the underlying pytables table attributes object:
-            `self.table.attrs`.
-            The table attributes are intended to be read only, modify them
-            only if you know what you are doing
-
-        :param key: string in ('sys', 'user', 'all'), default: 'user'.
-            'user' returns the user-defined attributes set e.g. by this object
-            during creation. 'sys' returns the system attributes, **which
-            should never be modified**. 'all' returns all attributes
-        '''
-        return self.table.attrs._f_list(key)
-
-    def write_array(self, relative_path, values, create_path=True):
-        '''
-        Writes the given array on the group mapped to this object in the
-        undelrying HDF file, which must be open (i.e., the user must be
-        inside a with statement) in write mode
-
-        :param relative_path: string, the path of the group relative to
-            the path of the undelrying database storage.
-            E.g. 'my/arrays/array_1'
-        :param values: the array to be saved. The value saved to the HDF
-            file will be `numpy.asarray(values)`
-        :param create_path: boolean (defaault: True) whether to create the
-            array path (and all its ancestors) if it does not exists. If False,
-            and the path does not exists, a :class:`NoSuchNode` exception is
-            raised
-        '''
-        # TODO: Currently NOT USED. For future potential development
-        _splitpath = relative_path.split('/')
-        group = self.get_group("/".join(_splitpath[:-1]), create_path)
-        self._h5file.create_array(group, _splitpath[-1],
-                                  obj=np.asarray(values))
+#     def attrnames(self, key='user'):
+#         '''Returns this object attribute names, i.e. the attribute
+#             names of the underlying pytables table attributes object:
+#             `self.table.attrs`.
+#             The table attributes are intended to be read only, modify them
+#             only if you know what you are doing
+# 
+#         :param key: string in ('sys', 'user', 'all'), default: 'user'.
+#             'user' returns the user-defined attributes set e.g. by this object
+#             during creation. 'sys' returns the system attributes, **which
+#             should never be modified**. 'all' returns all attributes
+#         '''
+#         return self.table.attrs._f_list(key)
+# 
+#     def write_array(self, relative_path, values, create_path=True):
+#         '''
+#         Writes the given array on the group mapped to this object in the
+#         undelrying HDF file, which must be open (i.e., the user must be
+#         inside a with statement) in write mode
+# 
+#         :param relative_path: string, the path of the group relative to
+#             the path of the undelrying database storage.
+#             E.g. 'my/arrays/array_1'
+#         :param values: the array to be saved. The value saved to the HDF
+#             file will be `numpy.asarray(values)`
+#         :param create_path: boolean (defaault: True) whether to create the
+#             array path (and all its ancestors) if it does not exists. If False,
+#             and the path does not exists, a :class:`NoSuchNode` exception is
+#             raised
+#         '''
+#         # TODO: Currently NOT USED. For future potential development
+#         _splitpath = relative_path.split('/')
+#         group = self.get_group("/".join(_splitpath[:-1]), create_path)
+#         self._h5file.create_array(group, _splitpath[-1],
+#                                   obj=np.asarray(values))
 
     @property
     def has_imt_components(self):
-        return self.table.attrs._has_imt_components
+        return self._has_imt_components
+
+    @property
+    def sa_periods(self):
+        return self._sa_periods
 
     # ----- IO PRIVATE METHODS  ----- #
 
-    @property
-    def _h5file(self):
-        h5file = self.__h5file
-        if h5file is None:
-            raise ValueError('The underlying HDF5 file is not open. '
-                             'Are you inside a "with" statement?')
-        return h5file
-
-    def _fullpath(self, path):
-        return "%s/%s" % (self._root, path)
+#     @property
+#     def _h5file(self):
+#         h5file = self.__h5file
+#         if h5file is None:
+#             raise ValueError('The underlying HDF5 file is not open. '
+#                              'Are you inside a "with" statement?')
+#         return h5file
+# 
+#     def _fullpath(self, path):
+#         return "%s/%s" % (self._root, path)
 
 #     def _get_ids(self, csvrow):
 #         '''Returns the tuple record_id, event_id and station_id from
@@ -1587,19 +1648,22 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
     # IMPLEMENTS ResidualsCompliantRecordSet ABSTRACT METHODS #
     ###########################################################
 
-    @raises_if_file_is_open
-    def get_contexts(self, nodal_plane_index=1, imts=None,
-                     component="Geometric"):
-        """
-        Returns an iterable of dictionaries, each containing the site, distance
-        and rupture contexts for individual records
-        """
-        with self:
-            return super().get_contexts(nodal_plane_index, imts, component)
+#    @raises_if_file_is_open
+#     def get_contexts(self, nodal_plane_index=1, imts=None,
+#                      component="Geometric"):
+#         """
+#         Returns an iterable of dictionaries, each containing the site, distance
+#         and rupture contexts for individual records
+#         """
+#         with self:
+#             return super().get_contexts(nodal_plane_index, imts, component)
 
     @property
     def records(self):
-        '''Yields an iterator of the records according to the specified filter
+        '''
+        
+        OLD DOC:
+        Yields an iterator of the records according to the specified filter
         `condition`. The underlying HDF file (including each yielded record)
         must not be modified while accessing this property, and thus must
         be opened in read mode.
@@ -1610,7 +1674,9 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
                 ...
         ```
         '''
-        return records_where(self.table, self._condition)
+        with self.table as table:
+            for _ in records_where(table, self._condition):
+                yield _
 
     def get_record_eventid(self, record):
         '''Returns the record event id (usually int) of the given record'''
@@ -1727,7 +1793,7 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
         '''
         has_imt_components = self.has_imt_components
         scalar_func = SCALAR_XY[component]
-        sa_periods = self.table.attrs.sa_periods
+        sa_periods = self.sa_periods
         for imtx, values in observations.items():
             value = np.nan
             components = [np.nan, np.nan]

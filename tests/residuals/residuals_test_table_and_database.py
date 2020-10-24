@@ -51,7 +51,7 @@ class ResidualsTestCase(unittest.TestCase):
     """
     Core test case for the residuals objects
     """
-
+    
     @classmethod
     def setUpClass(cls):
         """
@@ -105,8 +105,8 @@ class ResidualsTestCase(unittest.TestCase):
         self.assertListEqual([rec.id for rec in self.database],
                              EXPECTED_IDS)
         # assert the table has also 41 elements:
-        with self.dbtable:  # open underlying HDF5 file
-            assert self.dbtable.table.nrows == 41
+        with self.dbtable.table as table:  # open underlying HDF5 file
+            assert table.nrows == 41
 
     def _check_residual_dictionary_correctness(self, res_dict):
         """
