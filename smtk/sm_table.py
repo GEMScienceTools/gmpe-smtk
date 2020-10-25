@@ -87,11 +87,11 @@ class Float16Col(_Float16Col):
 
 
 class DateTimeCol(_Float64Col):
-    '''subclasses pytables StringCol, to provide a storage class for date
+    '''subclasses pytables Float64Col to provide a storage class for date
     times in iso format. Use :method:`GmDatabaseParser.timestamp` before
     writing an element under this column (this is done by default for
     'event_time' flat files column). Also implements optional min max
-    attributes (to be given as byte strings in ISO format, in case)'''
+    attributes (to be given as strings in ISO format, in case)'''
     def __init__(self, shape=(), min=None, max=None):  # @ReservedAssignment
         super(DateTimeCol, self).__init__(shape=shape, dflt=np.nan)
         if min is not None:
@@ -516,7 +516,7 @@ def get_table(filepath, mode, name=None, sa_periods=None,
     '''
     Returns the table form path
 
-    mode: 'w', 'r', 'a' (a not tested)
+    mode: 'w', 'r', 'a'
     sa_periods must be given if mode='w'
     name=None: => it assumes there is only one group in the hdf file with a
         nested table (otherwise raises)
@@ -568,10 +568,10 @@ def get_table(filepath, mode, name=None, sa_periods=None,
                                  'probably could not be deleted. Retry or '
                                  'delete the file manually')
             # call _get_table_attrs as sanity check:
-            _get_table_attrs(table)  # if it raises => invalid table
+            _get_required_table_attrs(table)  # if it raises => invalid table
 
         except NoSuchNodeError as _:
-            if mode == 'r':
+            if mode != 'w':
                 raise
             if sa_periods is None:
                 raise ValueError("You need to provide 'sa_periods' in order "
@@ -587,16 +587,49 @@ def get_table(filepath, mode, name=None, sa_periods=None,
             table.flush()
 
 
-def _get_table_attrs(table):
-    ''' returns sa_periods and has_imt_components. Raises if the table
+def _get_required_table_attrs(table):
+    ''' 
+
+    OLD DOC:
+    returns sa_periods and has_imt_components. Raises if the table
     has not attributes (can be used also as sanity check)'''
+    # table._attrs is an AttributeSet object with several utilities. For info see:
+    # https://www.pytables.org/usersguide/libref/declarative_classes.html#the-attributeset-class
+#     try:
+#         # as this method could be used also as sanity check, check that there
+#         # are strictly necessary attrs, i.e. also _current_row_id
+#         # (used to set incrementally the record id, SQL-like)
+#         table.attrs._current_row_id
+#         return table.attrs.sa_periods, table.attrs._has_imt_components
+#     except AttributeError:
+#         raise ValueError(f'The node "{table._v_name}" seems not to be '
+#                          'a valid GroundMotionTable')
     try:
-        # sanity check: is it (most likely) a GroundMotionTable?
-        table.attrs._current_row_id
-        return table.attrs.sa_periods, table.attrs._has_imt_components
-    except AttributeError:
+        _ = get_table_attrs(table, names_only=False)
+        return _['_current_row_id'], _['sa_periods'], _['_has_imt_components']
+    except KeyError:
         raise ValueError(f'The node "{table._v_name}" seems not to be '
                          'a valid GroundMotionTable')
+
+
+def get_table_attrs(table, key='user', names_only=True):
+    '''
+    OLDODC:
+    Returns this object attribute names, i.e. the attribute
+        names of the underlying pytables table attributes object:
+        `self.table.attrs`.
+        The table attributes are intended to be read only, modify them
+        only if you know what you are doing
+
+    :param key: string in ('sys', 'user', 'all'), default: 'user'.
+        'user' returns the user-defined attributes set e.g. by this object
+        during creation. 'sys' returns the system attributes, **which
+        should never be modified**. 'all' returns all attributes
+    '''
+    attlist = table.attrs._f_list(key)
+    if names_only:
+        return attlist
+    return {a: getattr(table.attrs, a) for a in attlist}
 
 
 def _create_table(h5file, rootpath, sa_periods, has_imt_components=False):
@@ -768,11 +801,11 @@ def _get_ids(tablename, csvrow):
     the given HDF5 row `csvrow`'''
     # FIXME: record_id (recid) NOT USED: remove?
     ids = (tablename,
-           _toint(csvrow['pga'], 0),  # (first two decimals of pga in g)
+           _toint(csvrow['pga'], 0),  # should be in cm/s*2
            _toint(csvrow['event_longitude'], 5),
            _toint(csvrow['event_latitude'], 5),
            _toint(csvrow['hypocenter_depth'], 3),
-           csvrow['event_time'],
+           _toint(csvrow['event_time'], 0),  # timestamp in sec (float)
            _toint(csvrow['station_longitude'], 5),
            _toint(csvrow['station_latitude'], 5))
     # return event_id, station_id, record_id:
@@ -1122,20 +1155,10 @@ def _syntaxerr(message, token):
     return SyntaxError(message, ('', token_line_num, token_offset,
                                  token_line[:token_offset]))
 
+
 ##########################################
 # GroundMotionTable/ Residuals calculation
 ##########################################
-
-
-# def raises_if_file_is_open(meth):
-#     '''decorator to be attached to the methods of GroundMotionTable
-#     requiring the underlying hdf file not to be opened'''
-#     def wrapped(self, *args, **kwargs):
-#         if self.is_open:
-#             raise ValueError('Underlying HDF file is open. Did you call '
-#                              'the method inside a `with` statement?')
-#         return meth(self, *args, **kwargs)
-#     return wrapped
 
 
 class GroundMotionTable(ResidualsCompliantRecordSet):
@@ -1198,8 +1221,8 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
 #         self._table = None
 #         self._w_mark = None
         with self.table as table:
-            self._sa_periods, self._has_imt_components = \
-                _get_table_attrs(table)
+            _, self._sa_periods, self._has_imt_components = \
+                _get_required_table_attrs(table)
 
 #     @property
 #     def is_open(self):
@@ -1261,56 +1284,6 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
         gmdb._condition = condition  # pylint: disable=protected-access
         return gmdb
 
-#     @raises_if_file_is_open
-#     def __enter__(self):
-#         '''Yields a pytable Group object representing a Gm database
-#         in the given hdf5 file `filepath`. If such a group does not exist
-#         and mode is 'w', creates the group. In any other case
-#         where such  a group does not exist, raises a :class:`NoSuchNodeError`
-# 
-#         Example:
-#         ```
-#             with GroundMotionTable(filepath, name, 'r') as dbase:
-#                 # ... do your operation here
-#         ```
-# 
-#         :raises: :class:`tables.exceptions.NoSuchNodeError` if mode is 'r'
-#             and the table was not found in `filepath`, IOError if the
-#             file does not exist
-#         '''
-#         filepath, mode, name = self.filepath, self.mode, self.dbname
-#         h5file = self.__h5file = \
-#             tables.open_file(filepath, mode if mode == 'r' else 'a')
-#         if mode == 'w':
-#             h5file.enable_undo()
-#             self._w_mark = h5file.mark()
-# 
-#         grouppath = self._root
-#         try:
-#             group = h5file.get_node(grouppath, classname=Group.__name__)
-#             if mode == 'w':
-#                 for node in group:  # make group empty
-#                     h5file.remove_node(node, recursive=True)
-#         except NoSuchNodeError as _:
-#             if mode == 'r':
-#                 raise
-#             # create group node
-#             group = h5file.create_group(h5file.root, name)
-# 
-#         return self
-# 
-#     def __exit__(self, exc_type, exc_val, exc_tb):
-#         # make sure the dbconnection gets closed
-#         if self.__h5file is not None:
-#             if exc_val is not None and self._w_mark is not None:
-#                 self.__h5file.undo(self._w_mark)
-#             if self.__h5file.is_undo_enabled():
-#                 self.__h5file.disable_undo()
-#             self.__h5file.close()
-#         self.__h5file = None
-#         self._table = None
-#         self._w_mark = None
-
 #     def get_array(self, relative_path):
 #         '''
 #         Returns a saved array saved on the
@@ -1324,6 +1297,7 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
 #         '''
 #         path = self._fullpath(relative_path)
 #         return self._h5file.get_node("/".join(path[:-1]), path[-1]).read()
+
 # 
 #     def get_group(self, relative_path, create=True):
 #         '''
@@ -1355,193 +1329,10 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
 #                                                  classname=Group.__name__)
 #             return node
 
-#     def create_table(self, sa_periods, has_imt_components=False):
-#         '''
-#             Creates the HDF table representing this Ground motion table
-#             where to write records.
-# 
-#             NOTE: This method must be called when this
-#             object is opened in 'w' mode and inside a `with` statement, PRIOR
-#             to any call to `self.write_record`. If a table mapping this object
-#             already exists on the underlying HDF file, it will be overwritten
-# 
-#             :param sa_periods: a **monotonically increasing** numeric array of
-#                 the periods (x values) for the SA
-#             :param has_imt_components: boolean telling if this table supports
-#                 imts with components, i.e. for each IMT a 3-length vector
-#                 is asslocated where to store the imt components (two horizontal
-#                 and vertical, in this order). The SA will be stored as a
-#                 [3 X len(sa_periods)] matrix, in case
-#         '''
-#         try:
-#             table = self.table  # table exists, overwrite
-#             self._h5file.remove_node(table, recursive=True)
-#         except NoSuchNodeError:
-#             pass
-# 
-#         comps = {}
-#         sa_length = len(sa_periods)
-#         comps['sa'] = Float64Col(shape=(sa_length,))
-#         if has_imt_components:
-#             comps = {comp + '_components': Float64Col(shape=(3,))
-#                      for comp in ('pga', 'pgv', 'sa', 'pgd', 'duration_5_75',
-#                                   'duration_5_95', 'arias_intensity', 'cav')}
-#             comps['sa_components'] = Float64Col(shape=(3, sa_length))
-# 
-#         # add internal ids (populated automatically for each written record):
-#         comps['record_id'] = UInt32Col()  # max id: 4,294,967,295
-#         comps['station_id'] = StringCol(itemsize=20)
-#         comps['event_id'] = StringCol(20)
-# 
-#         desc = dict(GMTableDescription, **comps)
-#         self._table = table = self._h5file.create_table(self._root, "table",
-#                                                         description=desc)
-#         table.attrs.sa_periods = np.asarray(sa_periods, dtype=float)
-#         table.attrs._current_row_id = 1
-#         table.attrs.filename = os.path.basename(self.filepath)
-#         table.attrs._has_imt_components = has_imt_components
-#         return self
 
-#     def write_record(self, csvrow, sa_periods):
-#         '''writes the content of `csvrow` into tablerow  on the table mapped
-#         to this object in the undelrying HDF file, which must be open
-#         (i.e., the user must be inside a with statement) in write mode.
-# 
-#         NOTE: `self.create_table` must have been called ONCE prior to this
-#             method call
-# 
-#         Returns the tuple:
-#         ```written, missing_colnames, bad_colnames, outofbounds_colnames```
-#         where the last three elements are lists of strings (the record
-#         column names under the given categories) and the first element is a
-#         boolean inicating if the record has been written. A record might not
-#         been written if the sanity check did not pass
-# 
-#         :param csvrow: a dict representing a record, usually read froma  csv
-#         file.
-#         '''
-#         # NOTE: if parsed from a csv reader (the usual case),
-#         # values of `csvrow` the dict are all strings
-#         missing_colnames, bad_colnames, outofbounds_colnames = [], [], []
-#         if not self._sanity_check(csvrow):
-#             return False, missing_colnames, bad_colnames, outofbounds_colnames
-# 
-#         table = self.table
-# 
-#         # build a record hashes as ids:
-#         evid, staid, recid = self._get_ids(csvrow)
-#         csvrow['event_id'] = evid
-#         csvrow['station_id'] = staid
-#         # do not use record id, rather an incremental integer:
-#         csvrow['record_id'] = table.attrs._current_row_id
-#         table.attrs._current_row_id += 1
-# 
-#         # write sa periods (if not already written):
-#         try:
-#             table.attrs.sa_periods
-#         except AttributeError:
-#             table.attrs.sa_periods = np.asarray(sa_periods, dtype=float)
-# 
-#         tablerow = table.row
-# 
-#         for col, colobj in tablerow.table.coldescrs.items():
-#             if col not in csvrow:
-#                 missing_colnames.append(col)
-#                 continue
-#             try:
-#                 # remember: if val is a castable string -> ok
-#                 #   (e.g. table column float, val is '5.5' or '5.5 ')
-#                 # if val is out of bounds for the specific type, -> ok
-#                 #   (casted to the closest value)
-#                 # if val is scalar and the table column is a N length array,
-#                 # val it is broadcasted
-#                 #   (val= 5, then tablerow will have a np.array of N 5s)
-#                 # TypeError is raised when there is a non castable element
-#                 #   (e.g. 'abc' or '' for a Float column): in this case pass
-#                 tablerow[col] = csvrow[col]
-# 
-#                 bound = getattr(colobj, 'min_value', None)
-#                 if bound is not None and \
-#                         (np.asarray(tablerow[col]) < bound).any():
-#                     tablerow[col] = colobj.dflt
-#                     outofbounds_colnames.append(col)
-#                     continue
-# 
-#                 bound = getattr(colobj, 'max_value', None)
-#                 if bound is not None and \
-#                         (np.asarray(tablerow[col]) > bound).any():
-#                     tablerow[col] = colobj.dflt
-#                     outofbounds_colnames.append(col)
-#                     continue  # actually useless, but if we add code below ...
-# 
-#             except (ValueError, TypeError):
-#                 if isinstance(csvrow[col], (str, bytes)) and \
-#                         csvrow[col] in ('', b''):
-#                     missing_colnames.append(col)
-#                 else:
-#                     bad_colnames.append(col)
-# 
-#         tablerow.append()  # pylint: disable=no-member
-#         table.flush()
-# 
-#         return True, missing_colnames, bad_colnames, outofbounds_colnames
 
-#     @classmethod
-#     def _sanity_check(cls, csvrow):
-#         '''performs sanity checks on the dict `csvrow` before
-#         writing it. Note that  pytables does not support roll backs,
-#         and when closing the file pending data is automatically flushed.
-#         Therefore, the data has to be checked before, on the csv row
-# 
-#         :param csvrow: a row of a parsed csv file representing a record to add
-#         '''
-#         # for the moment, just do a pga/sa[0] check for unit consistency
-#         # other methods might be added in the future
-#         return cls._pga_sa_unit_ok(csvrow)
-# 
-#     @classmethod
-#     def _pga_sa_unit_ok(cls, csvrow):
-#         '''Checks that pga unit and sa unit are in accordance
-# 
-#         :param csvrow: a row of a parsed csv file representing a record to add
-#         '''
-#         # if the PGA and the acceleration in the shortest period of the SA
-#         # columns differ by more than an order of magnitude then certainly
-#         # there is something wrong and the units of the PGA and SA are not
-#         # in agreement and an error should be raised.
-#         try:
-#             pga, sa0 = float(csvrow['pga']), float(csvrow['sa'][0])
-#             retol = abs(max(pga, sa0) / min(pga, sa0))
-#             if not np.isnan(retol) and round(retol) >= 10:
-#                 return False
-#         except Exception as _:  # disable=broad-except
-#             # it might seem weird to return true on exceptions, but this method
-#             # should only check wheather there is certainly a unit
-#             # mismatch between sa and pga, when they are given (i.e., not in
-#             # this case)
-#             pass
-#         return True
 
-#         tab = self._table
-#         if self._table is None:
-#             tablepath = "%s/%s" % (self._root, "table")
-#             tab = self._table = self._h5file.get_node(tablepath,
-#                                                       classname=Table.__name__)
-#         return tab
 
-#     def attrnames(self, key='user'):
-#         '''Returns this object attribute names, i.e. the attribute
-#             names of the underlying pytables table attributes object:
-#             `self.table.attrs`.
-#             The table attributes are intended to be read only, modify them
-#             only if you know what you are doing
-# 
-#         :param key: string in ('sys', 'user', 'all'), default: 'user'.
-#             'user' returns the user-defined attributes set e.g. by this object
-#             during creation. 'sys' returns the system attributes, **which
-#             should never be modified**. 'all' returns all attributes
-#         '''
-#         return self.table.attrs._f_list(key)
 # 
 #     def write_array(self, relative_path, values, create_path=True):
 #         '''
@@ -1573,95 +1364,15 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
     def sa_periods(self):
         return self._sa_periods
 
-    # ----- IO PRIVATE METHODS  ----- #
-
-#     @property
-#     def _h5file(self):
-#         h5file = self.__h5file
-#         if h5file is None:
-#             raise ValueError('The underlying HDF5 file is not open. '
-#                              'Are you inside a "with" statement?')
-#         return h5file
-# 
-#     def _fullpath(self, path):
-#         return "%s/%s" % (self._root, path)
-
-#     def _get_ids(self, csvrow):
-#         '''Returns the tuple record_id, event_id and station_id from
-#         the given HDF5 row `csvrow`'''
-#         # FIXME: record_id (recid) NOT USED: remove?
-#         dbname = self.dbname
-#         toint = self._toint
-#         ids = (dbname,
-#                toint(csvrow['pga'], 0),  # (first two decimals of pga in g)
-#                toint(csvrow['event_longitude'], 5),
-#                toint(csvrow['event_latitude'], 5),
-#                toint(csvrow['hypocenter_depth'], 3),
-#                csvrow['event_time'],
-#                toint(csvrow['station_longitude'], 5),
-#                toint(csvrow['station_latitude'], 5))
-#         # return event_id, station_id, record_id:
-#         evid, staid, recid = \
-#             self._hash(*ids[2:6]), self._hash(*ids[6:]), self._hash(*ids)
-#         return evid, staid, recid
-# 
-#     @classmethod
-#     def _toint(cls, value, decimals):
-#         '''returns an integer by multiplying value * 10^decimals
-#         and rounding the result to int. Returns nan if value is nan'''
-#         try:
-#             value = float(value)
-#         except ValueError:
-#             value = float('nan')
-#         return value if np.isnan(value) else \
-#             int(round((10**decimals)*value))
-# 
-#     @classmethod
-#     def _hash(cls, *values):
-#         '''generates a 160bit (20bytes) hash bytestring which uniquely
-#         identifies the given tuple of `values`.
-#         The returned string is assured to be the same for equal `values`
-#         tuples (note that the order of values matters).
-#         Conversely, the probability of colliding hashes, i.e., returning
-#         the same bytestring for two different tuples of values, is 1 in
-#         100 billion for roughly 19000 hashes (roughly 10 flatfiles with
-#         all different records), and apporaches 50% for for 1.42e24 hashes
-#         generated (for info, see
-#         https://preshing.com/20110504/hash-collision-probabilities/#small-collision-probabilities)
-# 
-#         :param values: a list of values, either bytes, str or numeric
-#             (no support for other values sofar)
-#         '''
-#         hashalg = hashlib.sha1()
-#         # use the slash as separator as it is unlikely to be in value(s):
-#         hashalg.update(b'/'.join(cls._tobytestr(v) for v in values))
-#         return hashalg.digest()
-# 
-#     @classmethod
-#     def _tobytestr(cls, value):
-#         '''converts a value to bytes. value can be bytes, str or numeric'''
-#         if not isinstance(value, bytes):
-#             value = str(value).encode('utf8')
-#         return value
-
     ###########################################################
     # IMPLEMENTS ResidualsCompliantRecordSet ABSTRACT METHODS #
     ###########################################################
 
-#    @raises_if_file_is_open
-#     def get_contexts(self, nodal_plane_index=1, imts=None,
-#                      component="Geometric"):
-#         """
-#         Returns an iterable of dictionaries, each containing the site, distance
-#         and rupture contexts for individual records
-#         """
-#         with self:
-#             return super().get_contexts(nodal_plane_index, imts, component)
-
     @property
     def records(self):
         '''
-        
+
+
         OLD DOC:
         Yields an iterator of the records according to the specified filter
         `condition`. The underlying HDF file (including each yielded record)
