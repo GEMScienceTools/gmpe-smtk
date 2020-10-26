@@ -1,38 +1,15 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-#
-# Copyright (C) 2014-2018 GEM Foundation and G. Weatherill
-#
-# OpenQuake is free software: you can redistribute it and/or modify it
-# under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# OpenQuake is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 """
 Implementing the abstract-like interface to be inherited by any
 database/set/collection aiming to support residuals computation on its records
+
+.. moduleauthor::  R. Zaccarelli
 """
 import sys
 from collections import OrderedDict  # FIXME In Python3.7+, dict is sufficient
 
 import numpy as np
-import h5py
-from openquake.hazardlib import imt
 from openquake.hazardlib.contexts import DistancesContext, RuptureContext, \
     SitesContext
-
-from smtk import sm_utils
-from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
-from smtk.sm_utils import SCALAR_XY, get_interpolated_period,\
-    convert_accel_units, MECHANISM_TYPE, DIP_TYPE, DEFAULT_MSR
 
 
 class ResidualsCompliantRecordSet:
