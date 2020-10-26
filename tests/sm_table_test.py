@@ -34,7 +34,7 @@ from smtk.sm_table_parsers import UserDefinedParser, EsmParser
 from smtk.sm_table import GMTableParser, GMTableDescription, \
     records_where, read_where, get_dbnames, _normalize_condition, \
     GroundMotionTable, \
-    DateTimeCol, Float64Col, Float32Col, StringCol, get_table, del_table
+    DateTimeCol, Float64Col, Float32Col, StringCol, get_table, del_table, _get_ids
 
 BASE_DATA_PATH = os.path.join(
     os.path.join(os.path.dirname(__file__), "file_samples")
@@ -453,6 +453,50 @@ class GroundMotionTableTestCase(unittest.TestCase):
                     rec2.append(r2['record_id'])
         self.assertEqual(rec1, rec2)
         # asd = 9
+ 
+    def test_equal_ids(self):
+        class table:
+            def __init__(self, pathname):
+                self._v_pathname = pathname
+
+        h_1 = _get_ids(table('a'), {
+            'pga': 1.1,  # , 0),  # should be in cm/s*2
+            'event_longitude': 1.987463,
+            'event_latitude': 1.987463,
+            'hypocenter_depth': 1.9874,
+            'event_time': 1.2,  # timestamp in sec (float)
+            'station_longitude': 1.987463,
+            'station_latitude': 1.987463,
+        })
+        # change each dict element last decimal place, and see if they are
+        # still equal (they should
+        h_2 = _get_ids(table('a'), {
+            'pga': 1.13,  # , 0),  # should be in cm/s*2
+            'event_longitude': 1.9874631,
+            'event_latitude': 1.9874631,
+            'hypocenter_depth': 1.98741,
+            'event_time': 1.21,  # timestamp in sec (float)
+            'station_longitude': 1.987463,
+            'station_latitude': 1.9874638,
+        })
+        self.assertTrue(all(_1 == _2
+                            for _1, _2 in zip(h_1, h_2)))
+
+        # change h_2
+        h_2 = _get_ids(table('a'), {
+            'pga': 1.53,  # , 0),  # should be in cm/s*2
+            'event_longitude': 1.9874631,
+            'event_latitude': 1.9874631,
+            'hypocenter_depth': 1.98741,
+            'event_time': 1.21,  # timestamp in sec (float)
+            'station_longitude': 1.987463,
+            'station_latitude': 1.9874638,
+        })
+        # still event and station id are the same
+        self.assertTrue(all(_1 == _2
+                            for _1, _2 in zip(h_1[:-1], h_2[:-1])))
+        # record id changed:
+        self.assertNotEqual(h_1[-1], h_2[-1])
 
     def test_template_basic_file_selection(self):
         '''parses a sample flatfile and tests some selection syntax on it'''
@@ -719,7 +763,7 @@ class GroundMotionTableTestCase(unittest.TestCase):
         # check that we correctly wrote default attrs:
         with gmdb2.table as tbl:
             self.assertTrue(isinstance(tbl.attrs.parser_stats, dict))
-            self.assertEqual(tbl.attrs.filename, 'template_basic_flatfile.hd5')
+            self.assertEqual(tbl.attrs.flatfilename, 'template_basic_flatfile.hd5')
             # self.assertEqual(len(gmdb2.attrnames()), 6)
 
         mag_le_4 = 0

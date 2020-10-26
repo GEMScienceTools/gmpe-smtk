@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (C) 2014-2018 GEM Foundation and G. Weatherill
+# Copyright (C) 2014-2018 GEM Foundation and R. Zaccarelli
 #
 # OpenQuake is free software: you can redistribute it and/or modify it
 # under the terms of the GNU Affero General Public License as published
@@ -469,8 +469,6 @@ def open_file(filepath, mode):
     Returns the hdf5file form path
 
     mode: 'w', 'r', 'a' (a not tested)
-    sa_periods must be given if mode='w'
-    name=None: basename(filepath) woithout extension
 
     OLD DOC:
 
@@ -564,14 +562,15 @@ def get_table(filepath, mode, name=None, sa_periods=None,
         try:
             table = h5file.get_node(tablepath, classname=Table.__name__)
             if mode == 'w':
-                raise ValueError('Table should not exists in "w" mode, it '
+                raise ValueError('Table should not exist in "w" mode, it '
                                  'probably could not be deleted. Retry or '
-                                 'delete the file manually')
+                                 'delete the file manually (if the table is '
+                                 'the only file object)')
             # call _get_table_attrs as sanity check:
             _get_required_table_attrs(table)  # if it raises => invalid table
 
         except NoSuchNodeError as _:
-            if mode != 'w':
+            if mode == 'r':
                 raise
             if sa_periods is None:
                 raise ValueError("You need to provide 'sa_periods' in order "
@@ -579,7 +578,7 @@ def get_table(filepath, mode, name=None, sa_periods=None,
             # create table node
             table = _create_table(h5file, rootpath, sa_periods,
                                   has_imt_components)
-            table.attrs.filename = os.path.basename(filepath)
+            table.attrs.flatfilename = os.path.basename(filepath)
 
         yield table
 
@@ -605,31 +604,38 @@ def _get_required_table_attrs(table):
 #         raise ValueError(f'The node "{table._v_name}" seems not to be '
 #                          'a valid GroundMotionTable')
     try:
-        _ = get_table_attrs(table, names_only=False)
-        return _['_current_row_id'], _['sa_periods'], _['_has_imt_components']
-    except KeyError:
+        att = table.attrs
+        return att._current_row_id, att.sa_periods, att._has_imt_components
+    except AttributeError:
         raise ValueError(f'The node "{table._v_name}" seems not to be '
                          'a valid GroundMotionTable')
 
 
-def get_table_attrs(table, key='user', names_only=True):
-    '''
-    OLDODC:
-    Returns this object attribute names, i.e. the attribute
-        names of the underlying pytables table attributes object:
-        `self.table.attrs`.
-        The table attributes are intended to be read only, modify them
-        only if you know what you are doing
-
-    :param key: string in ('sys', 'user', 'all'), default: 'user'.
-        'user' returns the user-defined attributes set e.g. by this object
-        during creation. 'sys' returns the system attributes, **which
-        should never be modified**. 'all' returns all attributes
-    '''
-    attlist = table.attrs._f_list(key)
-    if names_only:
-        return attlist
-    return {a: getattr(table.attrs, a) for a in attlist}
+# def get_table_attrs(table, key='user', names_only=True):
+#     '''
+#     OLDODC:
+#     Returns this object attribute names, i.e. the attribute
+#         names of the underlying pytables table attributes object:
+#         `self.table.attrs`.
+#         The table attributes are intended to be read only, modify them
+#         only if you know what you are doing
+#  
+#     :param key: string in ('sys', 'user', 'all'), default: 'user'.
+#         'user' returns the user-defined attributes set e.g. by this object
+#         during creation. 'sys' returns the system attributes, **which
+#         should never be modified**. 'all' returns all attributes
+#     '''
+#     # look at the user defined attrs: attrs.<attr>
+#      
+#     user_defined_attrs = set(table.attrs._f_list('user'))
+#     ret = []
+#     for attname in name:
+#         if name in user_defined_attrs:
+#             ret.append(getattr(table.attrs, name))
+#     attlist = table.attrs._f_list(key)
+#     if names_only:
+#         return attlist
+#     return {a: getattr(table.attrs, a) for a in attlist}
 
 
 def _create_table(h5file, rootpath, sa_periods, has_imt_components=False):
@@ -668,9 +674,12 @@ def _create_table(h5file, rootpath, sa_periods, has_imt_components=False):
 
     desc = dict(GMTableDescription, **comps)
     table = h5file.create_table(rootpath, "table", description=desc)
+    # Now set used-defined table attributes. Contrarily to other attributes
+    # (set e.g. in  `get_table` or `GMTableParser.parse`) these below are
+    # mandatory. In case other mandatory attributes are added in the future,
+    # check also :func:`_get_required_table_attrs`
     table.attrs.sa_periods = np.asarray(sa_periods, dtype=float)
     table.attrs._current_row_id = 1
-    #  table.attrs.filename = os.path.basename(self.filepath)
     table.attrs._has_imt_components = has_imt_components
     return table
 
@@ -700,8 +709,7 @@ def write_record(table, csvrow, sa_periods, flush=False):
         return False, missing_colnames, bad_colnames, outofbounds_colnames
 
     # build a record hashes as ids:
-    evid, staid, recid = _get_ids(table._v_pathname or table.attrs._v__nodepath,
-                                  csvrow)
+    evid, staid, recid = _get_ids(table, csvrow)
     csvrow['event_id'] = evid
     csvrow['station_id'] = staid
     # do not use record id, rather an incremental integer:
@@ -796,61 +804,113 @@ def _pga_sa_unit_ok(csvrow):
     return True
 
 
-def _get_ids(tablename, csvrow):
-    '''Returns the tuple record_id, event_id and station_id from
-    the given HDF5 row `csvrow`'''
-    # FIXME: record_id (recid) NOT USED: remove?
-    ids = (tablename,
-           _toint(csvrow['pga'], 0),  # should be in cm/s*2
-           _toint(csvrow['event_longitude'], 5),
-           _toint(csvrow['event_latitude'], 5),
-           _toint(csvrow['hypocenter_depth'], 3),
-           _toint(csvrow['event_time'], 0),  # timestamp in sec (float)
-           _toint(csvrow['station_longitude'], 5),
-           _toint(csvrow['station_latitude'], 5))
-    # return event_id, station_id, record_id:
-    evid, staid, recid = \
-        _hash(*ids[2:6]), _hash(*ids[6:]), _hash(*ids)
-    return evid, staid, recid
-
-
-def _toint(value, decimals):
-    '''returns an integer by multiplying value * 10^decimals
-    and rounding the result to int. Returns nan if value is nan'''
-    try:
-        value = float(value)
-    except ValueError:
-        value = float('nan')
-    return value if np.isnan(value) else \
-        int(round((10**decimals)*value))
-
-
-def _hash(*values):
-    '''generates a 160bit (20bytes) hash bytestring which uniquely
-    identifies the given tuple of `values`.
-    The returned string is assured to be the same for equal `values`
-    tuples (note that the order of values matters).
-    Conversely, the probability of colliding hashes, i.e., returning
-    the same bytestring for two different tuples of values, is 1 in
-    100 billion for roughly 19000 hashes (roughly 10 flatfiles with
-    all different records), and apporaches 50% for for 1.42e24 hashes
-    generated (for info, see
-    https://preshing.com/20110504/hash-collision-probabilities/#small-collision-probabilities)
-
-    :param values: a list of values, either bytes, str or numeric
-        (no support for other values sofar)
+def _get_ids(table, csvrow):
+    '''Returns the tuple:
+    (event_id, station_id, record_id)
+    where all elements are unique Identifiers (ID) as byte sequences (`bytes`
+    type). All IDs are built with the hash algorithm sha1 from specific
+    `csvrow` elements (`csvrow` is a dict). Although IDs are not currently
+    used, they provide a way in the future to uniquely identify objects,
+    meaning that two equal IDs almost certainly refer to the same object.
+    "almost certainly" refers to potential errors due to some heuristic
+    roundings or hash collisions, both extremely rare but not impossible.
+    For info on the latter, see:
+    https://preshing.com/20110504/hash-collision-probabilities/#small-collision-probabilities
     '''
-    hashalg = hashlib.sha1()
-    # use the slash as separator as it is unlikely to be in value(s):
-    hashalg.update(b'/'.join(_tobytestr(v) for v in values))
-    return hashalg.digest()
+    bhashes = []  # hashes as byte strings
+    # append to bhashes the cvwrow values which can be uniquely indentify
+    # events, stations and records. Round all numeric elements to int up to a
+    # specific decimal digit to avoid small errors generating different IDs:
+    for value, decimals in [
+            (table._v_pathname, None),
+            ('pga', 0),  # should be in cm/s*2
+            ('event_longitude', 5),
+            ('event_latitude', 5),
+            ('hypocenter_depth', 3),
+            ('event_time', 0),  # timestamp in sec (float)
+            ('station_longitude', 5),
+            ('station_latitude', 5)]:
+        # 1. convert to int
+        if decimals is not None:
+            try:
+                value = float(csvrow[value])
+                value = int(round((10**decimals)*value))
+            except ValueError:
+                value = float('nan')
+        # covnert to bytes and append
+        # (bytes type is used by the hashing algorithm below)
+        bhashes.append(str(value).encode('utf8'))
+
+    hashes = []  # hashes will be: (evt_hash, sta_hash, record_hash)
+    # use specific indices of bhashes to build the hashes for
+    # (evt_hash, sta_hash, record_hash):
+    for idx1, idx2 in [
+            (2, 6),  # <-  hashints indices uniquely identifying an event
+            (6, None),  # <-  hashints indices uniquely idnetifying a station
+            (None, None)  # <-  all indices needed for a record
+            ]:
+        hashalg = hashlib.sha1()
+        # join values with '\n' as it is most likely not in any value:
+        hashalg.update(b'\n'.join(v for v in bhashes[idx1:idx2]))
+        hashes.append(hashalg.digest())
+    return tuple(hashes)
 
 
-def _tobytestr(value):
-    '''converts a value to bytes. value can be bytes, str or numeric'''
-    if not isinstance(value, bytes):
-        value = str(value).encode('utf8')
-    return value
+# def _get_ids(tablename, csvrow):
+#     '''Returns the tuple record_id, event_id and station_id from
+#     the given HDF5 row `csvrow`'''
+#     # FIXME: record_id (recid) NOT USED: remove?
+#     ids = (tablename,
+#            _toint(csvrow['pga'], 0),  # should be in cm/s*2
+#            _toint(csvrow['event_longitude'], 5),
+#            _toint(csvrow['event_latitude'], 5),
+#            _toint(csvrow['hypocenter_depth'], 3),
+#            _toint(csvrow['event_time'], 0),  # timestamp in sec (float)
+#            _toint(csvrow['station_longitude'], 5),
+#            _toint(csvrow['station_latitude'], 5))
+#     # return event_id, station_id, record_id:
+#     evid, staid, recid = \
+#         _hash(*ids[2:6]), _hash(*ids[6:]), _hash(*ids)
+#     return evid, staid, recid
+# 
+# 
+# def _toint(value, decimals):
+#     '''returns an integer by multiplying value * 10^decimals
+#     and rounding the result to int. Returns nan if value is nan'''
+#     try:
+#         value = float(value)
+#     except ValueError:
+#         value = float('nan')
+#     return value if np.isnan(value) else \
+#         int(round((10**decimals)*value))
+# 
+# 
+# def _hash(*values):
+#     '''generates a 160bit (20bytes) hash bytestring which uniquely
+#     identifies the given tuple of `values`.
+#     The returned string is assured to be the same for equal `values`
+#     tuples (note that the order of values matters).
+#     Conversely, the probability of colliding hashes, i.e., returning
+#     the same bytestring for two different tuples of values, is 1 in
+#     100 billion for roughly 19000 hashes (roughly 10 flatfiles with
+#     all different records), and apporaches 50% for for 1.42e24 hashes
+#     generated (for info, see
+#     https://preshing.com/20110504/hash-collision-probabilities/#small-collision-probabilities)
+# 
+#     :param values: a list of values, either bytes, str or numeric
+#         (no support for other values sofar)
+#     '''
+#     hashalg = hashlib.sha1()
+#     # use the slash as separator as it is unlikely to be in value(s):
+#     hashalg.update(b'/'.join(_tobytestr(v) for v in values))
+#     return hashalg.digest()
+# 
+# 
+# def _tobytestr(value):
+#     '''converts a value to bytes. value can be bytes, str or numeric'''
+#     if not isinstance(value, bytes):
+#         value = str(value).encode('utf8')
+#     return value
 
 
 #########################################
@@ -891,7 +951,10 @@ def _get_dbnames(h5file, fullpath=False):
 
 
 def del_table(filepath, dbname):
-    '''Deletes the HDF data related to this table stored in the underlying
+    '''
+    OLD DOC:
+
+    Deletes the HDF data related to this table stored in the underlying
     HDF file. USE WITH CARE. Example:
         del_table(filepath, dbname, 'w').delete()
     '''
