@@ -1477,7 +1477,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         Sets the labels on the specified axes
         """
         ax.set_xlabel("Period (s)", fontsize=14)
-        ax.set_ylabel("Sa (g)", fontsize=14)
+        ax.set_ylabel(self._get_ylabel(None), fontsize=14)
 
     def to_dict(self):
         """
@@ -1689,7 +1689,7 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
         Sets the labels on the specified axes
         """
         ax.set_xlabel("Period (s)", fontsize=14)
-        ax.set_ylabel("%s Std. Dev." % self.stddevs, fontsize=14)
+        ax.set_ylabel(self._get_ylabel(None), fontsize=14)
 
     def _get_ylabel(self, i_m):
         """
