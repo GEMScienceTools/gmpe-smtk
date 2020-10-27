@@ -26,7 +26,11 @@ import sys
 import re
 import json
 import numpy as np
-from collections import Iterable, OrderedDict
+from collections import OrderedDict
+try:  # https://stackoverflow.com/q/53978542
+    from collections import Iterable  # noqa
+except ImportError:
+    from collections.abc import Iterable  # noqa
 from cycler import cycler
 from math import floor, ceil
 import matplotlib
