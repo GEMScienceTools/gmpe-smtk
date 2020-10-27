@@ -485,15 +485,21 @@ def open_file(filepath, mode):
 @contextmanager
 def get_table(filepath, mode, name=None, sa_periods=None,
               has_imt_components=None):
-    '''Returns the Table object from the given HDF file path. If the table is not
-    found it is created only if mode is either 'a' or 'w' (otherwise
-    a :class:`tables.exceptions.NoSuchNodeError` is raised): in this case
-    `sa_periods` and `has_imt_components` must be provided. Example (which
+    '''Returns the Ground motion Table object from the given HDF file path.
+    If the table is not found it is created only if mode is either 'a' or 'w'
+    (otherwise a :class:`tables.exceptions.NoSuchNodeError` is raised): in this
+    case `sa_periods` and `has_imt_components` must be provided. Example (which
     also closes the underlying HDF file automatically):
     ```
         with get_table(filepath, 'r') as table:
             # ... do your operation here
     ```
+    Implementation details: this function first gets/creates a root-child
+    directory (pytables `Group` object) with the given name `name`, and then
+    gets/creates the Table object (named 'table') inside it. This allows to
+    add, if needed in the future, the addition of data to the Group via any
+    kind og supported pytables object (e.g. arrays, additional tables).
+    See :class:`GroundMotionTable` for details.
 
     :param filepath: The HDF file path (str)
     :param mode: 'w', 'r' or 'a' (str)
@@ -861,12 +867,12 @@ def records_where(table, condition, limit=None):
             for record in records_where(gmdb.table, condition):
                 # loop through matching records
     ```
-    Note: when the comparison values are given in variables (the usual case),
-    simply use `str(variable)` in the string expression. This will work with
-    datetimes, strings, boolean, floats and ints (note that datetimes and
-    strings must be "double" quoted: '"%s"' % str(object)):
+    Note: when building a condition expression from variables (the usual case),
+    simply insert `str(variable)` in the expression: `str` will work with
+    datetimes, strings, boolean, floats and ints. Note that datetimes and
+    strings must be quoted, i.e. wrapped in " or ': '"%s"' % str(dtime):
     ```
-        # given a datetime object, `dtime` and two floats, `pgamin`, `pgamax`:
+        # given a datetime, `dtime` and two floats, `pgamin`, `pgamax`:
         condition = \
             "(pga < %s) | (pga > %s) & (pgv != %s) & (event_time < '%s')" % \
             (str(pgamin), str(pgamax), str(float('nan')), str(dtime))
@@ -1120,8 +1126,8 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
 
         :param filepath: string denoting the HDF file path
         :param dbname: string denoting the database name. If None, the HDF file
-            must contain a single database. For a list of possible db names
-            from a given file path, use :func:`get_dbnames(filepath)`
+            must contain a single database. For a list of database names from
+            a given file path, use :func:`get_dbnames(filepath)`
         '''
         self.filepath = filepath
         self.dbname = dbname
@@ -1136,7 +1142,7 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
     def table(self):
         '''Returns the underlying pytables Table object
         (https://www.pytables.org/usersguide/libref/structured_storage.html#tables.Table)
-        To be used in with statements: `with Gr.table as tbl:`
+        To be used in with statements: `with gmtable.table as tbl: ...`
         '''
         return get_table(self.filepath, 'r', self.dbname)
 
@@ -1144,7 +1150,7 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
     def h5file(self):
         '''Returns the underlying hdf File object
         (https://www.pytables.org/usersguide/libref/file_class.html#the-file-class)
-        To be used in a with statements: `with Gr.h5file as h5f:`
+        To be used in a with statements: `with gmtable.h5file as h5f: ...`
         '''
         return open_file(self.filepath, 'r', self.dbname)
 
@@ -1154,23 +1160,20 @@ class GroundMotionTable(ResidualsCompliantRecordSet):
         :class:`GMTableDescription`). `self.records` will return database
         recordis matching the given condition. Example
         ```
-            condition = ("(pga < 0.14) | (pga > 1.1) & (pgv != nan) &
-                          (event_time < '2006-01-01T00:00:00'")
+            condition = "(pga < 0.14) | (pga > 1.1) & (pgv != nan) & "
+                        "(event_time < '2006-01-01T00:00:00'"
 
             filtered_gmdb = GroundMotionTable(...).filter(condition)
         ```
-        For user trying to build expressions from input variables as python
-        objects, simply use the `str(object)` function which supports
-        datetime's, strings, boolean, floats and ints (note that datetimes
-        and strings must be "double" quoted: '"%s"' % str(object)):
+        When building a condition expression from variables (the usual case),
+        simply insert `str(variable)` in the expression: `str` will work with
+        datetimes, strings, boolean, floats and ints. Note that datetimes and
+        strings must be quoted, i.e. wrapped in " or ': '"%s"' % str(dtime):
         ```
-            # given a datetime object `dtime` and two floats pgamin, pgamax:
+            # given a datetime, `dtime` and two floats, `pgamin`, `pgamax`:
             condition = \
-                "(pga < %s) | (pga > %s) & (pgv != %s) & \
-                (event_time < '%s')" % \
+                "(pga < %s) | (pga > %s) & (pgv != %s) & (event_time < '%s')" % \
                 (str(pgamin), str(pgamax), str(float('nan')), str(dtime))
-
-            filtered_gmdb = GroundMotionTable(...).filter(condition)
         ```
         For further details, see the module's functions
         `func`:`records_where` and :func:`read_where`

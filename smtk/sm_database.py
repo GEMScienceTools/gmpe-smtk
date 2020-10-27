@@ -932,8 +932,6 @@ class GroundMotionDatabase(ResidualsCompliantRecordSet):
         self.id = db_id
         self.name = db_name
         self.directory = db_directory
-        #self.records = []
-        #print(records)
         self.records = [rec for rec in records]
         self.site_ids = site_ids
 
@@ -1118,6 +1116,7 @@ class GroundMotionDatabase(ResidualsCompliantRecordSet):
     # END OF ABSTRACT METHODS #
     ###########################
 
+    # moved from smtk/residuals/gmpe_residuals.py:
     def get_scalar(self, fle, i_m, component="Geometric"):
         """
         Retrieves the scalar IM from the database
@@ -1137,8 +1136,7 @@ class GroundMotionDatabase(ResidualsCompliantRecordSet):
                 return fle["IMS/H/Scalar/" + i_m].value[0]
             else:
                 raise ValueError("Scalar IM %s not in record database" % i_m)
-    
-    
+
     def to_json(self):
         """
         Exports the database to json
@@ -1162,7 +1160,6 @@ class GroundMotionDatabase(ResidualsCompliantRecordSet):
             gmdb.records.append(GroundMotionRecord.from_dict(record))
         gmdb.site_ids = [rec.site.id for rec in gmdb.records]
         return gmdb
-        
 
     def number_records(self):
         """
@@ -1175,7 +1172,6 @@ class GroundMotionDatabase(ResidualsCompliantRecordSet):
         Returns the number of records
         """
         return len(self.records)
-
 
     def __repr__(self):
         """
