@@ -591,6 +591,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
                 col_loc = 0
             # Set the dictionary of y-values
             ydict = {"ylabel": self._get_ylabel(imt),
+                     "imt": imt,
                      "row": row_loc,
                      "column": col_loc,
                      "yvalues": OrderedDict([])}
@@ -970,6 +971,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
                 col_loc = 0
             # Set the dictionary of y-values
             ydict = {"ylabel": self._get_ylabel(imt),
+                     "imt": imt,
                      "row": row_loc,
                      "column": col_loc,
                      "yvalues": OrderedDict([])}
@@ -1501,6 +1503,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                     ("ylabel", self._get_ylabel(None)),  # arg 'None' not used
                     ("magnitude", mag),
                     ("distance", np.around(dist, 3)),
+                    ("imt", 'SA'),
                     ("row", i),
                     ("column", j),
                     ("yvalues", OrderedDict([(gsim, []) for gsim in gmvs]))
