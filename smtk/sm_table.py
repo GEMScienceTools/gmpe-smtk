@@ -746,8 +746,8 @@ def _get_ids(table, csvrow):
     IDs are built with the hash algorithm sha1 from specific `csvrow` elements
     (`csvrow` is a dict). Although IDs are not currently used, they provide a
     way in the future to uniquely identify objects, meaning that two equal IDs
-    almost certainly refer to the same object. "almost certainly" because of
-    potential errors due to some heuristic in rounding or hash collisions, all
+    almost certainly refer to the same object. The "almost" is a consequence of
+    hash collisions or potential errors due to some heuristic in rounding, all
     extremely rare but not impossible. For info on the latter, see:
     https://preshing.com/20110504/hash-collision-probabilities/#small-collision-probabilities
     '''
@@ -804,7 +804,7 @@ def get_dbnames(h5file_or_filepath, fullpath=False):
         object created e.g. with `tables.open_file`
     :param fullpath: boolean (default False): whether to return the full
         database path inside the HDF file instead of the database name
-    :return: a list of strings identyfying the database names in the file
+    :return: a list of strings identyfying the database names/paths in the file
     '''
     if isinstance(h5file_or_filepath, (str, bytes)):
         with tables.open_file(h5file_or_filepath, 'r') as h5file:
@@ -832,12 +832,10 @@ def _get_dbnames(h5file, fullpath=False):
 
 
 def del_table(filepath, dbname):
-    '''
-    OLD DOC:
-
-    Deletes the HDF data related to this table stored in the underlying
-    HDF file. USE WITH CARE. Example:
-        del_table(filepath, dbname, 'w').delete()
+    '''Deletes the root-child Group named `dbname` and all its children
+    (including the nested Ground motion table) in the given HDF file.
+    **This operation can not be reverted, use with care**.
+    Example: `del_table(filepath, dbname)`
     '''
     with open_file(filepath, 'a') as h5file:
         h5file.remove_node(f'/{dbname}', recursive=True)
