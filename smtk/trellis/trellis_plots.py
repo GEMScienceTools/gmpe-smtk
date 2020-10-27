@@ -1684,13 +1684,6 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
                         break
         return gmvs
 
-    def _set_labels(self, i_m, ax):
-        """
-        Sets the labels on the specified axes
-        """
-        ax.set_xlabel("Period (s)", fontsize=14)
-        ax.set_ylabel(self._get_ylabel(None), fontsize=14)
-
     def _get_ylabel(self, i_m):
         """
         Returns the standard deviation term (specific to the standard deviation
