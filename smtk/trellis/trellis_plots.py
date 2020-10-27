@@ -1498,7 +1498,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         for i, mag in enumerate(mags):
             for j, dist in enumerate(dists):
                 ydict = OrderedDict([
-                    ("ylabel", "Sa (g)"),
+                    ("ylabel", self._get_ylabel(None)),  # arg 'None' not used
                     ("magnitude", mag),
                     ("distance", np.around(dist, 3)),
                     ("row", i),
