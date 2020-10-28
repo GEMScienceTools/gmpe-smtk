@@ -34,7 +34,7 @@ from smtk.sm_table_parsers import UserDefinedParser, EsmParser
 from smtk.sm_table import GMTableParser, GMTableDescription, \
     records_where, read_where, get_dbnames, _normalize_condition, \
     GroundMotionTable, \
-    DateTimeCol, Float64Col, Float32Col, StringCol
+    DateTimeCol, Float64Col, Float32Col, StringCol, get_table, del_table, _get_ids
 
 BASE_DATA_PATH = os.path.join(
     os.path.join(os.path.dirname(__file__), "file_samples")
@@ -294,7 +294,7 @@ class GroundMotionTableTestCase(unittest.TestCase):
         # test a file not found
         with self.assertRaises(IOError):
             with GroundMotionTable(self.output_file + 'what',
-                      dbname='whatever', mode='r') as gmdb:
+                                   dbname='whatever').table as table:
                 pass
 
         log = UserDefinedParser.parse(self.input_file,
@@ -334,8 +334,7 @@ class GroundMotionTableTestCase(unittest.TestCase):
         test_col = 'event_name'
         test_col_oldval, test_col_newval = None, b'dummy'
         test_cols_found = 0
-        with GroundMotionTable(self.output_file, dbname, 'a') as gmdb:
-            tbl = gmdb.table
+        with get_table(self.output_file, 'a', dbname) as tbl:
             ids = list(r['event_id'] for r in tbl.iterrows())
             # assert record ids are the number of rows
             self.assertTrue(len(ids) == written)
@@ -354,8 +353,7 @@ class GroundMotionTableTestCase(unittest.TestCase):
             self.assertTrue(test_cols_found == 1)
 
         # assert that we modified the event name
-        with GroundMotionTable(self.output_file, dbname, 'r') as gmdb:
-            tbl = gmdb.table
+        with GroundMotionTable(self.output_file, dbname).table as tbl:
             count = 0
             for row in tbl.where('%s == %s' % (test_col, test_col_oldval)):
                 # we should never be here (no row with the old value):
@@ -390,8 +388,7 @@ class GroundMotionTableTestCase(unittest.TestCase):
         log = UserDefinedParser.parse(self.input_file,
                                       output_path=self.output_file,
                                       delimiter=',')
-        with GroundMotionTable(self.output_file, dbname, 'r') as gmdb:
-            tbl = gmdb.table
+        with GroundMotionTable(self.output_file, dbname).table as tbl:
             self.assertTrue(tbl.nrows == written)
             # assert the old rows are not there anymore
             oldrows = list(row[test_col] for row in
@@ -408,14 +405,98 @@ class GroundMotionTableTestCase(unittest.TestCase):
         name = os.path.splitext(os.path.basename(self.output_file))[0]
         self.assertTrue(dbnames[0] == name)
 
-        # now a delete
-        names = get_dbnames(self.output_file)
-        assert len(names) > 0
-        GroundMotionTable(self.output_file, name, 'w').delete()
+        # now a delete a table, but first create one to be sure we do not
+        # delete that table too:
+        with get_table(self.output_file, 'a', 'tmp_table',
+                       [1, 2, 3], True) as _:
+            pass
 
+        # first test that a GroundMotionDatabase raises when we have two
+        # tables and no name provided
+        with self.assertRaises(ValueError) as _:
+            GroundMotionTable(self.output_file)
+        names = get_dbnames(self.output_file)
+        assert len(names) == 2
+        # this does not raise:
+        GroundMotionTable(self.output_file, names[0])
+        # now delete it:
+        del_table(self.output_file, name)
+
+        names = get_dbnames(self.output_file)
+        assert len(names) == 1
+        assert names[0] == 'tmp_table'
+
+        del_table(self.output_file, 'tmp_table')
         names = get_dbnames(self.output_file)
         assert len(names) == 0
 
+    def test_reading_concurrentcy(self):
+        '''Tests that it is ok to open an HDF table twice
+        (NOTE: this is currently NOT YET SUPPORTED)
+        '''
+        return
+        # the test file has a comma delimiter. Test that we raise with
+        # the default semicolon:
+        # now should be ok:
+        log = UserDefinedParser.parse(self.input_file,
+                                      output_path=self.output_file,
+                                      delimiter=',')
+
+        dbname = os.path.splitext(os.path.basename(self.output_file))[0]
+        rec1 = []
+        rec2 = []
+        gmdb = GroundMotionTable(self.output_file, dbname)
+        for r in gmdb.records:
+            rec1.append(r['record_id'])
+            if not rec2:
+                for r2 in gmdb.records:
+                    rec2.append(r2['record_id'])
+        self.assertEqual(rec1, rec2)
+        # asd = 9
+ 
+    def test_equal_ids(self):
+        class table:
+            def __init__(self, pathname):
+                self._v_pathname = pathname
+
+        h_1 = _get_ids(table('a'), {
+            'pga': 1.1,  # , 0),  # should be in cm/s*2
+            'event_longitude': 1.987463,
+            'event_latitude': 1.987463,
+            'hypocenter_depth': 1.9874,
+            'event_time': 1.2,  # timestamp in sec (float)
+            'station_longitude': 1.987463,
+            'station_latitude': 1.987463,
+        })
+        # change each dict element last decimal place, and see if they are
+        # still equal (they should
+        h_2 = _get_ids(table('a'), {
+            'pga': 1.13,  # , 0),  # should be in cm/s*2
+            'event_longitude': 1.9874631,
+            'event_latitude': 1.9874631,
+            'hypocenter_depth': 1.98741,
+            'event_time': 1.21,  # timestamp in sec (float)
+            'station_longitude': 1.987463,
+            'station_latitude': 1.9874638,
+        })
+        self.assertTrue(all(_1 == _2
+                            for _1, _2 in zip(h_1, h_2)))
+
+        # change h_2
+        h_2 = _get_ids(table('a'), {
+            'pga': 1.53,  # , 0),  # should be in cm/s*2
+            'event_longitude': 1.9874631,
+            'event_latitude': 1.9874631,
+            'hypocenter_depth': 1.98741,
+            'event_time': 1.21,  # timestamp in sec (float)
+            'station_longitude': 1.987463,
+            'station_latitude': 1.9874638,
+        })
+        # still event and station id are the same
+        self.assertTrue(all(_1 == _2
+                            for _1, _2 in zip(h_1[:-1], h_2[:-1])))
+        # record id changed:
+        self.assertNotEqual(h_1[-1], h_2[-1])
 
     def test_template_basic_file_selection(self):
         '''parses a sample flatfile and tests some selection syntax on it'''
@@ -430,8 +511,7 @@ class GroundMotionTableTestCase(unittest.TestCase):
                                       delimiter=',')
 
         dbname = os.path.splitext(os.path.basename(self.output_file))[0]
-        with GroundMotionTable(self.output_file, dbname) as gmdb:
-            table = gmdb.table
+        with GroundMotionTable(self.output_file, dbname).table as table:
             total = table.nrows
             selection = 'pga <= %s' % 100.75
             ids = [r['record_id'] for r in records_where(table, selection)]
@@ -678,37 +758,24 @@ class GroundMotionTableTestCase(unittest.TestCase):
 
         gmdb = GroundMotionTable(self.output_file, 'esm_sa_flatfile_2018')
 
-        with self.assertRaises(ValueError):
-            # trying to filter inside a with statement
-            with gmdb:
-                gmdb.filter('magnitude <= 4')
-
         gmdb2 = gmdb.filter('magnitude <= 4')
-        # underlying HDF5 file not open (ValueError):
-        with self.assertRaises(ValueError):
-            for rec in gmdb2.records:
-                pass
 
         # check that we correctly wrote default attrs:
-        with gmdb2:
-            tbl = gmdb2.table.attrs
-            self.assertTrue(isinstance(tbl.parser_stats, dict))
-            self.assertEqual(tbl.filename, 'template_basic_flatfile.hd5')
-            self.assertEqual(len(gmdb2.attrnames()), 6)
+        with gmdb2.table as tbl:
+            self.assertTrue(isinstance(tbl.attrs.parser_stats, dict))
+            self.assertEqual(tbl.attrs.flatfilename, 'template_basic_flatfile.hd5')
+            # self.assertEqual(len(gmdb2.attrnames()), 6)
 
-        # now it works:
-        with gmdb2:
-            mag_le_4 = 0
-            for rec in gmdb2.records:
-                self.assertTrue(rec['magnitude'] <= 4)
-                mag_le_4 += 1
+        mag_le_4 = 0
+        for rec in gmdb2.records:
+            self.assertTrue(rec['magnitude'] <= 4)
+            mag_le_4 += 1
 
         gmdb2 = gmdb.filter('magnitude > 4')
-        with gmdb2:
-            mag_gt_4 = 0
-            for rec in gmdb2.records:
-                self.assertTrue(rec['magnitude'] > 4)
-                mag_gt_4 += 1
+        mag_gt_4 = 0
+        for rec in gmdb2.records:
+            self.assertTrue(rec['magnitude'] > 4)
+            mag_gt_4 += 1
 
         self.assertTrue(mag_le_4 + mag_gt_4 == 98 - 13)
 

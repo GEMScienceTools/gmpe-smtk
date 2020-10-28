@@ -1,11 +1,12 @@
 '''
-NgaWest2 try (FIXME write doc))
+Defines the parser for released and user defined flatfiles
+
+.. moduleauthor::  R. Zaccarelli
 '''
 from collections import OrderedDict
 import re
 
 import numpy as np
-from scipy.constants import g
 from smtk.sm_table import GMTableParser
 from smtk import sm_utils
 from smtk.sm_utils import convert_accel_units

@@ -211,28 +211,6 @@ SPECTRA_FROM_FILE = {"Geometric": get_geometric_mean,
                      "GMRotD50": get_gmrotd50,
                      "RotD50": get_rotd50}
 
-
-def get_scalar(fle, i_m, component="Geometric"):
-    """
-    Retrieves the scalar IM from the database
-    :param fle:
-        Instance of :class: h5py.File
-    :param str i_m:
-        Intensity measure
-    :param str component:
-        Horizontal component of IM
-    """
-    if not ("H" in fle["IMS"].keys()):
-        x_im = fle["IMS/X/Scalar/" + i_m].value[0]
-        y_im = fle["IMS/Y/Scalar/" + i_m].value[0]
-        return SCALAR_XY[component](x_im, y_im)
-    else:
-        if i_m in fle["IMS/H/Scalar"].keys():
-            return fle["IMS/H/Scalar/" + i_m].value[0]
-        else:
-            raise ValueError("Scalar IM %s not in record database" % i_m)
-
-
 # The following methods are used for the MultivariateLLH function
 def _build_matrices(contexts, gmpe, imtx):
     """
@@ -390,16 +368,9 @@ class Residuals(object):
             :class:`smtk.sm_database.GroundMotionDatabase` or a
             :class:`smtk.sm_table.GroundMotionTable`
         """
-        # FIXME: this is hacky. One should merge sm and gm databases into
-        # a single storage interface backed by a common storage type:
-        calculate_observations = True
-        if isinstance(database, GroundMotionTable):
-            contexts = database.get_contexts(self.imts,
-                                             nodal_plane_index,
-                                             component)
-            calculate_observations = False
-        else:
-            contexts = database.get_contexts(nodal_plane_index)
+
+        contexts = database.get_contexts(nodal_plane_index, self.imts,
+                                         component)
 
         # Fetch now outside the loop for efficiency the IMTs which need
         # acceleration units conversion from cm/s/s to g. Conversion will be
@@ -410,12 +381,6 @@ class Residuals(object):
         # Contexts is in either case a list of dictionaries
         self.contexts = []
         for context in contexts:
-            # Get the observed strong ground motions if database is a
-            # sm_database.GroundMotionDatabase (if a
-            # sm_table.GroundMotionTable, observations are already calculated)
-            if calculate_observations:
-                context = self.get_observations(SMRecordSelector(database),
-                                                context, component)
 
             # convert all IMTS with acceleration units, which are supposed to
             # be in cm/s/s, to g:
@@ -472,76 +437,6 @@ class Residuals(object):
                         self.modelled[gmpe][imtx][res_type])
                 self.modelled[gmpe][imtx]["Mean"] = np.array(
                     self.modelled[gmpe][imtx]["Mean"])
-
-    def get_observations(self, sm_record_selector, context,
-                         component="Geometric"):
-        """
-        Get the obsered ground motions from the database. *NOTE*: IMTs in
-        acceleration units (e.g. PGA, SA) are supposed to return their
-        values in cm/s/s (which is by default the unit in which they are
-        stored)
-        """
-        select_records = \
-            sm_record_selector.select_from_event_id(context["EventID"])
-        observations = OrderedDict([(imtx, []) for imtx in self.imts])
-        selection_string = "IMS/H/Spectra/Response/Acceleration/"
-        for record in select_records:
-            fle = h5py.File(record.datafile, "r")
-            for imtx in self.imts:
-                if imtx in SCALAR_IMTS:
-                    observations[imtx].append(
-                        get_scalar(fle, imtx, component))
-                elif "SA(" in imtx:
-                    target_period = imt.from_string(imtx).period
-                    spectrum = fle[selection_string + component +
-                                   "/damping_05"].value
-                    periods = fle["IMS/H/Spectra/Response/Periods"].value
-                    observations[imtx].append(get_interpolated_period(
-                        target_period, periods, spectrum))
-                else:
-                    raise "IMT %s is unsupported!" % imtx
-            fle.close()
-        for imtx in self.imts:
-            observations[imtx] = np.array(observations[imtx])
-        context["Observations"] = observations
-        context["Num. Sites"] = len(select_records)
-        return context
-
-#     def get_observations(self, sm_record_selector, context,
-#                          component="Geometric"):
-#         """
-#         Get the obsered ground motions from the database
-#         """
-#         select_records = \
-#             sm_record_selector.select_from_event_id(context["EventID"])
-#         observations = OrderedDict([(imtx, []) for imtx in self.imts])
-#         selection_string = "IMS/H/Spectra/Response/Acceleration/"
-#         for record in select_records:
-#             fle = h5py.File(record.datafile, "r")
-#             for imtx in self.imts:
-#                 if imtx in SCALAR_IMTS:
-#                     if imtx == "PGA":
-#                         observations[imtx].append(
-#                             get_scalar(fle, imtx, component) / 981.0)
-#                     else:
-#                         observations[imtx].append(
-#                             get_scalar(fle, imtx, component))
-# 
-#                 elif "SA(" in imtx:
-#                     target_period = imt.from_string(imtx).period
-#                     spectrum = fle[selection_string + component +
-#                                    "/damping_05"].value
-#                     periods = fle["IMS/H/Spectra/Response/Periods"].value
-#                     observations[imtx].append(get_interpolated_period(
-#                         target_period, periods, spectrum) / 981.0)
-#                 else:
-#                     raise "IMT %s is unsupported!" % imtx
-#             fle.close()
-#         for imtx in self.imts:
-#             observations[imtx] = np.array(observations[imtx])
-#         context["Observations"] = observations
-#         context["Num. Sites"] = len(select_records)
-#         return context
 
     def get_expected_motions(self, context):
         """

@@ -1,25 +1,8 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-#
-# Copyright (C) 2014-2017 GEM Foundation and G. Weatherill
-#
-# OpenQuake is free software: you can redistribute it and/or modify it
-# under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# OpenQuake is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
-
 """
 Basic Pseudo-database built on top of hdf5 for a set of processed strong
 motion records
+
+.. moduleauthor::  R. Zaccarelli
 """
 import os
 import pickle
@@ -27,13 +10,14 @@ import json
 from datetime import datetime
 from collections import OrderedDict
 import numpy as np
-from openquake.hazardlib.gsim.base import (
-    SitesContext, DistancesContext, RuptureContext)
+import h5py
+from openquake.hazardlib import imt
 from openquake.hazardlib.site import Site, SiteCollection
 from openquake.hazardlib.geo.point import Point
 from smtk.trellis.configure import vs30_to_z1pt0_as08, z1pt0_to_z2pt5
 from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 import smtk.sm_utils as utils
+from smtk.rcrs import ResidualsCompliantRecordSet
 
 
 class Magnitude(object):
@@ -929,7 +913,7 @@ class GroundMotionRecord(object):
         return self.distance.azimuth
 
 
-class GroundMotionDatabase(object):
+class GroundMotionDatabase(ResidualsCompliantRecordSet):
     """
     Class to represent a database of strong motions
     :param str id:
@@ -950,10 +934,210 @@ class GroundMotionDatabase(object):
         self.id = db_id
         self.name = db_name
         self.directory = db_directory
-        #self.records = []
-        #print(records)
         self.records = [rec for rec in records]
         self.site_ids = site_ids
+
+    ##############################################################
+    # Implementing ResidualsCompliantRecordSet ABSTRACT METHODS: #
+    ##############################################################
+
+    @property
+    def records(self):
+        '''Returns an iterable of records from this database (e.g. list, tuple,
+        generator). Note that as any iterable, the returned object does not
+        need to define a length whereby `len(self.records)` will work: this
+        will depend on subclasses implementation
+        '''
+        return self._records
+
+    # this is no abstract method, it makes `self.records = new_records` work:
+    @records.setter
+    def records(self, list_of_records):
+        self._records = list_of_records
+
+    def get_record_eventid(self, record):
+        '''Returns the record event id (usually int) of the given record'''
+        return record.event.id
+
+    def update_sites_context(self, record, context):
+        '''Updates the attributes of `context` with the given `record` data.
+        `context` is a :class:`openquake.hazardlib.contexts.SitesContext`
+        object. In the typical implementation it has the attributes defined in
+        `self.sites_context_attrs` all initialized to empty lists.
+        Here you should append to those attributes the relative record value,
+        e.g.: `context.vs30.append(record.vs30)`
+        '''
+        context.vs30.append(record.site.vs30)
+        context.lons.append(record.site.longitude)
+        context.lats.append(record.site.latitude)
+        if record.site.altitude:
+            depth = record.site.altitude * -1.0E-3
+        else:
+            depth = 0.0
+        context.depths.append(depth)
+        if record.site.vs30_measured is not None:
+            vs30_measured = record.site.vs30_measured
+        else:
+            vs30_measured = 0
+        context.vs30measured.append(vs30_measured)
+        if record.site.z1pt0 is not None:
+            z1pt0 = record.site.z1pt0
+        else:
+            z1pt0 = vs30_to_z1pt0_cy14(record.site.vs30)
+        context.z1pt0.append(z1pt0)
+        if record.site.z2pt5 is not None:
+            z2pt5 = record.site.z2pt5
+        else:
+            z2pt5 = vs30_to_z2pt5_cb14(record.site.vs30)
+        context.z2pt5.append(z2pt5)
+        if getattr(record.site, "backarc", None) is not None:
+            context.backarc.append(record.site.backarc)
+
+    def update_distances_context(self, record, context):
+        '''Updates the attributes of `context` with the given `record` data.
+        `context` is a :class:`openquake.hazardlib.contexts.DistancesContext`
+        object. In the typical implementation it has the attributes defined in
+        `self.distances_context_attrs` all initialized to empty lists.
+        Here you should append to those attributes the relative record value,
+        e.g.: `context.rjb.append(record.rjb)`
+        '''
+        context.repi.append(record.distance.repi)
+        context.rhypo.append(record.distance.rhypo)
+        # TODO Setting Rjb == Repi and Rrup == Rhypo when missing value
+        # is a hack! Need feedback on how to fix
+        if record.distance.rjb is not None:
+            context.rjb.append(record.distance.rjb)
+        else:
+            context.rjb.append(record.distance.repi)
+        if record.distance.rrup is not None:
+            context.rrup.append(record.distance.rrup)
+        else:
+            context.rrup.append(record.distance.rhypo)
+        if record.distance.r_x is not None:
+            context.rx.append(record.distance.r_x)
+        else:
+            context.rx.append(record.distance.repi)
+        if getattr(record.distance, "ry0", None) is not None:
+            context.ry0.append(record.distance.ry0)
+        if getattr(record.distance, "rcdpp", None) is not None:
+            context.rcdpp.append(record.distance.rcdpp)
+        if record.distance.azimuth is not None:
+            context.azimuth.append(record.distance.azimuth)
+        if record.distance.hanging_wall is not None:
+            context.hanging_wall.append(record.distance.hanging_wall)
+        if getattr(record.distance, "rvolc", None) is not None:
+            context.rvolc.append(record.distance.rvolc)
+
+    def update_rupture_context(self, record, context, nodal_plane_index=1):
+        '''Updates the attributes of `context` with the given `record` data.
+        `context` is a :class:`openquake.hazardlib.contexts.RuptureContext`
+        object. In the typical implementation it has the attributes defined in
+        `self.sites_context_attrs` all initialized to NaN (numpy.nan).
+        Here you should set those attributes with the relative record value,
+        e.g.: `context.mag = record.event.mag`
+        '''
+        context.mag = record.event.magnitude.value
+        if nodal_plane_index == 2:
+            context.strike = \
+                record.event.mechanism.nodal_planes.nodal_plane_2['strike']
+            context.dip = \
+                record.event.mechanism.nodal_planes.nodal_plane_2['dip']
+            context.rake = \
+                record.event.mechanism.nodal_planes.nodal_plane_2['rake']
+        elif nodal_plane_index == 1:
+            context.strike = \
+                record.event.mechanism.nodal_planes.nodal_plane_1['strike']
+            context.dip = \
+                record.event.mechanism.nodal_planes.nodal_plane_1['dip']
+            context.rake = \
+                record.event.mechanism.nodal_planes.nodal_plane_1['rake']
+        else:
+            context.strike = 0.0
+            context.dip = 90.0
+            context.rake = \
+                record.event.mechanism.get_rake_from_mechanism_type()
+
+        if record.event.rupture.surface:
+            context.ztor = record.event.rupture.surface.get_top_edge_depth()
+            context.width = record.event.rupture.surface.width
+            context.hypo_loc = \
+                record.event.rupture.surface.get_hypo_location(1000)
+        else:
+            if record.event.rupture.depth is not None:
+                context.ztor = record.event.rupture.depth
+            else:
+                context.ztor = record.event.depth
+
+            if record.event.rupture.width is not None:
+                context.width = record.event.rupture.width
+            else:
+                # Use the PeerMSR to define the area and assuming an aspect ratio
+                # of 1 get the width
+                context.width = \
+                    np.sqrt(utils.DEFAULT_MSR.get_median_area(context.mag, 0))
+
+            # Default hypocentre location to the middle of the rupture
+            context.hypo_loc = (0.5, 0.5)
+        context.hypo_depth = record.event.depth
+        context.hypo_lat = record.event.latitude
+        context.hypo_lon = record.event.longitude
+
+    def update_observations(self, record, observations, component="Geometric"):
+        '''Updates the observed intensity measures types (imt) with the given
+        `record` data. `observations` is a `dict` of imts (string) mapped to
+        numeric lists. Here you should append to each list the imt value
+        derived from `record`, ususally numeric or NaN (`numpy.nan`):
+        ```
+            for imt, values in observations.items():
+                if imtx in self.SCALAR_IMTS:  # currently, 'PGA' or 'PGV'
+                    val = ... get the imt scalar value from record ...
+                elif "SA(" in imtx:
+                    val = ... get the SA numeric array / list from record ...
+                else:
+                    raise ValueError("IMT %s is unsupported!" % imtx)
+                values.append(val)
+        ```
+        '''
+        selection_string = "IMS/H/Spectra/Response/Acceleration/"
+        fle = h5py.File(record.datafile, "r")
+        for imtx, values in observations.items():
+            if imtx in self.SCALAR_IMTS:
+                values.append(self.get_scalar(fle, imtx, component))
+            elif "SA(" in imtx:
+                target_period = imt.from_string(imtx).period
+                spectrum = fle[selection_string + component +
+                               "/damping_05"].value
+                periods = fle["IMS/H/Spectra/Response/Periods"].value
+                values.append(utils.get_interpolated_period(
+                    target_period, periods, spectrum))
+            else:
+                raise ValueError("IMT %s is unsupported!" % imtx)
+        fle.close()
+
+    ###########################
+    # END OF ABSTRACT METHODS #
+    ###########################
+
+    # moved from smtk/residuals/gmpe_residuals.py:
+    def get_scalar(self, fle, i_m, component="Geometric"):
+        """
+        Retrieves the scalar IM from the database
+        :param fle:
+            Instance of :class: h5py.File
+        :param str i_m:
+            Intensity measure
+        :param str component:
+            Horizontal component of IM
+        """
+        if not ("H" in fle["IMS"].keys()):
+            x_im = fle["IMS/X/Scalar/" + i_m].value[0]
+            y_im = fle["IMS/Y/Scalar/" + i_m].value[0]
+            return utils.SCALAR_XY[component](x_im, y_im)
+        else:
+            if i_m in fle["IMS/H/Scalar"].keys():
+                return fle["IMS/H/Scalar/" + i_m].value[0]
+            else:
+                raise ValueError("Scalar IM %s not in record database" % i_m)
 
     def to_json(self):
         """
@@ -978,7 +1162,6 @@ class GroundMotionDatabase(object):
             gmdb.records.append(GroundMotionRecord.from_dict(record))
         gmdb.site_ids = [rec.site.id for rec in gmdb.records]
         return gmdb
-        
 
     def number_records(self):
         """
@@ -992,13 +1175,6 @@ class GroundMotionDatabase(object):
         """
         return len(self.records)
 
-    def __iter__(self):
-        """
-        Iterate of the records
-        """
-        for record in self.records:
-            yield record
-
     def __repr__(self):
         """
         String with database ID and name
@@ -1007,24 +1183,6 @@ class GroundMotionDatabase(object):
                                                       self.id,
                                                       self.name)
 
-    def get_contexts(self, nodal_plane_index=1):
-        """
-        Returns a list of dictionaries, each containing the site, distance
-        and rupture contexts for individual records
-        """
-        wfid_list = np.array([rec.event.id for rec in self.records])
-        eqid_list = self._get_event_id_list()
-        context_dicts = []
-        for eqid in eqid_list:
-            idx = np.where(wfid_list == eqid)[0]
-            context_dicts.append({
-                'EventID': eqid,
-                'EventIndex': idx.tolist(),
-                'Sites': self._get_sites_context_event(idx),
-                'Distances': self._get_distances_context_event(idx),
-                'Rupture': self._get_event_context(idx, nodal_plane_index)})
-        return context_dicts
-    
     def _get_event_id_list(self):
         """
         Returns the list of unique event keys from the database
@@ -1043,181 +1201,6 @@ class GroundMotionDatabase(object):
             self.site_ids.append(str_id)
         _id = np.argwhere(str_id == np.array(self.site_ids))[0]
         return _id[0]
-
-    def _get_sites_context_event(self, idx):
-        """
-        Returns the site context for a particular event
-        """
-        sctx = SitesContext()
-        longs = []
-        lats = []
-        depths = []
-        vs30 = []
-        vs30_measured = []
-        z1pt0 = []
-        z2pt5 = []
-        backarc = []
-        azimuth = []
-        hanging_wall = []
-        for idx_j in idx:
-            # Site parameters
-            rup = self.records[idx_j]
-            longs.append(rup.site.longitude)
-            lats.append(rup.site.latitude)
-            if rup.site.altitude:
-                depths.append(rup.site.altitude * -1.0E-3)
-            else:
-                depths.append(0.0)
-            vs30.append(rup.site.vs30)
-            if rup.site.vs30_measured is not None:
-                vs30_measured.append(rup.site.vs30_measured)
-            else:
-                vs30_measured.append(0)
-            if rup.site.z1pt0 is not None:
-                z1pt0.append(rup.site.z1pt0)
-            else:
-                z1pt0.append(vs30_to_z1pt0_cy14(rup.site.vs30))
-            if rup.site.z2pt5 is not None:
-                z2pt5.append(rup.site.z2pt5)
-            else:
-                z2pt5.append(vs30_to_z2pt5_cb14(rup.site.vs30))
-            if ("backarc" in dir(rup.site)) and rup.site.backarc is not None:
-                backarc.append(rup.site.backarc)
-        setattr(sctx, 'vs30', np.array(vs30))
-        if len(longs) > 0:
-            setattr(sctx, 'lons', np.array(longs))
-        if len(lats) > 0:
-            setattr(sctx, 'lats', np.array(lats))
-        if len(depths) > 0:
-            setattr(sctx, 'depths', np.array(depths))
-        if len(vs30_measured) > 0:
-            setattr(sctx, 'vs30measured', np.array(vs30_measured))
-        if len(z1pt0) > 0:
-            setattr(sctx, 'z1pt0', np.array(z1pt0))
-        if len(z2pt5) > 0:
-            setattr(sctx, 'z2pt5', np.array(z2pt5))
-        if len(backarc) > 0:
-            setattr(sctx, 'backarc', np.array(backarc))
-        return sctx
-
-    def _get_distances_context_event(self, idx):
-        """
-        Returns the distance contexts for a specific event
-        """
-        dctx = DistancesContext()
-        rrup = []
-        rjb = []
-        repi = []
-        rhypo = []
-        r_x = []
-        ry0 = []
-        rcdpp = []
-        azimuth = []
-        hanging_wall = []
-        rvolc = []
-        for idx_j in idx:
-            # Distance parameters
-            rup = self.records[idx_j]
-            repi.append(rup.distance.repi)
-            rhypo.append(rup.distance.rhypo)
-            # TODO Setting Rjb == Repi and Rrup == Rhypo when missing value
-            # is a hack! Need feedback on how to fix
-            if rup.distance.rjb is not None:
-                rjb.append(rup.distance.rjb)
-            else:
-                rjb.append(rup.distance.repi)
-            if rup.distance.rrup is not None:
-                rrup.append(rup.distance.rrup)
-            else:
-                rrup.append(rup.distance.rhypo)
-            if rup.distance.r_x is not None:
-                r_x.append(rup.distance.r_x)
-            else:
-                r_x.append(rup.distance.repi)
-            if ("ry0" in dir(rup.distance)) and rup.distance.ry0 is not None:
-                ry0.append(rup.distance.ry0)
-            if ("rcdpp" in dir(rup.distance)) and\
-                rup.distance.rcdpp is not None:
-                rcdpp.append(rup.distance.rcdpp)
-            if rup.distance.azimuth is not None:
-                azimuth.append(rup.distance.azimuth)
-            if rup.distance.hanging_wall is not None:
-                hanging_wall.append(rup.distance.hanging_wall)
-            if "rvolc" in dir(rup.distance) and\
-                rup.distance.rvolc is not None:
-                rvolc.append(rup.distance.rvolc)
-
-        setattr(dctx, 'repi', np.array(repi))
-        setattr(dctx, 'rhypo', np.array(rhypo))
-        if len(rjb) > 0:
-            setattr(dctx, 'rjb', np.array(rjb))
-        if len(rrup) > 0:
-            setattr(dctx, 'rrup', np.array(rrup))
-        if len(r_x) > 0:
-            setattr(dctx, 'rx', np.array(r_x))
-        if len(ry0) > 0:
-            setattr(dctx, 'ry0', np.array(ry0))
-        if len(rcdpp) > 0:
-            setattr(dctx, 'rcdpp', np.array(rcdpp))
-        if len(azimuth) > 0:
-            setattr(dctx, 'azimuth', np.array(azimuth))
-        if len(hanging_wall) > 0:
-            setattr(dctx, 'hanging_wall', np.array(hanging_wall))
-        if len(rvolc) > 0:
-            setattr(dctx, 'rvolc', np.array(rvolc))
-        return dctx
-
-    def _get_event_context(self, idx, nodal_plane_index=1):
-        """
-        Returns the event contexts for a specific event
-        """
-        idx = idx[0]
-        rctx = RuptureContext()
-        rup = self.records[idx]
-        setattr(rctx, 'mag', rup.event.magnitude.value)
-        if nodal_plane_index == 2:
-            setattr(rctx, 'strike',
-                    rup.event.mechanism.nodal_planes.nodal_plane_2['strike'])
-            setattr(rctx, 'dip',
-                    rup.event.mechanism.nodal_planes.nodal_plane_2['dip'])
-            setattr(rctx, 'rake',
-                    rup.event.mechanism.nodal_planes.nodal_plane_2['rake'])
-        elif nodal_plane_index == 1:
-            setattr(rctx, 'strike',
-                    rup.event.mechanism.nodal_planes.nodal_plane_1['strike'])
-            setattr(rctx, 'dip',
-                    rup.event.mechanism.nodal_planes.nodal_plane_1['dip'])
-            setattr(rctx, 'rake',
-                    rup.event.mechanism.nodal_planes.nodal_plane_1['rake'])
-        else:
-            setattr(rctx, 'strike', 0.0)
-            setattr(rctx, 'dip', 90.0)
-            rctx.rake = rup.event.mechanism.get_rake_from_mechanism_type()
-
-        if rup.event.rupture.surface:
-            setattr(rctx, 'ztor', rup.event.rupture.surface.get_top_edge_depth())
-            setattr(rctx, 'width', rup.event.rupture.surface.width)
-            setattr(rctx, 'hypo_loc', rup.event.rupture.surface.get_hypo_location(1000))
-        else:
-            if rup.event.rupture.depth is not None:
-                setattr(rctx, 'ztor', rup.event.rupture.depth)
-            else:
-                setattr(rctx, 'ztor', rup.event.depth)
-
-            if rup.event.rupture.width is not None:
-                setattr(rctx, 'width', rup.event.rupture.width)
-            else:
-                # Use the PeerMSR to define the area and assuming an aspect ratio
-                # of 1 get the width
-                setattr(rctx, 'width',
-                        np.sqrt(utils.DEFAULT_MSR.get_median_area(rctx.mag, 0)))
-
-            # Default hypocentre location to the middle of the rupture
-            setattr(rctx, 'hypo_loc', (0.5, 0.5))
-        setattr(rctx, 'hypo_depth', rup.event.depth)
-        setattr(rctx, 'hypo_lat', rup.event.latitude)
-        setattr(rctx, 'hypo_lon', rup.event.longitude)
-        return rctx
 
     def get_site_collection(self, missing_vs30=None):
         """
