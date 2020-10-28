@@ -21,6 +21,8 @@
 Basic Pseudo-database built on top of hdf5 for a set of processed strong
 motion records
 """
+import os
+import pickle
 import json
 from datetime import datetime
 from collections import OrderedDict
@@ -1224,3 +1226,32 @@ class GroundMotionDatabase(object):
         """
         return SiteCollection([rec.site.to_openquake_site(missing_vs30)
                                for rec in self.records])
+
+
+def load_database(directory):
+    """
+    Wrapper function to load the metadata of a strong motion database
+    according to the filetype
+    """
+    metadata_file = None
+    filetype = None
+    fileset = os.listdir(directory)
+    for ftype in ["pkl", "json"]:
+        if ("metadatafile.%s" % ftype) in fileset:
+            metadata_file = "metadatafile.%s" % ftype
+            filetype = ftype
+            break
+    if not metadata_file:
+        raise IOError(
+            "Expected metadata file of supported type not found in %s"
+            % directory)
+    metadata_path = os.path.join(directory, metadata_file)
+    if filetype == "json":
+        # json metadata filetype
+        return GroundMotionDatabase.from_json(metadata_path)
+    elif filetype == "pkl":
+        # pkl file type
+        with open(metadata_path, "rb") as f:
+            return pickle.load(f)
+    else:
+        raise ValueError("Metadata filetype %s not supported" % ftype)
