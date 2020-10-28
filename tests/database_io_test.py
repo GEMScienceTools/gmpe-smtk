@@ -24,7 +24,7 @@ import sys
 import json
 import pprint
 import unittest
-from smtk import load_database
+from smtk.sm_database import load_database
 from smtk.parsers.esm_flatfile_parser import ESMFlatfileParser
 
 if sys.version_info[0] >= 3:
