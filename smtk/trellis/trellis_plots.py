@@ -26,7 +26,11 @@ import sys
 import re
 import json
 import numpy as np
-from collections import Iterable, OrderedDict
+from collections import OrderedDict
+try:  # https://stackoverflow.com/q/53978542
+    from collections.abc import Iterable  # noqa
+except ImportError:
+    from collections import Iterable  # noqa    
 from cycler import cycler
 from math import floor, ceil
 import matplotlib
@@ -346,11 +350,11 @@ class BaseTrellis(object):
 
             if isinstance(self.params[param], bool):
                 if self.params[param]:
-                    setattr(self.sctx, param, self.params[param] * 
-                               np.ones(self.nsites, dtype=bool))
+                    setattr(self.sctx, param, self.params[param] *
+                            np.ones(self.nsites, dtype=bool))
                 else:
-                    setattr(self.sctx, param, self.params[param] * 
-                               np.zeros(self.nsites, dtype=bool))
+                    setattr(self.sctx, param, self.params[param] *
+                            np.zeros(self.nsites, dtype=bool))
             elif isinstance(self.params[param], Iterable):
                 if not len(self.params[param]) == self.nsites:
                     raise ValueError("Length of sites value %s not equal to"
@@ -587,6 +591,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
                 col_loc = 0
             # Set the dictionary of y-values
             ydict = {"ylabel": self._get_ylabel(imt),
+                     "imt": imt,
                      "row": row_loc,
                      "column": col_loc,
                      "yvalues": OrderedDict([])}
@@ -691,7 +696,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
     """
     Creates the Trellis plot for the standard deviations
     """
-    
+
     def _build_plot(self, ax, i_m, gmvs):
         """
         Plots the lines for a given axis
@@ -721,7 +726,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
             if isinstance(self.ylim, tuple):
                 ax.set_ylim(self.ylim[0], self.ylim[1])
             self._set_labels(i_m, ax)
-    
+
     def get_ground_motion_values(self):
         """
         Runs the GMPE calculations to retreive ground motion values
@@ -737,7 +742,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros([len(self.rctx),
                                                  self.nsites],
-                                                 dtype=float)
+                                                dtype=float)
                 for iloc, rct in enumerate(self.rctx):
                     try:
                         _, sigmas = gmpe.get_mean_and_stddevs(
@@ -790,7 +795,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
         """
         ax.set_xlabel("Magnitude", fontsize=16)
         ax.set_ylabel(self._get_ylabel(i_m), fontsize=16)
-    
+
     def _write_pprint_header_line(self, fid, sep=","):
         """
         Write the header lines of the pretty print function
@@ -800,24 +805,26 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
         fid.write("%s\n" % sep.join([
             "{:s}{:s}{:s}".format(key, sep, str(val))
             for (key, val) in self.params.items()]))
-        
-    
+
+
 class DistanceIMTTrellis(MagnitudeIMTTrellis):
     """
     Trellis class to generate a plot of the GMPE attenuation with distance
     """
     XLABEL = "%s (km)"
     YLABEL = "Median %s (%s)"
-    def __init__(self, magnitudes, distances, gsims, imts, params, 
-            stddevs="Total", **kwargs):
+
+    def __init__(self, magnitudes, distances, gsims, imts, params,
+                 stddevs="Total", **kwargs):
         """
-        Instantiation 
+        Instantiation
         """
         if isinstance(magnitudes, float):
             magnitudes = [magnitudes]
 
         super(DistanceIMTTrellis, self).__init__(magnitudes, distances, gsims,
-            imts, params, stddevs, **kwargs)
+                                                 imts, params, stddevs,
+                                                 **kwargs)
 
     @classmethod
     def from_rupture_properties(cls, properties, magnitude, distances,
@@ -849,7 +856,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
 
     @classmethod
     def from_rupture_model(cls, rupture, gsims, imts, stddevs='Total',
-            **kwargs):
+                           **kwargs):
         """
         Constructs the Base Trellis Class from a rupture model
         :param rupture:
@@ -874,9 +881,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
         params = {}
         for key in rctx._slots_:
             params[key] = getattr(rctx, key)
-        #for key in sctx.__slots__:
         for key in sctx._slots_:
-        #for key in ['vs30', 'vs30measured', 'z1pt0', 'z2pt5']:
             params[key] = getattr(sctx, key)
         return cls(magnitudes, distances, gsims, imts, params, stddevs,
                    **kwargs)
@@ -895,38 +900,34 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
         self.lines = []
         distance_vals = getattr(self.dctx, self.distance_type)
 
-        assert (self.plot_type=="loglog") or (self.plot_type=="semilogy")
-        
+        assert (self.plot_type == "loglog") or (self.plot_type == "semilogy")
+
         for gmpe in self.gsims:
             gmpe_name = _get_gmpe_name(gmpe)
             self.labels.append(gmpe_name)
             if self.plot_type == "semilogy":
                 line, = ax.semilogy(distance_vals,
-                                  gmvs[gmpe_name][i_m][0, :],
-                                  #'-',
-                                  linewidth=2.0,
-                                  label=gmpe_name)
+                                    gmvs[gmpe_name][i_m][0, :],
+                                    linewidth=2.0,
+                                    label=gmpe_name)
                 min_x = distance_vals[0]
                 max_x = distance_vals[-1]
             else:
                 line, = ax.loglog(distance_vals,
                                   gmvs[gmpe_name][i_m][0, :],
-                                  #'-',
                                   linewidth=2.0,
                                   label=gmpe_name)
-                #min_x = distance_vals[0]
                 min_x = 0.5
                 max_x = distance_vals[-1]
 
             self.lines.append(line)
             ax.grid(True)
-            #ax.set_title(i_m, fontsize=12)
             if isinstance(self.xlim, tuple):
                 ax.set_xlim(self.xlim[0], self.xlim[1])
             else:
                 ax.set_xlim(min_x, max_x)
             if isinstance(self.ylim, tuple):
-                ax.set_ylim(self.ylim[0], self.ylim[1])  
+                ax.set_ylim(self.ylim[0], self.ylim[1])
             self._set_labels(i_m, ax)
 
     def _set_labels(self, i_m, ax):
@@ -966,12 +967,13 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
                 col_loc = 0
             # Set the dictionary of y-values
             ydict = {"ylabel": self._get_ylabel(imt),
+                     "imt": imt,
                      "row": row_loc,
                      "column": col_loc,
                      "yvalues": OrderedDict([])}
             for gsim in gmvs:
-                data  = [None if np.isnan(val) else val
-                         for val in gmvs[gsim][imt].flatten()]
+                data = [None if np.isnan(val) else val
+                        for val in gmvs[gsim][imt].flatten()]
                 ydict["yvalues"][gsim] = data
             gmv_dict["figures"].append(ydict)
             col_loc += 1
@@ -997,7 +999,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
             fid = sys.stdout
         # Print Meta information
         self._write_pprint_header_line(fid, sep)
-        fid.write("Magnitude%s%.2f\n" % (sep, self.magnitudes[0])) 
+        fid.write("Magnitude%s%.2f\n" % (sep, self.magnitudes[0]))
         # Loop over IMTs
         gmvs = self.get_ground_motion_values()
         for imt in self.imts:
@@ -1028,7 +1030,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
         fid.write("Distance (km) IMT Trellis\n")
         fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
                                      for (key, val) in self.params.items()]))
-        
+
 
 class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
     """
@@ -1049,7 +1051,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros([len(self.rctx),
                                                  self.nsites],
-                                                 dtype=float)
+                                                dtype=float)
                 for iloc, rct in enumerate(self.rctx):
                     try:
                         _, sigmas = gmpe.get_mean_and_stddevs(
@@ -1104,47 +1106,42 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
         self.lines = []
         distance_vals = getattr(self.dctx, self.distance_type)
 
-        assert (self.plot_type=="loglog") or (self.plot_type=="semilogy")
-        
+        assert (self.plot_type == "loglog") or (self.plot_type == "semilogy")
+
         for gmpe in self.gsims:
             gmpe_name = _get_gmpe_name(gmpe)
             self.labels.append(gmpe_name)
             if self.plot_type == "loglog":
                 line, = ax.semilogx(distance_vals,
-                                  gmvs[gmpe_name][i_m][0, :],
-                                  #'-',
-                                  linewidth=2.0,
-                                  label=gmpe_name)
-                #min_x = distance_vals[0]
+                                    gmvs[gmpe_name][i_m][0, :],
+                                    linewidth=2.0,
+                                    label=gmpe_name)
                 min_x = 0.5
                 max_x = distance_vals[-1]
             else:
                 line, = ax.plot(distance_vals,
                                 gmvs[gmpe_name][i_m][0, :],
-                                #'-',
                                 linewidth=2.0,
                                 label=gmpe_name)
                 min_x = distance_vals[0]
                 max_x = distance_vals[-1]
 
-
             self.lines.append(line)
             ax.grid(True)
-            #ax.set_title(i_m, fontsize=12)
-            
+
             if isinstance(self.xlim, tuple):
                 ax.set_xlim(self.xlim[0], self.xlim[1])
             else:
                 ax.set_xlim(min_x, max_x)
             if isinstance(self.ylim, tuple):
                 ax.set_ylim(self.ylim[0], self.ylim[1])
-                
+
             self._set_labels(i_m, ax)
 
     def _get_ylabel(self, i_m):
         """
         """
-        return self.stddevs + " Std. Dev. ({:s})".format(str(i_m)) 
+        return self.stddevs + " Std. Dev. ({:s})".format(str(i_m))
 
     def _set_labels(self, i_m, ax):
         """
@@ -1336,7 +1333,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                                                properties["z2pt5"],
                                                properties["backarc"])
                 sctx, rctx, dctx = rup.get_gsim_contexts()
-                if not distance_dict:   
+                if not distance_dict:
                     distance_dict = []
                     for (key, val) in dctx.__dict__.items():
                         distance_dict.append((key, val))
@@ -1358,11 +1355,11 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         # Get means and standard deviations
         gmvs = self.get_ground_motion_values()
         fig = plt.figure(figsize=self.figure_size)
-        fig.set_tight_layout({"pad":0.5})
+        fig.set_tight_layout({"pad": 0.5})
         for rowloc in range(nrow):
             for colloc in range(self.nsites):
                 self._build_plot(
-                    plt.subplot2grid((nrow, self.nsites), (rowloc, colloc)), 
+                    plt.subplot2grid((nrow, self.nsites), (rowloc, colloc)),
                     gmvs,
                     rowloc,
                     colloc)
@@ -1375,7 +1372,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
 
         _save_image_tight(fig, lgd, self.filename, self.filetype, self.dpi)
         plt.show()
-    
+
     def get_ground_motion_values(self):
         """
         Runs the GMPE calculations to retreive ground motion values
@@ -1397,7 +1394,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                             self.sctx, rct, dct,
                             imt.from_string(i_m),
                             [self.stddevs])
-                       
+
                         gmvs[gmpe_name][i_m][iloc, :] = \
                             np.exp(means)
                     except (KeyError, ValueError):
@@ -1434,7 +1431,6 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
             min_period = np.min(periods) if np.min(periods) < min_period else \
                 min_period
 
-                    
             self.labels.append(gmpe_name)
             # Get spectrum from gmvs
             if self.plot_type == "loglog":
@@ -1449,10 +1445,10 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                                     label=gmpe_name)
             # On the top row, add the distance as a title
             if rloc == 0:
-                ax.set_title("%s = %9.1f (km)" %(
-                    self.distance_type,
-                    self.distances[rloc][self.distance_type][cloc]),
-                    fontsize=14)
+                ax.set_title("%s = %9.1f (km)" %
+                             (self.distance_type,
+                              self.distances[rloc][self.distance_type][cloc]),
+                             fontsize=14)
             # On the last column add a vertical label with magnitude
             if cloc == (self.nsites - 1):
                 ax.annotate("M = %s" % self.rctx[rloc].mag,
@@ -1473,7 +1469,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         Sets the labels on the specified axes
         """
         ax.set_xlabel("Period (s)", fontsize=14)
-        ax.set_ylabel("Sa (g)", fontsize=14)
+        ax.set_ylabel(self._get_ylabel(None), fontsize=14)
 
     def to_dict(self):
         """
@@ -1494,9 +1490,10 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         for i, mag in enumerate(mags):
             for j, dist in enumerate(dists):
                 ydict = OrderedDict([
-                    ("ylabel", "Sa (g)"),
+                    ("ylabel", self._get_ylabel(None)),  # arg 'None' not used
                     ("magnitude", mag),
                     ("distance", np.around(dist, 3)),
+                    ("imt", 'SA'),
                     ("row", i),
                     ("column", j),
                     ("yvalues", OrderedDict([(gsim, []) for gsim in gmvs]))
@@ -1624,20 +1621,20 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
 
             if self.plot_type == "loglog":
                 line, = ax.semilogx(periods,
-                                  spec,
-                                  linewidth=2.0,
-                                  label=gmpe_name)
-            else:
-                line, = ax.plot(periods,
                                     spec,
                                     linewidth=2.0,
                                     label=gmpe_name)
+            else:
+                line, = ax.plot(periods,
+                                spec,
+                                linewidth=2.0,
+                                label=gmpe_name)
             # On the top row, add the distance as a title
             if rloc == 0:
-                ax.set_title("%s = %9.3f (km)" %(
-                    self.distance_type,
-                    self.distances[0][self.distance_type][cloc]),
-                    fontsize=14)
+                ax.set_title("%s = %9.3f (km)" %
+                             (self.distance_type,
+                              self.distances[0][self.distance_type][cloc]),
+                             fontsize=14)
             # On the last column add a vertical label with magnitude
             if cloc == (self.nsites - 1):
                 ax.annotate("M = %s" % self.rctx[rloc].mag,
@@ -1671,7 +1668,7 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
                 for iloc, (rct, dct) in enumerate(zip(self.rctx, self.dctx)):
                     try:
                         _, sigmas = gmpe.get_mean_and_stddevs(
-                             self.sctx, rct,dct,
+                             self.sctx, rct, dct,
                              imt.from_string(i_m),
                              [self.stddevs])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
@@ -1679,13 +1676,6 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
                         gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
-
-    def _set_labels(self, i_m, ax):
-        """
-        Sets the labels on the specified axes
-        """
-        ax.set_xlabel("Period (s)", fontsize=14)
-        ax.set_ylabel("%s Std. Dev." % self.stddevs, fontsize=14)
 
     def _get_ylabel(self, i_m):
         """
@@ -1702,181 +1692,3 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
                   self.stddevs)
         fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
                                      for (key, val) in self.params.items()]))
-
-
-#class MagnitudeDistanceSpectraTrellis(MagnitudeIMTTrellis):
-#    """
-#
-#    """
-#    def __init__(self, magnitudes, distances, gsims, imts, params,
-#            stddevs="Total", **kwargs):
-#        """ 
-#        """
-#        imts = ["SA(%s)" % i_m for i_m in imts]
-#
-#        super(MagnitudeDistanceSpectraTrellis, self).__init__(magnitudes, 
-#            distances, gsims, imts, params, stddevs, **kwargs)
-#    
-#
-#    def create_plot(self):
-#        """
-#        Create plot!
-#        """
-#        nrow = len(self.magnitudes)
-#        # Get means and standard deviations
-#        gmvs = self.get_ground_motion_values()
-#        fig = plt.figure(figsize=self.figure_size)
-#        fig.set_tight_layout({"pad":0.5})
-#        for rowloc in xrange(nrow):
-#            for colloc in xrange(self.nsites):
-#                self._build_plot(
-#                    plt.subplot2grid((nrow, self.nsites), (rowloc, colloc)), 
-#                    gmvs,
-#                    rowloc,
-#                    colloc)
-#        # Add legend
-#        lgd = plt.legend(self.lines,
-#                         self.labels,
-#                         loc=2,
-#                         bbox_to_anchor=(1.1, 1.),
-#                         ncol=self.ncol)
-#        _save_image_tight(fig, lgd, self.filename, self.filetype, self.dpi)
-#        plt.show()
-#
-#
-#
-#    def _build_plot(self, ax, gmvs, rloc, cloc):
-#        """
-#        Plots the lines for a given axis
-#        :param ax:
-#            Axes object
-#        :param str i_m:
-#            Intensity Measure
-#        :param dict gmvs:
-#            Ground Motion Values Dictionary
-#        """
-#        self.labels = []
-#        self.lines = []
-#        #periods = np.array([imt.from_string(i_m).period
-#        #                    for i_m in self.imts])
-#        max_period = 0.0
-#        min_period = np.inf
-#        for gmpe in self.gsims:
-#            periods = []
-#            spec = []
-#            gmpe_name = _get_gmpe_name(gmpe)
-#            for i_m in self.imts:
-#                if len(gmvs[gmpe_name][i_m]):
-#                    periods.append(imt.from_string(i_m).period)
-#                    spec.append(gmvs[gmpe_name][i_m][rloc, cloc])
-#            periods = np.array(periods)
-#            spec = np.array(spec)
-#            max_period = np.max(periods) if np.max(periods) > max_period else \
-#                max_period
-#            min_period = np.min(periods) if np.min(periods) < min_period else \
-#                min_period
-#
-#                    
-#            self.labels.append(gmpe_name)
-#            # Get spectrum from gmvs
-#            if self.plot_type == "loglog":
-#                line, = ax.loglog(periods,
-#                                  spec,
-#                                  #"-",
-#                                  linewidth=2.0,
-#                                  label=gmpe_name)
-#            else:
-#                line, = ax.semilogy(periods,
-#                                    spec,
-#                                    #"-",
-#                                    linewidth=2.0,
-#                                    label=gmpe_name)
-#            # On the top row, add the distance as a title
-#            if rloc == 0:
-#                ax.set_title("%s = %9.3f (km)" %(
-#                    self.distance_type,
-#                    self.distances[self.distance_type][cloc]),
-#                    fontsize=14)
-#            # On the last column add a vertical label with magnitude
-#            if cloc == (self.nsites - 1):
-#                ax.annotate("M = %s" % self.rctx[rloc].mag,
-#                            (1.05, 0.5),
-#                            xycoords="axes fraction",
-#                            fontsize=14,
-#                            rotation="vertical")
-#
-#            self.lines.append(line)
-#            ax.set_xlim(min_period, max_period)
-#            if isinstance(self.ylim, tuple):
-#                ax.set_ylim(self.ylim[0], self.ylim[1])
-#            ax.grid(True)
-#            self._set_labels(i_m, ax)
-#
-#
-#    def _set_labels(self, i_m, ax):
-#        """
-#        Sets the labels on the specified axes
-#        """
-#        ax.set_xlabel("Period (s)", fontsize=14)
-#        ax.set_ylabel("Sa (g)", fontsize=14)
-#
-#    def pretty_print(self, filename=None, sep=","):
-#        """
-#        Format the ground motion for printing to file or to screen
-#        :param str filename:
-#            Path to file
-#        :param str sep:
-#            Separator character
-#        """
-#        if filename:
-#            fid = open(filename, "w")
-#        else:
-#            fid = sys.stdout
-#        # Print Meta information
-#        self._write_pprint_header_line(fid, sep)
-#         # Loop over IMTs
-#        #if self.rupture:
-#        #    gmvs = self.get_ground_motion_values_from_rupture()
-#        #else:
-#        gmvs = self.get_ground_motion_values()
-#        # Get the GMPE list header string
-#        gsim_str = "IMT{:s}{:s}".format(
-#            sep,
-#            sep.join([_get_gmpe_name(gsim) for gsim in self.gsims]))
-#        for i, mag in enumerate(self.magnitudes):
-#            for j in range(self.nsites):
-#                dist_string = sep.join([
-#                    "{:s}{:s}{:s}".format(dist_type, sep, str(val[j]))
-#                    for (dist_type, val) in self.distances.items()])
-#                # Get M-R header string
-#                mr_header = "Magnitude{:s}{:s}{:s}{:s}".format(sep, str(mag),
-#                                                               sep,
-#                                                               dist_string)
-#                fid.write("%s\n" % mr_header)
-#                fid.write("%s\n" % gsim_str)
-#                for imt in self.imts:
-#                    iml_str = []
-#                    for gsim in self.gsims:
-#                        gmpe_name = _get_gmpe_name(gsim)
-#                        # Need to deal with case that GSIMs don't define
-#                        # values for the period
-#                        if len(gmvs[gmpe_name][imt]):
-#                            iml_str.append("{:.8f}".format(
-#                                gmvs[gmpe_name][imt][i, j]))
-#                        else:
-#                            iml_str.append("-999.000")
-#                    # Retreived IMT string
-#                    imt_str = imt.split("(")[1].rstrip(")")
-#                    iml_str = sep.join(iml_str)
-#                    fid.write("{:s}{:s}{:s}\n".format(imt_str, sep, iml_str))
-#                fid.write("====================================================\n")
-#        if filename:
-#            fid.close()
-#
-#    def _write_pprint_header_line(self, fid, sep=","):
-#        """
-#        Write the header lines of the pretty print function
-#        """
-#        fid.write("Magnitude - Distance Spectra (km) IMT Trellis\n")
-#        fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
-#                                     for (key, val) in self.params.items()]))
