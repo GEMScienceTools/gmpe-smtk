@@ -1230,7 +1230,7 @@ class GroundMotionDatabase(object):
 
 def load_database(directory):
     """
-    Wrapper function to load the metadata of a strong motion database
+    Wrapper function to load the metadata of a :class:`GroundMotionDatabase`
     according to the filetype
     """
     metadata_file = None
