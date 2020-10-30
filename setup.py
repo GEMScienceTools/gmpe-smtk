@@ -36,7 +36,7 @@ setup(
     install_requires=[
         'openquake.engine >=3.6',
         'PyYAML',
-        'matplotlib >=1.5',
+         # 'matplotlib >=1.5',
         'tables >=3.4.4',
     ],
     author='GEM Foundation',
