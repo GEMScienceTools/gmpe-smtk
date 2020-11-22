@@ -1,8 +1,6 @@
 """
 Basic classes for the GroundMotionTable (stored as Table in HDF5 files)
 and parsers for converting from given flatfiles in CSV formats
-
-.. moduleauthor::  R. Zaccarelli
 """
 import os
 import sys
