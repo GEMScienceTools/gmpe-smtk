@@ -23,9 +23,13 @@ import unittest
 import os
 import json
 import numpy as np
+
+from openquake.hazardlib.gsim.akkar_2014 import AkkarEtAlRjb2014
+from openquake.hazardlib.gsim.bindi_2014 import BindiEtAl2014Rjb
+from openquake.hazardlib.gsim.bindi_2017 import BindiEtAl2017Rjb
+
 import smtk.trellis.trellis_plots as trpl
 import smtk.trellis.configure as rcfg
-
 
 BASE_DATA_PATH = os.path.join(os.path.dirname(__file__), "data")
 
@@ -47,13 +51,16 @@ class BaseTrellisTest(unittest.TestCase):
                         1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0,
                         3.0, 4.001, 5.0, 7.5, 10.0]
 
+        # note below some GSIMS are passed as strings, some as instances (both
+        # types are valid, in the second case the str representation is
+        # inferred, see trellis_plot.py for details):
         self.gsims = ["AkkarBommer2010", "CauzziFaccioli2008",
-                      "ChiouYoungs2008", "ZhaoEtAl2006Asc", "AkkarEtAlRjb2014",
-                      "BindiEtAl2014Rjb", "CauzziEtAl2014", "DerrasEtAl2014",
+                      "ChiouYoungs2008", "ZhaoEtAl2006Asc", AkkarEtAlRjb2014(),
+                      BindiEtAl2014Rjb(), "CauzziEtAl2014", "DerrasEtAl2014",
                       "AbrahamsonEtAl2014", "BooreEtAl2014", "ChiouYoungs2014",
                       "CampbellBozorgnia2014", "KothaEtAl2016Italy",
                       "KothaEtAl2016Other", "KothaEtAl2016Turkey",
-                      "ZhaoEtAl2016Asc", "BindiEtAl2017Rjb"]
+                      "ZhaoEtAl2016Asc", BindiEtAl2017Rjb()]
 
     def compare_jsons(self, old, new):
         """

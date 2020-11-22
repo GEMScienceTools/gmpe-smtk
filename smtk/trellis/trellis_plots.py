@@ -121,7 +121,8 @@ def _get_gmpe_name(gsim):
     if gsim.__class__.__name__.startswith("GMPETable"):
         match = re.match(r'^GMPETable\(([^)]+?)\)$', str(gsim))
         filepath = match.group(1).split("=")[1][1:-1]
-        return os.path.splitext(filepath.split("/")[-1])[0]
+        # return a consistent name (see _check_gsim_list):
+        return 'GMPETable(%s)' % os.path.splitext(filepath.split("/")[-1])[0]
     else:
         gsim_name = gsim.__class__.__name__
         additional_args = []
@@ -140,26 +141,27 @@ def _get_gmpe_name(gsim):
 
 def _check_gsim_list(gsim_list):
     """
-    Checks the list of GSIM models and returns an instance of the
-    openquake.hazardlib.gsim class. Raises error if GSIM is not supported in
-    OpenQuake
-    :param list gsim_list:
-        List of GSIM names (str)
+    Checks the list of GSIM models and returns a dict where each gsim in
+    `gsim_list` is mapped to its openquake.hazardlib.gsim class.
+    Raises error if GSIM is not supported in OpenQuake
+
+    :param gsim_list: list of GSIM names (str) or OpenQuake Gsims
+    :return: a dict of GSIM names (str) mapped to the associated GSIM
     """
-    output_gsims = []
+    output_gsims = {}
     for gs in gsim_list:
         if isinstance(gs, GMPE):
-            # Is an instantated GMPE, so pass directly to list
-            output_gsims.append(gs)
+            # retrieve the name of an instantated GMPE via `_get_gmpe_name`:
+            output_gsims[_get_gmpe_name(gs)] = gs
         elif gs.startswith("GMPETable"):
             # Get filename
             match = re.match(r'^GMPETable\(([^)]+?)\)$', gs)
             filepath = match.group(1).split("=")[1]
-            output_gsims.append(GMPETable(gmpe_table=filepath))
+            output_gsims[gs] = GMPETable(gmpe_table=filepath)
         elif gs not in AVAILABLE_GSIMS:
             raise ValueError('%s Not supported by OpenQuake' % gs)
         else:
-            output_gsims.append(AVAILABLE_GSIMS[gs]())
+            output_gsims[gs] = AVAILABLE_GSIMS[gs]()
     return output_gsims
 
 
@@ -276,12 +278,12 @@ class BaseTrellis(object):
         """
         self.dctx = gsim.base.DistancesContext()
         required_dists = []
-        for gmpe in self.gsims:
+        for gmpe_name, gmpe in self.gsims.items():
             gsim_distances = [dist for dist in gmpe.REQUIRES_DISTANCES]
             for dist in gsim_distances:
                 if dist not in self.distances:
                     raise ValueError('GMPE %s requires distance type %s'
-                                     % (_get_gmpe_name(gmpe), dist))
+                                     % (gmpe_name, dist))
                 if dist not in required_dists:
                     required_dists.append(dist)
         dist_check = False
@@ -304,14 +306,14 @@ class BaseTrellis(object):
             self.magnitudes = np.array(self.magnitudes)
         # Get all required rupture attributes
         required_attributes = []
-        for gmpe in self.gsims:
+        for gmpe_name, gmpe in self.gsims.items():
             rup_params = [param for param in gmpe.REQUIRES_RUPTURE_PARAMETERS]
             for param in rup_params:
                 if param == 'mag':
                     continue
                 elif param not in self.params:
                     raise ValueError("GMPE %s requires rupture parameter %s"
-                                     % (_get_gmpe_name(gmpe), param))
+                                     % (gmpe_name, param))
                 elif param not in required_attributes:
                     required_attributes.append(param)
                 else:
@@ -329,16 +331,16 @@ class BaseTrellis(object):
         information for the GSIMS is found in the input parameters
         """
         slots = set()
-        for gmpe in self.gsims:
+        for gmpe in self.gsims.values():
             slots.update(gmpe.REQUIRES_SITES_PARAMETERS)
         self.sctx = gsim.base.SitesContext(slots=slots)
         required_attributes = []
-        for gmpe in self.gsims:
+        for gmpe_name, gmpe in self.gsims.items():
             site_params = [param for param in gmpe.REQUIRES_SITES_PARAMETERS]
             for param in site_params:
                 if param not in self.params:
                     raise ValueError("GMPE %s requires site parameter %s"
-                                     % (_get_gmpe_name(gmpe), param))
+                                     % (gmpe_name, param))
                 elif param not in required_attributes:
                     required_attributes.append(param)
                 else:
@@ -539,8 +541,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
         """
         self.labels = []
         self.lines = []
-        for gmpe in self.gsims:
-            gmpe_name = _get_gmpe_name(gmpe)
+        for gmpe_name in self.gsims:
             self.labels.append(gmpe_name)
             line, = ax.semilogy(self.magnitudes, gmvs[gmpe_name][i_m][:, 0],
                                 linewidth=2.0, label=gmpe_name)
@@ -598,7 +599,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
             for gsim in gmvs:
                 if not len(gmvs[gsim][imt]):
                     # GSIM missing, set None
-                    ydict["yvalues"][gsim] = [None for i in range(nvals)]
+                    ydict["yvalues"][gsim] = [None] * nvals
                     continue
                 iml_to_list = []
                 for val in gmvs[gsim][imt].flatten().tolist():
@@ -626,8 +627,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
              'GMPE2': {'IM1': , 'IM2': }}
         """
         gmvs = OrderedDict()
-        for gmpe in self.gsims:
-            gmpe_name = _get_gmpe_name(gmpe)
+        for gmpe_name, gmpe in self.gsims.items():
             gmvs.update([(gmpe_name, {})])
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros(
@@ -670,13 +670,11 @@ class MagnitudeIMTTrellis(BaseTrellis):
         gmvs = self.get_ground_motion_values()
         for imt in self.imts:
             fid.write("%s\n" % imt)
-            header_str = "Magnitude" + sep + sep.join([_get_gmpe_name(gsim)
-                                                       for gsim in self.gsims])
+            header_str = "Magnitude" + sep + sep.join(self.gsims)
             fid.write("%s\n" % header_str)
             for i, mag in enumerate(self.magnitudes):
                 data_string = sep.join(["{:.8f}".format(
-                     gmvs[_get_gmpe_name(gsim)][imt][i, 0])
-                     for gsim in self.gsims])
+                     gmvs[gmpe_name][imt][i, 0]) for gmpe_name in self.gsims])
                 fid.write("{:s}{:s}{:s}\n".format(str(mag), sep, data_string))
             fid.write("====================================================\n")
         if filename:
@@ -709,8 +707,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
         """
         self.labels = []
         self.lines = []
-        for gmpe in self.gsims:
-            gmpe_name = _get_gmpe_name(gmpe)
+        for gmpe_name in self.gsims:
             self.labels.append(gmpe_name)
             line, = ax.plot(self.magnitudes,
                             gmvs[gmpe_name][i_m][:, 0],
@@ -736,8 +733,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
              'GMPE2': {'IM1': , 'IM2': }}
         """
         gmvs = OrderedDict()
-        for gmpe in self.gsims:
-            gmpe_name = _get_gmpe_name(gmpe)
+        for gmpe_name, gmpe in self.gsims.items():
             gmvs.update([(gmpe_name, {})])
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros([len(self.rctx),
@@ -763,8 +759,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
         """
         gmvs = OrderedDict()
         rctx, dctx, sctx = self._get_context_sets()
-        for gmpe in self.gsims:
-            gmpe_name = _get_gmpe_name(gmpe)
+        for gmpe_name, gmpe in self.gsims.items():
             gmvs.update([(gmpe_name, {})])
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros(
@@ -902,8 +897,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
 
         assert (self.plot_type == "loglog") or (self.plot_type == "semilogy")
 
-        for gmpe in self.gsims:
-            gmpe_name = _get_gmpe_name(gmpe)
+        for gmpe_name in self.gsims:
             self.labels.append(gmpe_name)
             if self.plot_type == "semilogy":
                 line, = ax.semilogy(distance_vals,
@@ -1008,14 +1002,13 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
             header_str = "{:s}{:s}{:s}".format(
                 header_str,
                 sep,
-                sep.join([_get_gmpe_name(gsim) for gsim in self.gsims]))
+                sep.join(self.gsims))
             fid.write("%s\n" % header_str)
             for i in range(self.nsites):
                 dist_string = sep.join(["{:.4f}".format(self.distances[key][i])
                                         for key in self.distances])
                 data_string = sep.join(["{:.8f}".format(
-                     gmvs[_get_gmpe_name(gsim)][imt][0, i])
-                     for gsim in self.gsims])
+                     gmvs[gmpe_name][imt][0, i]) for gmpe_name in self.gsims])
                 fid.write("{:s}{:s}{:s}\n".format(dist_string,
                                                   sep,
                                                   data_string))
@@ -1045,8 +1038,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
              'GMPE2': {'IM1': , 'IM2': }}
         """
         gmvs = OrderedDict()
-        for gmpe in self.gsims:
-            gmpe_name = _get_gmpe_name(gmpe)
+        for gmpe_name, gmpe in self.gsims.items():
             gmvs.update([(gmpe_name, {})])
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros([len(self.rctx),
@@ -1071,8 +1063,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
         """
         gmvs = OrderedDict()
         rctx, dctx, sctx = self._get_context_sets()
-        for gmpe in self.gsims:
-            gmpe_name = _get_gmpe_name(gmpe)
+        for gmpe_name, gmpe in self.gsims.items():
             gmvs.update([(gmpe_name, {})])
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros(
@@ -1108,8 +1099,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
 
         assert (self.plot_type == "loglog") or (self.plot_type == "semilogy")
 
-        for gmpe in self.gsims:
-            gmpe_name = _get_gmpe_name(gmpe)
+        for gmpe_name in self.gsims:
             self.labels.append(gmpe_name)
             if self.plot_type == "loglog":
                 line, = ax.semilogx(distance_vals,
@@ -1202,7 +1192,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                 for mag in self.magnitudes]):
             # Get all required rupture attributes
             self.rctx = [mag for mag in self.magnitudes]
-            for gmpe in self.gsims:
+            for gmpe_name, gmpe in self.gsims.items():
                 rup_params = [param
                               for param in gmpe.REQUIRES_RUPTURE_PARAMETERS]
                 for rctx in self.rctx:
@@ -1210,7 +1200,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                         if param not in rctx.__dict__:
                             raise ValueError(
                                 "GMPE %s requires rupture parameter %s"
-                                % (_get_gmpe_name(gmpe), param))
+                                % (gmpe_name, param))
             return
         # Otherwise instantiate in the conventional way
         super(MagnitudeDistanceSpectraTrellis, self)._preprocess_ruptures()
@@ -1230,13 +1220,13 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         # Distances should be a list of dictionaries
         self.dctx = []
         required_distances = []
-        for gmpe in self.gsims:
+        for gmpe_name, gmpe in self.gsims.items():
             gsim_distances = [dist for dist in gmpe.REQUIRES_DISTANCES]
             for mag_distances in self.distances:
                 for dist in gsim_distances:
                     if dist not in mag_distances:
                         raise ValueError('GMPE %s requires distance type %s'
-                                         % (_get_gmpe_name(gmpe), dist))
+                                         % (gmpe_name, dist))
 
                     if dist not in required_distances:
                         required_distances.append(dist)
@@ -1382,8 +1372,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
              'GMPE2': {'IM1': , 'IM2': }}
         """
         gmvs = OrderedDict()
-        for gmpe in self.gsims:
-            gmpe_name = _get_gmpe_name(gmpe)
+        for gmpe_name, gmpe in self.gsims.items():
             gmvs.update([(gmpe_name, {})])
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros(
@@ -1416,10 +1405,9 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         self.lines = []
         max_period = 0.0
         min_period = np.inf
-        for gmpe in self.gsims:
+        for gmpe_name in self.gsims:
             periods = []
             spec = []
-            gmpe_name = _get_gmpe_name(gmpe)
             for i_m in self.imts:
                 if len(gmvs[gmpe_name][i_m]):
                     periods.append(imt.from_string(i_m).period)
@@ -1542,7 +1530,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         # Get the GMPE list header string
         gsim_str = "IMT{:s}{:s}".format(
             sep,
-            sep.join([_get_gmpe_name(gsim) for gsim in self.gsims]))
+            sep.join(self.gsims))
         for i, mag in enumerate(self.magnitudes):
             for j in range(self.nsites):
                 dist_string = sep.join([
@@ -1556,8 +1544,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                 fid.write("%s\n" % gsim_str)
                 for imt in self.imts:
                     iml_str = []
-                    for gsim in self.gsims:
-                        gmpe_name = _get_gmpe_name(gsim)
+                    for gmpe_name in self.gsims:
                         # Need to deal with case that GSIMs don't define
                         # values for the period
                         if len(gmvs[gmpe_name][imt]):
@@ -1601,11 +1588,10 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
         max_period = 0.0
         min_period = np.inf
 
-        for gmpe in self.gsims:
+        for gmpe_name in self.gsims:
             periods = []
             spec = []
             # Get spectrum from gmvs
-            gmpe_name = _get_gmpe_name(gmpe)
             for i_m in self.imts:
                 if len(gmvs[gmpe_name][i_m]):
                     periods.append(imt.from_string(i_m).period)
@@ -1659,8 +1645,7 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
              'GMPE2': {'IM1': , 'IM2': }}
         """
         gmvs = OrderedDict()
-        for gmpe in self.gsims:
-            gmpe_name = _get_gmpe_name(gmpe)
+        for gmpe_name, gmpe in self.gsims.items():
             gmvs.update([(gmpe_name, {})])
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros([len(self.rctx), self.nsites],
