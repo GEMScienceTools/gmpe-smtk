@@ -122,7 +122,7 @@ def _get_gmpe_name(gsim):
         match = re.match(r'^GMPETable\(([^)]+?)\)$', str(gsim))
         filepath = match.group(1).split("=")[1][1:-1]
         # return a consistent name (see _check_gsim_list):
-        return 'GMPETable(%s)' % os.path.splitext(filepath.split("/")[-1])[0]
+        return 'GMPETable(%s)' % filepath
     else:
         gsim_name = gsim.__class__.__name__
         additional_args = []
