@@ -1,8 +1,6 @@
 """
 Basic Pseudo-database built on top of hdf5 for a set of processed strong
 motion records
-
-.. moduleauthor::  R. Zaccarelli
 """
 import os
 import pickle

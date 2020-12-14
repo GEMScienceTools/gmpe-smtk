@@ -1,8 +1,6 @@
 """
 Implementing the abstract-like interface to be inherited by any
 database/set/collection aiming to support residuals computation on its records
-
-.. moduleauthor::  R. Zaccarelli
 """
 import sys
 from collections import OrderedDict  # FIXME In Python3.7+, dict is sufficient

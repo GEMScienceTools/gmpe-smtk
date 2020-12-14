@@ -1,7 +1,5 @@
 '''
 Defines the parser for released and user defined flatfiles
-
-.. moduleauthor::  R. Zaccarelli
 '''
 from collections import OrderedDict
 import re
