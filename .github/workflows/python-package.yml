@@ -30,6 +30,7 @@ jobs:
         git clone -q --depth=1 https://github.com/gem/oq-engine.git 
         pip install -r oq-engine/requirements-py38-linux64.txt
         pip install -e oq-engine
+        pip install -e .
     - name: Lint with flake8
       run: |
         # exit-zero treats all errors as warnings
