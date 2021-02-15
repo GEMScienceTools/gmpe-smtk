@@ -180,13 +180,14 @@ class ResidualsCompliantRecordSet:
         :return:  a :class:`openquake.hazardlib.contexts.SitesContext`
         '''
         ctx = SitesContext()
-        for _ in self.sites_context_attrs:
-            setattr(ctx, _, [])
+        for attr in self.sites_context_attrs:
+            setattr(ctx, attr, [])
         return ctx
 
     def create_distances_context(self):
         '''Creates, initializes and returns a distances context by setting the
-        default values of the attributes defined in `self.distances_context_attrs`.
+        default values of the attributes defined in
+        `self.distances_context_attrs`.
         The returned context is intended to be used in `self.get_contexts`.
 
         :return:  a :class:`openquake.hazardlib.contexts.DistancesContext`
@@ -221,9 +222,10 @@ class ResidualsCompliantRecordSet:
             # remove attribute if its value is empty-like
             if attval is None or not len(attval):
                 delattr(context, attname)
+            elif attname in ('vs30measured', 'backarc'):
+                setattr(context, attname, np.asarray(attval, dtype=bool))
             else:
-                # FIXME: dtype=float forces Nones to be safely converted to nan
-                # but it assumes obviously all attval elements to be numeric
+                # dtype=float forces Nones to be safely converted to nan
                 setattr(context, attname, np.asarray(attval, dtype=float))
 
     def finalize_distances_context(self, context):
