@@ -233,12 +233,12 @@ class ResidualsTestCase(unittest.TestCase):
                         self._scatter_data_check(residuals, gsim, imt,
                                                  data1)
 
-
     def test_json(self):
         with self.assertRaises(AttributeError):
             # only np arrays allowed:
             self.assertEqual(_tojson([1, np.nan, 3.7]), [1, None, 3.7])
-        self.assertEqual(_tojson(np.array([1, np.nan, 3.7]))[0], [1, None, 3.7])
+        self.assertEqual(_tojson(np.array([1, np.nan, 3.7]))[0],
+                         [1, None, 3.7])
         self.assertEqual(_tojson(np.nan, np.float64(3.7)), [None, 3.7])
 
     def test_nanlinregress(self):
@@ -249,7 +249,7 @@ class ResidualsTestCase(unittest.TestCase):
         # a less edgy test case:
         self._assert_linreg([1, np.nan, 4.5, 6], [np.nan, -4, 11, 0.005],
                             [4.5, 6], [11, 0.005])
-    
+
     def _assert_linreg(self, nanx, nany, x, y):
         '''nanx, nany: values for _nanlinreg. x, y: values for scipy linreg.
         Asserts the results are the same'''
@@ -273,6 +273,6 @@ class ResidualsTestCase(unittest.TestCase):
         """
         shutil.rmtree(cls.out_location)
 
+
 if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test.testName']
     unittest.main()

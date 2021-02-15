@@ -24,13 +24,12 @@ Module to get GMPE residuals - total, inter and intra
 from __future__ import print_function
 import sys
 import re
-import h5py
 import warnings
 import numpy as np
 from datetime import datetime
 from math import sqrt, ceil
 from scipy.special import erf
-from scipy.stats import scoreatpercentile, norm
+from scipy.stats import norm
 from scipy.linalg import solve
 from copy import deepcopy
 from collections import OrderedDict
@@ -41,12 +40,10 @@ import smtk.intensity_measures as ims
 from openquake.hazardlib import imt
 from smtk.strong_motion_selector import SMRecordSelector
 from smtk.trellis.trellis_plots import _get_gmpe_name
-from smtk.sm_table import GroundMotionTable
-from smtk.sm_utils import SCALAR_XY, get_interpolated_period,\
-    convert_accel_units
+from smtk.sm_utils import convert_accel_units
 
 GSIM_LIST = get_available_gsims()
-GSIM_KEYS = set(GSIM_LIST.keys())
+GSIM_KEYS = set(GSIM_LIST)
 
 # SCALAR_IMTS = ["PGA", "PGV", "PGD", "CAV", "Ia"]
 SCALAR_IMTS = ["PGA", "PGV"]
@@ -417,7 +414,8 @@ class Residuals(object):
                                     np.arange(len(inter_ev)))
                         else:
                             self.residuals[gmpe][imtx][res_type].extend(
-                                context["Residual"][gmpe][imtx][res_type].tolist())
+                                context["Residual"][gmpe][imtx][res_type].
+                                tolist())
                         self.modelled[gmpe][imtx][res_type].extend(
                             context["Expected"][gmpe][imtx][res_type].tolist())
 
@@ -1039,8 +1037,8 @@ class SingleStationAnalysis(object):
             #    raise ValueError("%s not supported in OpenQuake" % gmpe)
             for imtx in self.imts:
                 self.types[gmpe][imtx] = []
-                for res_type in \
-                    self.gmpe_list[gmpe].DEFINED_FOR_STANDARD_DEVIATION_TYPES:
+                for res_type in (self.gmpe_list[gmpe].
+                                 DEFINED_FOR_STANDARD_DEVIATION_TYPES):
                     self.types[gmpe][imtx].append(res_type)
 
     def get_site_residuals(self, database, component="Geometric"):
