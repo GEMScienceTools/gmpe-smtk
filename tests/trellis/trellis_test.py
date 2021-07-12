@@ -193,10 +193,10 @@ class MagnitudeDistanceSpectraTrellisTest(BaseTrellisTest):
                              new["figures"][i]["row"])
             self.assertEqual(old["figures"][i]["column"],
                              new["figures"][i]["column"])
-            for gsim in old["figures"][i]["yvalues"]:
-                old_vals = np.array(old["figures"][i]["yvalues"][gsim])
-                new_vals = np.array(new["figures"][i]["yvalues"][gsim])
-                if old_vals.dtype == "O":
+            oldys = old["figures"][i]["yvalues"].values()
+            newys = new["figures"][i]["yvalues"].values()
+            for old_vals, new_vals in zip(oldys, newys):
+                if None in old_vals:
                     # Has None Values - compare element by element
                     for old_val, new_val in zip(old_vals, new_vals):
                         if old_val and new_val:
