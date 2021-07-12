@@ -82,10 +82,10 @@ class BaseTrellisTest(unittest.TestCase):
             self.assertEqual(old["figures"][i]["row"],
                              new["figures"][i]["row"])
 
-            for gsim in old["figures"][i]["yvalues"]:
-                np.testing.assert_array_almost_equal(
-                    old["figures"][i]["yvalues"][gsim],
-                    new["figures"][i]["yvalues"][gsim], 7)
+            oldys = old["figures"][i]["yvalues"].values()
+            newys = new["figures"][i]["yvalues"].values()
+            for oldy, newy in zip(oldys, newys):
+                np.testing.assert_array_almost_equal(oldy, newy, 7)
 
 
 class DistanceTrellisTest(BaseTrellisTest):
@@ -232,6 +232,7 @@ class MagnitudeDistanceSpectraTrellisTest(BaseTrellisTest):
 
 class MagnitudeDistanceSpectraSigmaTrellisTest(
         MagnitudeDistanceSpectraTrellisTest):
+
     TEST_FILE = "test_magnitude_distance_spectra_sigma_trellis.json"
 
     def _run_trellis(self, magnitudes, distances, properties):
@@ -241,8 +242,3 @@ class MagnitudeDistanceSpectraSigmaTrellisTest(
         return trpl.MagnitudeDistanceSpectraSigmaTrellis.from_rupture_model(
             properties, magnitudes, distances, self.gsims, self.periods,
             distance_type="rrup")
-
-
-if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test.testName']
-    unittest.main()
