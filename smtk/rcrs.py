@@ -116,9 +116,7 @@ class ResidualsCompliantRecordSet:
         ```
         {
          'EventID': earthquake id,
-         'Sites': :class:`openquake.hazardlib.contexts.SitesContext`,
-         'Distances': :class:`openquake.hazardlib.contexts.DistancesContext`,
-         'Rupture': :class:`openquake.hazardlib.contexts.RuptureContext`
+         'Ctx': :class:`openquake.hazardlib.contexts.RuptureContext`
         }
         ```
         Additionally, if `imts` is not None but a list of Intensity measure
@@ -139,23 +137,20 @@ class ResidualsCompliantRecordSet:
                 # we might use defaultdict, but like this is more readable
                 dic = {
                     'EventID': evt_id,
-                     # 'EventIndex': [],  # FIXME: we do not use it right?
-                    'Sites': self.create_sites_context(),
-                    'Distances': self.create_distances_context(),
-                    'Rupture': self.create_rupture_context(evt_id)
+                    'Ctx': self.create_context(evt_id)
                 }
                 if compute_observations:
                     dic["Observations"] = self.create_observations(imts)
                     dic["Num. Sites"] = 0
                 # set Rupture only once:
-                self.update_rupture_context(rec, dic['Rupture'],
+                self.update_rupture_context(rec, dic['Ctx'],
                                             nodal_plane_index)
                 # assign to wrapping `context_dicts`:
                 context_dicts[evt_id] = dic
 
             # dic['EventIndex'].append(self.get_record_id(rec))
-            self.update_sites_context(rec, dic['Sites'])
-            self.update_distances_context(rec, dic['Distances'])
+            self.update_sites_context(rec, dic['Ctx'])
+            self.update_distances_context(rec, dic['Ctx'])
             if compute_observations:
                 self.update_observations(rec, dic['Observations'], component)
                 dic["Num. Sites"] += 1
@@ -164,42 +159,14 @@ class ResidualsCompliantRecordSet:
         # https://stackoverflow.com/questions/7133885/fastest-way-to-grow-a-numpy-numeric-array
         # get default attributes not to be changed:
         for dic in context_dicts.values():
-            self.finalize_sites_context(dic['Sites'])
-            self.finalize_distances_context(dic['Distances'])
-            self.finalize_rupture_context(dic['Rupture'])
+            self.finalize_context(dic['Ctx'])
             if compute_observations:
                 self.finalize_observations(dic['Observations'])
 
         return context_dicts.values()
 
-    def create_sites_context(self):
-        '''Creates, initializes and returns a sites context by setting the
-        default values of the attributes defined in `self.sites_context_attrs`.
-        The returned context is intended to be used in `self.get_contexts`.
-
-        :return:  a :class:`openquake.hazardlib.contexts.SitesContext`
-        '''
-        ctx = SitesContext()
-        for attr in self.sites_context_attrs:
-            setattr(ctx, attr, [])
-        return ctx
-
-    def create_distances_context(self):
-        '''Creates, initializes and returns a distances context by setting the
-        default values of the attributes defined in
-        `self.distances_context_attrs`.
-        The returned context is intended to be used in `self.get_contexts`.
-
-        :return:  a :class:`openquake.hazardlib.contexts.DistancesContext`
-        '''
-        ctx = DistancesContext()
-        for _ in self.distances_context_attrs:
-            setattr(ctx, _, [])
-        return ctx
-
-    def create_rupture_context(self, evt_id):
-        '''Creates, initializes and returns a rupture context by setting the
-        default values of the attributes defined in `self.rupture_context_attrs`.
+    def create_context(self, evt_id):
+        '''Creates, initializes and returns a full context.
         The returned context is intended to be used in `self.get_contexts`.
 
         :return:  a :class:`openquake.hazardlib.contexts.RuptureContext`
@@ -207,9 +174,13 @@ class ResidualsCompliantRecordSet:
         ctx = RuptureContext()
         for _ in self.rupture_context_attrs:
             setattr(ctx, _, np.nan)
+        for attr in self.sites_context_attrs:
+            setattr(ctx, attr, [])
+        for _ in self.distances_context_attrs:
+            setattr(ctx, _, [])
         return ctx
 
-    def finalize_sites_context(self, context):
+    def finalize_context(self, context):
         '''Finalizes the `context` object created with
         `self.create_sites_context` and populated in `self.get_contexts`.
         All operations should be performed inplace on `context`, this method
@@ -228,14 +199,6 @@ class ResidualsCompliantRecordSet:
                 # dtype=float forces Nones to be safely converted to nan
                 setattr(context, attname, np.asarray(attval, dtype=float))
 
-    def finalize_distances_context(self, context):
-        '''Finalizes the `context` object created with
-        `self.create_distances_context` and populated in `self.get_contexts`.
-        All operations should be performed inplace on `context`, this method
-        is not expected to return any value
-
-        :param context: a :class:`openquake.hazardlib.contexts.DistancesContext`
-        '''
         for attname in self.distances_context_attrs:
             attval = getattr(context, attname)
             # remove attribute if its value is empty-like
@@ -245,16 +208,6 @@ class ResidualsCompliantRecordSet:
                 # FIXME: dtype=float forces Nones to be safely converted to nan
                 # but it assumes obviously all attval elements to be numeric
                 setattr(context, attname, np.asarray(attval, dtype=float))
-
-    def finalize_rupture_context(self, context):
-        '''Finalizes the `context` object created with
-        `self.create_rupture_context` and populated in `self.get_contexts`.
-        All operations should be performed inplace on `context`, this method
-        is not expected to return any value
-
-        :param context: a :class:`openquake.hazardlib.contexts.RuptureContext`
-        '''
-        pass
 
     def create_observations(self, imts):
         '''creates and returns an observations `dict` from the given imts'''

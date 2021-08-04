@@ -441,8 +441,8 @@ class Residuals(object):
         Calculate the expected ground motions from the context
         """
         # TODO Rake hack will be removed!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        if not context["Rupture"].rake:
-            context["Rupture"].rake = 0.0
+        if not context["Ctx"].rake:
+            context["Ctx"].rake = 0.0
         expected = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
         # Period range for GSIM
         for gmpe in self.gmpe_list:
@@ -456,9 +456,9 @@ class Residuals(object):
                         expected[gmpe][imtx] = None
                         continue
                 mean, stddev = gsim.get_mean_and_stddevs(
-                    context["Sites"],
-                    context["Rupture"],
-                    context["Distances"],
+                    context["Ctx"],
+                    context["Ctx"],
+                    context["Ctx"],
                     imt.from_string(imtx),
                     self.types[gmpe][imtx])
                 expected[gmpe][imtx]["Mean"] = mean
@@ -552,8 +552,7 @@ class Residuals(object):
         # Print headers
         event = self.contexts[0]
         header_set = []
-        header_set.extend([key for key in event["Distances"].__dict__])
-        header_set.extend([key for key in event["Sites"].__dict__])
+        header_set.extend([key for key in event["Ctx"].__dict__])
         header_set.extend(["{:s}-Obs.".format(imtx) for imtx in self.imts])
         for imtx in self.imts:
             for gmpe in self.gmpe_list:
@@ -641,7 +640,7 @@ class Residuals(object):
         for ctxt in self.contexts:
             magnitudes = np.hstack([
                 magnitudes,
-                ctxt["Rupture"].mag * np.ones(len(ctxt["Distances"].repi))])
+                ctxt["Ctx"].mag * np.ones(len(ctxt["Ctx"].repi))])
         return magnitudes
 
     def get_likelihood_values(self):

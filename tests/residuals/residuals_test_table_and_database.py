@@ -140,12 +140,8 @@ class ResidualsTestCase(unittest.TestCase):
         cmp = self._cmp_objects
 
         for cont1, cont2 in zip(contexts_old, contexts_new):
-            sites1, sites2 = cont1['Sites'], cont2['Sites']
-            cmp(sites1, sites2)
-            dist1, dist2 = cont1['Distances'], cont2['Distances']
-            cmp(dist1, dist2)
-            rup1, rup2 = cont1['Rupture'], cont2['Rupture']
-            cmp(rup1, rup2)
+            ctx1, ctx2 = cont1['Ctx'], cont2['Ctx']
+            cmp(ctx1, ctx2)
             obs1, obs2 = cont1['Observations'], cont2['Observations']
             cmp(obs1, obs2)
             expected1, expected2 = cont1['Expected'], cont2['Expected']

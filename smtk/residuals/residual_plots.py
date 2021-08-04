@@ -199,9 +199,9 @@ def _get_magnitudes(residuals, gmpe, imt, res_type):
                 len(residuals.unique_indices[gmpe][imt][i])
                 )
         else:
-            nval = np.ones(len(ctxt["Distances"].repi))
+            nval = np.ones(len(ctxt["Ctx"].repi))
 
-        magnitudes = np.hstack([magnitudes, ctxt["Rupture"].mag * nval])
+        magnitudes = np.hstack([magnitudes, ctxt["Ctx"].mag * nval])
 
     return magnitudes
 
@@ -245,16 +245,13 @@ def residuals_with_vs30(residuals, gmpe, imt, as_json=False):
 
 
 def _get_vs30(residuals, gmpe, imt, res_type):
-    """
-
-    """
     vs30 = np.array([])
     for i, ctxt in enumerate(residuals.contexts):
         if res_type == "Inter event":
-            vs30 = np.hstack([vs30, ctxt["Sites"].vs30[
+            vs30 = np.hstack([vs30, ctxt["Ctx"].vs30[
                 residuals.unique_indices[gmpe][imt][i]]])
         else:
-            vs30 = np.hstack([vs30, ctxt["Sites"].vs30])
+            vs30 = np.hstack([vs30, ctxt["Ctx"].vs30])
     return vs30
 
 
@@ -305,14 +302,12 @@ def _get_distances(residuals, gmpe, imt, res_type, distance_type):
     for i, ctxt in enumerate(residuals.contexts):
         # Get the distances
         if res_type == "Inter event":
-            ctxt_dist = getattr(ctxt["Distances"], distance_type)[
+            ctxt_dist = getattr(ctxt["Ctx"], distance_type)[
                 residuals.unique_indices[gmpe][imt][i]]
             distances = np.hstack([distances, ctxt_dist])
         else:
             distances = np.hstack([
-                distances,
-                getattr(ctxt["Distances"], distance_type)
-                ])
+                distances, getattr(ctxt["Ctx"], distance_type)])
     return distances
 
 
@@ -364,13 +359,12 @@ def _get_depths(residuals, gmpe, imt, res_type):
         if res_type == "Inter event":
             nvals = np.ones(len(residuals.unique_indices[gmpe][imt][i]))
         else:
-            nvals = np.ones(len(ctxt["Distances"].repi))
+            nvals = np.ones(len(ctxt["Ctx"].repi))
         # TODO This hack needs to be fixed!!!
-        if not ctxt["Rupture"].hypo_depth:
+        if not ctxt["Ctx"].hypo_depth:
             depths = np.hstack([depths, 10.0 * nvals])
         else:
-            depths = np.hstack([depths,
-                                ctxt["Rupture"].hypo_depth * nvals])
+            depths = np.hstack([depths, ctxt["Ctx"].hypo_depth * nvals])
     return depths
 
 
