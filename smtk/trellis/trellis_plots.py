@@ -754,31 +754,6 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
 
         return gmvs
 
-    def get_ground_motion_values_from_rupture(self):
-        """
-        """
-        gmvs = OrderedDict()
-        rctx, dctx, sctx = self._get_context_sets()
-        for gmpe_name, gmpe in self.gsims.items():
-            gmvs.update([(gmpe_name, {})])
-            for i_m in self.imts:
-                gmvs[gmpe_name][i_m] = np.zeros(
-                    [len(self.rctx), self.nsites], dtype=float)
-                for iloc, (rct, dct, sct) in enumerate(zip(rctx, dctx, sctx)):
-                    try:
-                        _, sigmas = gmpe.get_mean_and_stddevs(
-                            sct,
-                            rct,
-                            dct,
-                            imt.from_string(i_m),
-                            [self.stddevs])
-
-                        gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
-                    except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
-                        break
-        return gmvs
-
     def _get_ylabel(self, i_m):
         """
         """
@@ -1054,31 +1029,6 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
                              [self.stddevs])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
-                        break
-        return gmvs
-
-    def get_ground_motion_values_from_rupture(self):
-        """
-        """
-        gmvs = OrderedDict()
-        rctx, dctx, sctx = self._get_context_sets()
-        for gmpe_name, gmpe in self.gsims.items():
-            gmvs.update([(gmpe_name, {})])
-            for i_m in self.imts:
-                gmvs[gmpe_name][i_m] = np.zeros(
-                    [len(self.rctx), self.nsites], dtype=float)
-                for iloc, (rct, dct, sct) in enumerate(zip(rctx, dctx, sctx)):
-                    try:
-                        _, sigmas = gmpe.get_mean_and_stddevs(
-                            sct,
-                            rct,
-                            dct,
-                            imt.from_string(i_m),
-                            [self.stddevs])
-
-                        gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
-                    except KeyError:
                         gmvs[gmpe_name][i_m] = np.array([], dtype=float)
                         break
         return gmvs
