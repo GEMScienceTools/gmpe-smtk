@@ -223,8 +223,8 @@ class BaseTrellis(object):
         self.gsims = _check_gsim_list(gsims)
         self.params = params
         self.imts = imts
-        self.dctx = None
-        self.rctx = None
+        self.dctx = []
+        self.rctx = []
         self.sctx = None
         self.nsites = 0
         self._build_ctxs()
@@ -243,7 +243,7 @@ class BaseTrellis(object):
     def _build_ctxs(self):
 
         if not self.magdist:
-            self.dctx = gsim.base.DistancesContext()
+            dctx = gsim.base.DistancesContext()
             required_dists = []
             for gmpe_name, gmpe in self.gsims.items():
                 gsim_distances = [dist for dist in gmpe.REQUIRES_DISTANCES]
@@ -261,7 +261,8 @@ class BaseTrellis(object):
                 else:
                     self.nsites = len(self.distances[dist])
                     dist_check = True
-                setattr(self.dctx, dist, self.distances[dist])
+                setattr(dctx, dist, self.distances[dist])
+            self.dctx = [dctx for mag in self.magnitudes]
         else:
             # magdist case: there is a distance dictionary for each magnitude
             if isinstance(self.distances, dict):
@@ -641,12 +642,12 @@ class MagnitudeIMTTrellis(BaseTrellis):
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros(
                     [len(self.rctx), self.nsites], dtype=float)
-                for iloc, rct in enumerate(self.rctx):
+                for iloc, (rct, dct) in enumerate(zip(self.rctx, self.dctx)):
                     try:
                         means, _ = gmpe.get_mean_and_stddevs(
                             self.sctx,
                             rct,
-                            self.dctx,
+                            dct,
                             imt.from_string(i_m),
                             [self.stddev])
 
@@ -672,7 +673,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
         self._write_pprint_header_line(fid, sep)
         # Print Distances
         distance_str = sep.join(["{:s}{:s}{:s}".format(key, sep, str(val[0]))
-                                 for (key, val) in self.dctx.items()])
+                                 for (key, val) in self.dctx[0].items()])
         fid.write("Distances%s%s\n" % (sep, distance_str))
         # Loop over IMTs
         gmvs = self.get_ground_motion_values()
@@ -747,12 +748,12 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
                 gmvs[gmpe_name][i_m] = np.zeros([len(self.rctx),
                                                  self.nsites],
                                                 dtype=float)
-                for iloc, rct in enumerate(self.rctx):
+                for iloc, (rct, dct) in enumerate(zip(self.rctx, self.dctx)):
                     try:
                         _, sigmas = gmpe.get_mean_and_stddevs(
                              self.sctx,
                              rct,
-                             self.dctx,
+                             dct,
                              imt.from_string(i_m),
                              [self.stddev])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
@@ -1023,12 +1024,12 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros([len(self.rctx),
                                                  self.nsites])
-                for iloc, rct in enumerate(self.rctx):
+                for iloc, (rct, dct) in enumerate(zip(self.rctx, self.dctx)):
                     try:
                         _, sigmas = gmpe.get_mean_and_stddevs(
                              self.sctx,
                              rct,
-                             self.dctx,
+                             dct,
                              imt.from_string(i_m),
                              [self.stddev])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
