@@ -263,7 +263,6 @@ class BaseTrellis(object):
                     dist_check = True
                 setattr(self.dctx, dist, self.distances[dist])
         else:
-
             # magdist case: there is a distance dictionary for each magnitude
             if isinstance(self.distances, dict):
                 # Copy the same distances across
@@ -278,8 +277,9 @@ class BaseTrellis(object):
                 for mag_distances in self.distances:
                     for dist in gsim_distances:
                         if dist not in mag_distances:
-                            raise ValueError('GMPE %s requires distance type %s'
-                                             % (gmpe_name, dist))
+                            raise ValueError(
+                                'GMPE %s requires distance type %s'
+                                % (gmpe_name, dist))
 
                         if dist not in required_distances:
                             required_distances.append(dist)
