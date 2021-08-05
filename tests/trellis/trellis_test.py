@@ -196,15 +196,11 @@ class MagnitudeDistanceSpectraTrellisTest(BaseTrellisTest):
             oldys = old["figures"][i]["yvalues"].values()
             newys = new["figures"][i]["yvalues"].values()
             for old_vals, new_vals in zip(oldys, newys):
-                if None in old_vals:
-                    # Has None Values - compare element by element
-                    for old_val, new_val in zip(old_vals, new_vals):
-                        if old_val and new_val:
-                            self.assertAlmostEqual(old_val, new_val, 7)
-                        else:
-                            self.assertEqual(old_val, new_val)
-                else:
-                    np.testing.assert_array_almost_equal(old_vals, new_vals, 7)
+                for old_val, new_val in zip(old_vals, new_vals):
+                    if old_val and new_val:
+                        self.assertAlmostEqual(old_val, new_val, 7)
+                    else:
+                        self.assertEqual(old_val, new_val)
 
     def _run_trellis(self, magnitudes, distances, properties):
         """

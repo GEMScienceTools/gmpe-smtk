@@ -344,6 +344,7 @@ class BaseTrellis(object):
         for gmpe in self.gsims.values():
             slots.update(gmpe.REQUIRES_SITES_PARAMETERS)
         self.sctx = gsim.base.SitesContext(slots=slots)
+        self.sctx.sids = np.arange(self.nsites)
         required_attributes = []
         for gmpe_name, gmpe in self.gsims.items():
             site_params = [param for param in gmpe.REQUIRES_SITES_PARAMETERS]
