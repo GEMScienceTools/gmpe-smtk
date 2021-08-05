@@ -271,6 +271,21 @@ class BaseTrellis(object):
         Preprocesses rupture parameters to ensure all the necessary rupture
         information for the GSIMS is found in the input parameters
         """
+        # If magnitudes was provided with a list of RuptureContexts
+        if all([isinstance(mag, RuptureContext)
+                for mag in self.magnitudes]):
+            # Get all required rupture attributes
+            self.rctx = [mag for mag in self.magnitudes]
+            for gmpe_name, gmpe in self.gsims.items():
+                rup_params = [param
+                              for param in gmpe.REQUIRES_RUPTURE_PARAMETERS]
+                for rctx in self.rctx:
+                    for param in rup_params:
+                        if param not in rctx.__dict__:
+                            raise ValueError(
+                                "GMPE %s requires rupture parameter %s"
+                                % (gmpe_name, param))
+            return
         self.rctx = []
         if (not isinstance(self.magnitudes, list) and not
                 isinstance(self.magnitudes, np.ndarray)):
@@ -612,10 +627,9 @@ class MagnitudeIMTTrellis(BaseTrellis):
                             imt.from_string(i_m),
                             [self.stddev])
 
-                        gmvs[gmpe_name][i_m][iloc, :] = \
-                            np.exp(means)
+                        gmvs[gmpe_name][i_m][iloc, :] = np.exp(means)
                     except (KeyError, ValueError):
-                        gmvs[gmpe_name][i_m] = np.array([], dtype=float)
+                        gmvs[gmpe_name][i_m] = np.array([])
                         break
         return gmvs
 
@@ -985,8 +999,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
             gmvs[gmpe_name] = {}
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros([len(self.rctx),
-                                                 self.nsites],
-                                                dtype=float)
+                                                 self.nsites])
                 for iloc, rct in enumerate(self.rctx):
                     try:
                         _, sigmas = gmpe.get_mean_and_stddevs(
@@ -1085,7 +1098,6 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
             natural period(s) to be used
         """
         imts = ["SA(%s)" % i_m for i_m in imts]
-
         super(MagnitudeDistanceSpectraTrellis, self).__init__(magnitudes,
                                                               distances,
                                                               gsims,
@@ -1093,36 +1105,6 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                                                               params,
                                                               stddev,
                                                               **kwargs)
-
-    def _preprocess_ruptures(self):
-        """
-        In this case properties such as the rupture depth and width may change
-        with the magnitude. Where this behaviour is desired the use feeds
-        the function with a list of RuptureContext instances, in which each
-        rupture context contains the information specific to that magnitude.
-
-        If this behaviour is not desired then the pre-processing of the
-        rupture information proceeds as in the conventional case within the
-        base class
-        """
-        # If magnitudes was provided with a list of RuptureContexts
-        if all([isinstance(mag, RuptureContext)
-                for mag in self.magnitudes]):
-            # Get all required rupture attributes
-            self.rctx = [mag for mag in self.magnitudes]
-            for gmpe_name, gmpe in self.gsims.items():
-                rup_params = [param
-                              for param in gmpe.REQUIRES_RUPTURE_PARAMETERS]
-                for rctx in self.rctx:
-                    for param in rup_params:
-                        if param not in rctx.__dict__:
-                            raise ValueError(
-                                "GMPE %s requires rupture parameter %s"
-                                % (gmpe_name, param))
-            return
-        # Otherwise instantiate in the conventional way
-        super(MagnitudeDistanceSpectraTrellis, self)._preprocess_ruptures()
-
     def _preprocess_distances(self):
         """
         In the case of distances one can pass either a dictionary containing
@@ -1488,9 +1470,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
 
 
 class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
-    """
 
-    """
     def _build_plot(self, ax, gmvs, rloc, cloc):
         """
         Plots the lines for a given axis
