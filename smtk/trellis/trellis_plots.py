@@ -21,12 +21,10 @@
 Sets up a simple rupture-site configuration to allow for physical comparison
 of GMPEs
 '''
-import os
 import sys
 import re
 import json
 import numpy as np
-from collections import OrderedDict
 try:  # https://stackoverflow.com/q/53978542
     from collections.abc import Iterable  # noqa
 except ImportError:
@@ -552,7 +550,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
         """
         gmvs = self.get_ground_motion_values()
         nrow, ncol = utils.best_subplot_dimensions(len(self.imts))
-        gmv_dict = OrderedDict([
+        gmv_dict = dict([
             ("xvalues", self.magnitudes.tolist()),
             ("xlabel", "Magnitude")])
         nvals = len(self.magnitudes)
@@ -568,7 +566,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
                      "imt": imt,
                      "row": row_loc,
                      "column": col_loc,
-                     "yvalues": OrderedDict([])}
+                     "yvalues": {}}
             for gsim in gmvs:
                 if not len(gmvs[gsim][imt]):
                     # GSIM missing, set None
@@ -593,15 +591,15 @@ class MagnitudeIMTTrellis(BaseTrellis):
 
     def get_ground_motion_values(self):
         """
-        Runs the GMPE calculations to retreive ground motion values
+        Runs the GMPE calculations to retrieve ground motion values
         :returns:
             Nested dictionary of values
             {'GMPE1': {'IM1': , 'IM2': },
              'GMPE2': {'IM1': , 'IM2': }}
         """
-        gmvs = OrderedDict()
+        gmvs = {}
         for gmpe_name, gmpe in self.gsims.items():
-            gmvs.update([(gmpe_name, {})])
+            gmvs[gmpe_name] = {}
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros(
                     [len(self.rctx), self.nsites], dtype=float)
@@ -705,9 +703,9 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
             {'GMPE1': {'IM1': , 'IM2': },
              'GMPE2': {'IM1': , 'IM2': }}
         """
-        gmvs = OrderedDict()
+        gmvs = {}
         for gmpe_name, gmpe in self.gsims.items():
-            gmvs.update([(gmpe_name, {})])
+            gmvs[gmpe_name] = {}
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros([len(self.rctx),
                                                  self.nsites],
@@ -897,7 +895,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
         gmvs = self.get_ground_motion_values()
         nrow, ncol = utils.best_subplot_dimensions(len(self.imts))
         dist_label = "{:s} (km)".format(DISTANCE_LABEL_MAP[self.distance_type])
-        gmv_dict = OrderedDict([
+        gmv_dict = dict([
             ("xvalues", self.distances[self.distance_type].tolist()),
             ("xlabel", dist_label)])
         gmv_dict["figures"] = []
@@ -912,7 +910,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
                      "imt": imt,
                      "row": row_loc,
                      "column": col_loc,
-                     "yvalues": OrderedDict([])}
+                     "yvalues": {}}
             for gsim in gmvs:
                 data = [None if np.isnan(val) else val
                         for val in gmvs[gsim][imt].flatten()]
@@ -944,8 +942,8 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
         fid.write("Magnitude%s%.2f\n" % (sep, self.magnitudes[0]))
         # Loop over IMTs
         gmvs = self.get_ground_motion_values()
-        for imt in self.imts:
-            fid.write("%s\n" % imt)
+        for im in self.imts:
+            fid.write("%s\n" % im)
             header_str = sep.join([key for key in self.distances])
             header_str = "{:s}{:s}{:s}".format(
                 header_str,
@@ -956,7 +954,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
                 dist_string = sep.join(["{:.4f}".format(self.distances[key][i])
                                         for key in self.distances])
                 data_string = sep.join(["{:.8f}".format(
-                     gmvs[gmpe_name][imt][0, i]) for gmpe_name in self.gsims])
+                     gmvs[gmpe_name][im][0, i]) for gmpe_name in self.gsims])
                 fid.write("{:s}{:s}{:s}\n".format(dist_string,
                                                   sep,
                                                   data_string))
@@ -974,9 +972,6 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
 
 
 class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
-    """
-
-    """
     def get_ground_motion_values(self):
         """
         Runs the GMPE calculations to retreive ground motion values
@@ -985,9 +980,9 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
             {'GMPE1': {'IM1': , 'IM2': },
              'GMPE2': {'IM1': , 'IM2': }}
         """
-        gmvs = OrderedDict()
+        gmvs = {}
         for gmpe_name, gmpe in self.gsims.items():
-            gmvs.update([(gmpe_name, {})])
+            gmvs[gmpe_name] = {}
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros([len(self.rctx),
                                                  self.nsites],
@@ -1288,15 +1283,15 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
 
     def get_ground_motion_values(self):
         """
-        Runs the GMPE calculations to retreive ground motion values
+        Runs the GMPE calculations to retrieve ground motion values
         :returns:
             Nested dictionary of values
             {'GMPE1': {'IM1': , 'IM2': },
              'GMPE2': {'IM1': , 'IM2': }}
         """
-        gmvs = OrderedDict()
+        gmvs = {}
         for gmpe_name, gmpe in self.gsims.items():
-            gmvs.update([(gmpe_name, {})])
+            gmvs[gmpe_name] = {}
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros(
                     [len(self.rctx), self.nsites], dtype=float)
@@ -1390,7 +1385,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         periods = [float(val.split("SA(")[1].rstrip(")"))
                    for val in self.imts]
 
-        gmv_dict = OrderedDict([
+        gmv_dict = dict([
             ("xlabel", "Period (s)"),
             ("xvalues", periods),
             ("figures", [])
@@ -1400,14 +1395,14 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         dists = self.distances[0][self.distance_type]
         for i, mag in enumerate(mags):
             for j, dist in enumerate(dists):
-                ydict = OrderedDict([
+                ydict = dict([
                     ("ylabel", self._get_ylabel(None)),  # arg 'None' not used
                     ("magnitude", mag),
                     ("distance", np.around(dist, 3)),
                     ("imt", 'SA'),
                     ("row", i),
                     ("column", j),
-                    ("yvalues", OrderedDict([(gsim, []) for gsim in gmvs]))
+                    ("yvalues", dict([(gsim, []) for gsim in gmvs]))
                 ])
                 for gsim in gmvs:
                     for imt in self.imts:
@@ -1567,9 +1562,9 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
             {'GMPE1': {'IM1': , 'IM2': },
              'GMPE2': {'IM1': , 'IM2': }}
         """
-        gmvs = OrderedDict()
+        gmvs = {}
         for gmpe_name, gmpe in self.gsims.items():
-            gmvs.update([(gmpe_name, {})])
+            gmvs[gmpe_name] = {}
             for i_m in self.imts:
                 gmvs[gmpe_name][i_m] = np.zeros([len(self.rctx), self.nsites],
                                                 dtype=float)
