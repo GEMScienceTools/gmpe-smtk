@@ -34,8 +34,10 @@ from math import floor, ceil
 import matplotlib
 from copy import deepcopy
 import matplotlib.pyplot as plt
-from openquake.hazardlib import gsim, imt
-from openquake.hazardlib.gsim.base import RuptureContext
+from openquake.hazardlib import imt
+from openquake.hazardlib.gsim import get_available_gsims
+from openquake.hazardlib.gsim.base import (
+    RuptureContext, DistancesContext, SitesContext)
 from openquake.hazardlib.gsim.gmpe_table import GMPETable
 from openquake.hazardlib.gsim.base import GMPE
 from openquake.hazardlib.scalerel.wc1994 import WC1994
@@ -55,7 +57,7 @@ matplotlib.rcParams["axes.prop_cycle"] = \
                           ":", ":", ":", ":", ":", ":", ":"])
 
 # Get a list of the available GSIMs
-AVAILABLE_GSIMS = gsim.get_available_gsims()
+AVAILABLE_GSIMS = get_available_gsims()
 
 # Generic dictionary of parameters needed for a trellis calculation
 PARAM_DICT = {'magnitudes': [],
@@ -243,7 +245,7 @@ class BaseTrellis(object):
     def _build_ctxs(self):
 
         if not self.magdist:
-            dctx = gsim.base.DistancesContext()
+            dctx = DistancesContext()
             required_dists = []
             for gmpe_name, gmpe in self.gsims.items():
                 gsim_distances = [dist for dist in gmpe.REQUIRES_DISTANCES]
@@ -286,7 +288,7 @@ class BaseTrellis(object):
                             required_distances.append(dist)
 
             for distance in self.distances:
-                dctx = gsim.base.DistancesContext()
+                dctx = DistancesContext()
                 dist_check = False
                 for dist in required_distances:
                     if dist_check and not (len(distance[dist]) == self.nsites):
@@ -333,7 +335,7 @@ class BaseTrellis(object):
                     else:
                         pass
             for mag in self.magnitudes:
-                rup = gsim.base.RuptureContext()
+                rup = RuptureContext()
                 setattr(rup, 'mag', mag)
                 for attr in required_attributes:
                     setattr(rup, attr, self.params[attr])
@@ -343,7 +345,7 @@ class BaseTrellis(object):
         slots = set()
         for gmpe in self.gsims.values():
             slots.update(gmpe.REQUIRES_SITES_PARAMETERS)
-        self.sctx = gsim.base.SitesContext(slots=slots)
+        self.sctx = SitesContext(slots=slots)
         self.sctx.sids = np.arange(self.nsites)
         required_attributes = []
         for gmpe_name, gmpe in self.gsims.items():
@@ -597,23 +599,23 @@ class MagnitudeIMTTrellis(BaseTrellis):
         gmv_dict["figures"] = []
         row_loc = 0
         col_loc = 0
-        for imt in self.imts:
+        for im in self.imts:
             if col_loc == ncol:
                 row_loc += 1
                 col_loc = 0
             # Set the dictionary of y-values
-            ydict = {"ylabel": self._get_ylabel(imt),
-                     "imt": imt,
+            ydict = {"ylabel": self._get_ylabel(im),
+                     "imt": im,
                      "row": row_loc,
                      "column": col_loc,
                      "yvalues": {}}
             for gsim in gmvs:
-                if not len(gmvs[gsim][imt]):
+                if not len(gmvs[gsim][im]):
                     # GSIM missing, set None
                     ydict["yvalues"][gsim] = [None] * nvals
                     continue
                 iml_to_list = []
-                for val in gmvs[gsim][imt].flatten().tolist():
+                for val in gmvs[gsim][im].flatten().tolist():
                     if np.isnan(val) or (val < 0.0):
                         iml_to_list.append(None)
                     else:
@@ -940,19 +942,19 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
         gmv_dict["figures"] = []
         row_loc = 0
         col_loc = 0
-        for imt in self.imts:
+        for im in self.imts:
             if col_loc == ncol:
                 row_loc += 1
                 col_loc = 0
             # Set the dictionary of y-values
-            ydict = {"ylabel": self._get_ylabel(imt),
-                     "imt": imt,
+            ydict = {"ylabel": self._get_ylabel(im),
+                     "imt": im,
                      "row": row_loc,
                      "column": col_loc,
                      "yvalues": {}}
             for gsim in gmvs:
                 data = [None if np.isnan(val) else val
-                        for val in gmvs[gsim][imt].flatten()]
+                        for val in gmvs[gsim][im].flatten()]
                 ydict["yvalues"][gsim] = data
             gmv_dict["figures"].append(ydict)
             col_loc += 1
@@ -1372,9 +1374,9 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                     ("yvalues", dict([(gsim, []) for gsim in gmvs]))
                 ])
                 for gsim in gmvs:
-                    for imt in self.imts:
-                        if len(gmvs[gsim][imt]):
-                            value = gmvs[gsim][imt][i, j]
+                    for im in self.imts:
+                        if len(gmvs[gsim][im]):
+                            value = gmvs[gsim][im][i, j]
                             if np.isnan(value):
                                 value = None
                             ydict["yvalues"][gsim].append(value)
