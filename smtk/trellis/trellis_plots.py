@@ -202,6 +202,7 @@ class BaseTrellis(object):
     :param int ncol:
         Number of columns for the legend (default 1)
     """
+    magdist = False
 
     def __init__(self, magnitudes, distances, gsims, imts, params,
                  stddev="Total", rupture=None, **kwargs):
@@ -247,24 +248,59 @@ class BaseTrellis(object):
         distance types required by the GSIMS are found in the
         DistancesContext()
         """
-        self.dctx = gsim.base.DistancesContext()
-        required_dists = []
+        if not self.magdist:
+            self.dctx = gsim.base.DistancesContext()
+            required_dists = []
+            for gmpe_name, gmpe in self.gsims.items():
+                gsim_distances = [dist for dist in gmpe.REQUIRES_DISTANCES]
+                for dist in gsim_distances:
+                    if dist not in self.distances:
+                        raise ValueError('GMPE %s requires distance type %s'
+                                         % (gmpe_name, dist))
+                    if dist not in required_dists:
+                        required_dists.append(dist)
+            dist_check = False
+            for dist in required_dists:
+                if dist_check and not (
+                        len(self.distances[dist]) == self.nsites):
+                    raise ValueError("Distances arrays not equal length!")
+                else:
+                    self.nsites = len(self.distances[dist])
+                    dist_check = True
+                setattr(self.dctx, dist, self.distances[dist])
+            return
+
+        # magdist case: there is a distance dictionary for each magnitude
+        if isinstance(self.distances, dict):
+            # Copy the same distances across
+            self.distances = [deepcopy(self.distances)
+                              for mag in self.magnitudes]
+        assert (len(self.distances) == len(self.magnitudes))
+        # Distances should be a list of dictionaries
+        self.dctx = []
+        required_distances = []
         for gmpe_name, gmpe in self.gsims.items():
             gsim_distances = [dist for dist in gmpe.REQUIRES_DISTANCES]
-            for dist in gsim_distances:
-                if dist not in self.distances:
-                    raise ValueError('GMPE %s requires distance type %s'
-                                     % (gmpe_name, dist))
-                if dist not in required_dists:
-                    required_dists.append(dist)
-        dist_check = False
-        for dist in required_dists:
-            if dist_check and not (len(self.distances[dist]) == self.nsites):
-                raise ValueError("Distances arrays not equal length!")
-            else:
-                self.nsites = len(self.distances[dist])
-                dist_check = True
-            setattr(self.dctx, dist, self.distances[dist])
+            for mag_distances in self.distances:
+                for dist in gsim_distances:
+                    if dist not in mag_distances:
+                        raise ValueError('GMPE %s requires distance type %s'
+                                         % (gmpe_name, dist))
+
+                    if dist not in required_distances:
+                        required_distances.append(dist)
+
+        for distance in self.distances:
+            dctx = gsim.base.DistancesContext()
+            dist_check = False
+            for dist in required_distances:
+                if dist_check and not (len(distance[dist]) == self.nsites):
+                    raise ValueError("Distances arrays not equal length!")
+                else:
+                    self.nsites = len(distance[dist])
+                    dist_check = True
+                setattr(dctx, dist, distance[dist])
+            self.dctx.append(dctx)
 
     def _preprocess_ruptures(self):
         """
@@ -411,7 +447,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
         for key in distances:
             if isinstance(distances[key], float):
                 distances[key] = np.array([distances[key]])
-        super(MagnitudeIMTTrellis, self).__init__(
+        super().__init__(
             magnitudes, distances, gsims, imts, params, stddev, **kwargs)
 
     @classmethod
@@ -1084,6 +1120,8 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
 
 class MagnitudeDistanceSpectraTrellis(BaseTrellis):
     # In this case the preprocessor needs to be removed
+    magdist = True
+
     def __init__(self, magnitudes, distances, gsims, imts, params,
                  stddev="Total", **kwargs):
         """
@@ -1100,44 +1138,6 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
         imts = ["SA(%s)" % i_m for i_m in imts]
         super().__init__(magnitudes, distances, gsims, imts, params,
                          stddev, **kwargs)
-
-    def _preprocess_distances(self):
-        """
-        In the case of distances one can pass either a dictionary containing
-        the distances, or a list of dictionaries each calibrated to a specific
-        magnitude (the list must be the same length as the number of
-        magnitudes)
-        """
-        if isinstance(self.distances, dict):
-            # Copy the same distances across
-            self.distances = [deepcopy(self.distances)
-                              for mag in self.magnitudes]
-        assert (len(self.distances) == len(self.magnitudes))
-        # Distances should be a list of dictionaries
-        self.dctx = []
-        required_distances = []
-        for gmpe_name, gmpe in self.gsims.items():
-            gsim_distances = [dist for dist in gmpe.REQUIRES_DISTANCES]
-            for mag_distances in self.distances:
-                for dist in gsim_distances:
-                    if dist not in mag_distances:
-                        raise ValueError('GMPE %s requires distance type %s'
-                                         % (gmpe_name, dist))
-
-                    if dist not in required_distances:
-                        required_distances.append(dist)
-
-        for distance in self.distances:
-            dctx = gsim.base.DistancesContext()
-            dist_check = False
-            for dist in required_distances:
-                if dist_check and not (len(distance[dist]) == self.nsites):
-                    raise ValueError("Distances arrays not equal length!")
-                else:
-                    self.nsites = len(distance[dist])
-                    dist_check = True
-                setattr(dctx, dist, distance[dist])
-            self.dctx.append(dctx)
 
     @classmethod
     def from_rupture_properties(cls, properties, magnitudes, distance,
