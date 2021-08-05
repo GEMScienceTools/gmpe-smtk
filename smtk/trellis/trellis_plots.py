@@ -98,22 +98,6 @@ matplotlib.rc("xtick", labelsize=12)
 matplotlib.rc("ytick", labelsize=12)
 
 
-def simplify_contexts(rupture):
-    """
-    Reduce a rupture to a set of basic openquake context objects
-    :returns:
-        openquake.hazardlib.gsim.base.SitesContext
-        openquake.hazardlib.gsim.base.DistancesContexts
-        openquake.hazardlib.gsim.base.RuptureContext
-    """
-    sctx, rctx, dctx = rupture.get_gsim_contexts()
-    sctx.__dict__.update(rctx.__dict__)
-    for val in dctx.__dict__:
-        if getattr(dctx, val) is not None:
-            setattr(dctx, val, getattr(dctx, val)[0])
-    return sctx.__dict__, rctx.__dict__, dctx.__dict__
-
-
 def _get_gmpe_name(gsim):
     """
     Returns the name of the GMPE given an instance of the class
@@ -197,8 +181,8 @@ class BaseTrellis(object):
         List of intensity measures
     :param int nsites:
         Number of sites
-    :param str stddevs:
-        Standard deviation types
+    :param str stddev:
+        Standard deviation type
     :param str filename:
         Name of output file for exporting the figure
     :param str filetype:
@@ -222,7 +206,7 @@ class BaseTrellis(object):
     """
 
     def __init__(self, magnitudes, distances, gsims, imts, params,
-                 stddevs="Total", rupture=None, **kwargs):
+                 stddev="Total", rupture=None, **kwargs):
         # Set default keyword arguments
         kwargs.setdefault('filename', None)
         kwargs.setdefault('filetype', "png")
@@ -247,7 +231,7 @@ class BaseTrellis(object):
         self._preprocess_distances()
         self._preprocess_ruptures()
         self._preprocess_sites()
-        self.stddevs = stddevs
+        self.stddev = stddev
         self.filename = kwargs['filename']
         self.filetype = kwargs['filetype']
         self.dpi = kwargs['dpi']
@@ -356,7 +340,7 @@ class BaseTrellis(object):
                 pass
 
     @classmethod
-    def from_rupture_model(cls, rupture, gsims, imts, stddevs='Total',
+    def from_rupture_model(cls, rupture, gsims, imts, stddev='Total',
                            **kwargs):
         """
         Constructs the Base Trellis Class from a rupture model
@@ -384,7 +368,7 @@ class BaseTrellis(object):
             params[key] = getattr(rctx, key)
         for key in sctx._slots_:
             params[key] = getattr(sctx, key)
-        return cls(magnitudes, distances, gsims, imts, params, stddevs,
+        return cls(magnitudes, distances, gsims, imts, params, stddev,
                    rupture=rupture, **kwargs)
 
     def plot(self):
@@ -406,7 +390,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
     magnitude
     """
     def __init__(self, magnitudes, distances, gsims, imts, params,
-                 stddevs="Total", **kwargs):
+                 stddev="Total", **kwargs):
         """
         Instantiate with list of magnitude and the corresponding distances
         given in a dictionary
@@ -415,22 +399,22 @@ class MagnitudeIMTTrellis(BaseTrellis):
             if isinstance(distances[key], float):
                 distances[key] = np.array([distances[key]])
         super(MagnitudeIMTTrellis, self).__init__(
-            magnitudes, distances, gsims, imts, params, stddevs, **kwargs)
+            magnitudes, distances, gsims, imts, params, stddev, **kwargs)
 
     @classmethod
     def from_rupture_properties(cls, properties, magnitudes, distance,
-                                gsims, imts, stddevs='Total', **kwargs):
+                                gsims, imts, stddev='Total', **kwargs):
         '''Constructs the Base Trellis Class from a dictionary of
         properties. In this class, this method is simply an alias of
         `from_rupture_model`
         '''
         return cls.from_rupture_model(properties, magnitudes, distance,
-                                      gsims, imts, stddevs=stddevs,
+                                      gsims, imts, stddev=stddev,
                                       **kwargs)
 
     @classmethod
     def from_rupture_model(cls, properties, magnitudes, distance, gsims, imts,
-                           stddevs='Total', **kwargs):
+                           stddev='Total', **kwargs):
         """
         Implements the magnitude trellis from a dictionary of properties,
         magnitudes and distance
@@ -628,7 +612,7 @@ class MagnitudeIMTTrellis(BaseTrellis):
                             rct,
                             self.dctx,
                             imt.from_string(i_m),
-                            [self.stddevs])
+                            [self.stddev])
 
                         gmvs[gmpe_name][i_m][iloc, :] = \
                             np.exp(means)
@@ -735,7 +719,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
                              rct,
                              self.dctx,
                              imt.from_string(i_m),
-                             [self.stddevs])
+                             [self.stddev])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except KeyError:
                         gmvs[gmpe_name][i_m] = np.array([], dtype=float)
@@ -746,7 +730,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
     def _get_ylabel(self, i_m):
         """
         """
-        return self.stddevs + " Std. Dev. ({:s})".format(str(i_m))
+        return self.stddev + " Std. Dev. ({:s})".format(str(i_m))
 
     def _set_labels(self, i_m, ax):
         """
@@ -760,7 +744,7 @@ class MagnitudeSigmaIMTTrellis(MagnitudeIMTTrellis):
         Write the header lines of the pretty print function
         """
         fid.write("Magnitude IMT %s Standard Deviations Trellis\n" %
-                  self.stddevs)
+                  self.stddev)
         fid.write("%s\n" % sep.join([
             "{:s}{:s}{:s}".format(key, sep, str(val))
             for (key, val) in self.params.items()]))
@@ -774,7 +758,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
     YLABEL = "Median %s (%s)"
 
     def __init__(self, magnitudes, distances, gsims, imts, params,
-                 stddevs="Total", **kwargs):
+                 stddev="Total", **kwargs):
         """
         Instantiation
         """
@@ -782,12 +766,12 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
             magnitudes = [magnitudes]
 
         super(DistanceIMTTrellis, self).__init__(magnitudes, distances, gsims,
-                                                 imts, params, stddevs,
+                                                 imts, params, stddev,
                                                  **kwargs)
 
     @classmethod
     def from_rupture_properties(cls, properties, magnitude, distances,
-                                gsims, imts, stddevs='Total', **kwargs):
+                                gsims, imts, stddev='Total', **kwargs):
         '''Constructs the Base Trellis Class from a rupture properties.
         It internally creates a Rupture object and calls
         `from_rupture_model`. When not listed, arguments take the same
@@ -811,10 +795,10 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
                                                            **params)
 
         return cls.from_rupture_model(rupture, gsims, imts,
-                                      stddevs=stddevs, **kwargs)
+                                      stddev=stddev, **kwargs)
 
     @classmethod
-    def from_rupture_model(cls, rupture, gsims, imts, stddevs='Total',
+    def from_rupture_model(cls, rupture, gsims, imts, stddev='Total',
                            **kwargs):
         """
         Constructs the Base Trellis Class from a rupture model
@@ -842,7 +826,7 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
             params[key] = getattr(rctx, key)
         for key in sctx._slots_:
             params[key] = getattr(sctx, key)
-        return cls(magnitudes, distances, gsims, imts, params, stddevs,
+        return cls(magnitudes, distances, gsims, imts, params, stddev,
                    **kwargs)
 
     def _build_plot(self, ax, i_m, gmvs):
@@ -1015,7 +999,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
                              rct,
                              self.dctx,
                              imt.from_string(i_m),
-                             [self.stddevs])
+                             [self.stddev])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except (KeyError, ValueError):
                         gmvs[gmpe_name][i_m] = np.array([], dtype=float)
@@ -1070,7 +1054,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
     def _get_ylabel(self, i_m):
         """
         """
-        return self.stddevs + " Std. Dev. ({:s})".format(str(i_m))
+        return self.stddev + " Std. Dev. ({:s})".format(str(i_m))
 
     def _set_labels(self, i_m, ax):
         """
@@ -1085,7 +1069,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
         Write the header lines of the pretty print function
         """
         fid.write("Distance (km) %s Standard Deviations Trellis\n" %
-                  self.stddevs)
+                  self.stddev)
         fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
                                      for (key, val) in self.params.items()]))
 
@@ -1093,7 +1077,7 @@ class DistanceSigmaIMTTrellis(DistanceIMTTrellis):
 class MagnitudeDistanceSpectraTrellis(BaseTrellis):
     # In this case the preprocessor needs to be removed
     def __init__(self, magnitudes, distances, gsims, imts, params,
-                 stddevs="Total", **kwargs):
+                 stddev="Total", **kwargs):
         """
         Builds the trellis plots for variation in response spectra with
         magnitude and distance.
@@ -1112,7 +1096,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                                                               gsims,
                                                               imts,
                                                               params,
-                                                              stddevs,
+                                                              stddev,
                                                               **kwargs)
 
     def _preprocess_ruptures(self):
@@ -1184,7 +1168,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
 
     @classmethod
     def from_rupture_properties(cls, properties, magnitudes, distance,
-                                gsims, periods, stddevs='Total', **kwargs):
+                                gsims, periods, stddev='Total', **kwargs):
         '''Constructs the Base Trellis Class from a dictionary of
         properties. In this class, this method is simply an alias of
         `from_rupture_model`
@@ -1196,12 +1180,12 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
             `imt` has been kept for legacy code compatibility
         '''
         return cls.from_rupture_model(properties, magnitudes, distance,
-                                      gsims, periods, stddevs=stddevs,
+                                      gsims, periods, stddev=stddev,
                                       **kwargs)
 
     @classmethod
     def from_rupture_model(cls, properties, magnitudes, distances,
-                           gsims, imts, stddevs='Total', **kwargs):
+                           gsims, imts, stddev='Total', **kwargs):
         """
         Constructs the Base Trellis Class from a rupture model
         :param dict properties:
@@ -1274,7 +1258,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
             distance_dicts.append(distance_dict)
             rupture_dicts.append(rctx)
         return cls(rupture_dicts, distance_dicts, gsims, imts, properties,
-                   stddevs, **kwargs)
+                   stddev, **kwargs)
 
     def plot(self):
         """
@@ -1321,7 +1305,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                         means, _ = gmpe.get_mean_and_stddevs(
                             self.sctx, rct, dct,
                             imt.from_string(i_m),
-                            [self.stddevs])
+                            [self.stddev])
 
                         gmvs[gmpe_name][i_m][iloc, :] = \
                             np.exp(means)
@@ -1594,7 +1578,7 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
                         _, sigmas = gmpe.get_mean_and_stddevs(
                              self.sctx, rct, dct,
                              imt.from_string(i_m),
-                             [self.stddevs])
+                             [self.stddev])
                         gmvs[gmpe_name][i_m][iloc, :] = sigmas[0]
                     except (KeyError, ValueError):
                         gmvs[gmpe_name][i_m] = np.array([], dtype=float)
@@ -1606,13 +1590,13 @@ class MagnitudeDistanceSpectraSigmaTrellis(MagnitudeDistanceSpectraTrellis):
         Returns the standard deviation term (specific to the standard deviation
         type specified for the class)
         """
-        return "{:s} Std. Dev.".format(self.stddevs)
+        return "{:s} Std. Dev.".format(self.stddev)
 
     def _write_pprint_header_line(self, fid, sep=","):
         """
         Write the header lines of the pretty print function
         """
-        fid.write("Magnitude - Distance (km) Spectra %s Standard Deviations Trellis\n" %
-                  self.stddevs)
+        fid.write("Magnitude - Distance (km) Spectra %s Standard Deviations "
+                  "Trellis\n" % self.stddev)
         fid.write("%s\n" % sep.join(["{:s}{:s}{:s}".format(key, sep, str(val))
                                      for (key, val) in self.params.items()]))
