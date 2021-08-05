@@ -227,9 +227,7 @@ class BaseTrellis(object):
         self.rctx = None
         self.sctx = None
         self.nsites = 0
-        self._preprocess_distances()
-        self._preprocess_ruptures()
-        self._preprocess_sites()
+        self._build_ctxs()
         self.stddev = stddev
         self.filename = kwargs['filename']
         self.filetype = kwargs['filetype']
@@ -242,12 +240,8 @@ class BaseTrellis(object):
         self.legend_fontsize = kwargs["legend_fontsize"]
         self.ncol = kwargs["ncol"]
 
-    def _preprocess_distances(self):
-        """
-        Preprocesses the input distances to check that all the necessary
-        distance types required by the GSIMS are found in the
-        DistancesContext()
-        """
+    def _build_ctxs(self):
+
         if not self.magdist:
             self.dctx = gsim.base.DistancesContext()
             required_dists = []
@@ -268,45 +262,40 @@ class BaseTrellis(object):
                     self.nsites = len(self.distances[dist])
                     dist_check = True
                 setattr(self.dctx, dist, self.distances[dist])
-            return
+        else:
 
-        # magdist case: there is a distance dictionary for each magnitude
-        if isinstance(self.distances, dict):
-            # Copy the same distances across
-            self.distances = [deepcopy(self.distances)
-                              for mag in self.magnitudes]
-        assert (len(self.distances) == len(self.magnitudes))
-        # Distances should be a list of dictionaries
-        self.dctx = []
-        required_distances = []
-        for gmpe_name, gmpe in self.gsims.items():
-            gsim_distances = [dist for dist in gmpe.REQUIRES_DISTANCES]
-            for mag_distances in self.distances:
-                for dist in gsim_distances:
-                    if dist not in mag_distances:
-                        raise ValueError('GMPE %s requires distance type %s'
-                                         % (gmpe_name, dist))
+            # magdist case: there is a distance dictionary for each magnitude
+            if isinstance(self.distances, dict):
+                # Copy the same distances across
+                self.distances = [deepcopy(self.distances)
+                                  for mag in self.magnitudes]
+            assert (len(self.distances) == len(self.magnitudes))
+            # Distances should be a list of dictionaries
+            self.dctx = []
+            required_distances = []
+            for gmpe_name, gmpe in self.gsims.items():
+                gsim_distances = [dist for dist in gmpe.REQUIRES_DISTANCES]
+                for mag_distances in self.distances:
+                    for dist in gsim_distances:
+                        if dist not in mag_distances:
+                            raise ValueError('GMPE %s requires distance type %s'
+                                             % (gmpe_name, dist))
 
-                    if dist not in required_distances:
-                        required_distances.append(dist)
+                        if dist not in required_distances:
+                            required_distances.append(dist)
 
-        for distance in self.distances:
-            dctx = gsim.base.DistancesContext()
-            dist_check = False
-            for dist in required_distances:
-                if dist_check and not (len(distance[dist]) == self.nsites):
-                    raise ValueError("Distances arrays not equal length!")
-                else:
-                    self.nsites = len(distance[dist])
-                    dist_check = True
-                setattr(dctx, dist, distance[dist])
-            self.dctx.append(dctx)
+            for distance in self.distances:
+                dctx = gsim.base.DistancesContext()
+                dist_check = False
+                for dist in required_distances:
+                    if dist_check and not (len(distance[dist]) == self.nsites):
+                        raise ValueError("Distances arrays not equal length!")
+                    else:
+                        self.nsites = len(distance[dist])
+                        dist_check = True
+                    setattr(dctx, dist, distance[dist])
+                self.dctx.append(dctx)
 
-    def _preprocess_ruptures(self):
-        """
-        Preprocesses rupture parameters to ensure all the necessary rupture
-        information for the GSIMS is found in the input parameters
-        """
         # If magnitudes was provided with a list of RuptureContexts
         if all([isinstance(mag, RuptureContext)
                 for mag in self.magnitudes]):
@@ -321,37 +310,35 @@ class BaseTrellis(object):
                             raise ValueError(
                                 "GMPE %s requires rupture parameter %s"
                                 % (gmpe_name, param))
-            return
-        self.rctx = []
-        if (not isinstance(self.magnitudes, list) and not
-                isinstance(self.magnitudes, np.ndarray)):
-            self.magnitudes = np.array(self.magnitudes)
-        # Get all required rupture attributes
-        required_attributes = []
-        for gmpe_name, gmpe in self.gsims.items():
-            rup_params = [param for param in gmpe.REQUIRES_RUPTURE_PARAMETERS]
-            for param in rup_params:
-                if param == 'mag':
-                    continue
-                elif param not in self.params:
-                    raise ValueError("GMPE %s requires rupture parameter %s"
-                                     % (gmpe_name, param))
-                elif param not in required_attributes:
-                    required_attributes.append(param)
-                else:
-                    pass
-        for mag in self.magnitudes:
-            rup = gsim.base.RuptureContext()
-            setattr(rup, 'mag', mag)
-            for attr in required_attributes:
-                setattr(rup, attr, self.params[attr])
-            self.rctx.append(rup)
+        else:
+            self.rctx = []
+            if (not isinstance(self.magnitudes, list) and not
+                    isinstance(self.magnitudes, np.ndarray)):
+                self.magnitudes = np.array(self.magnitudes)
+            # Get all required rupture attributes
+            required_attributes = []
+            for gmpe_name, gmpe in self.gsims.items():
+                rup_params = [param for param in
+                              gmpe.REQUIRES_RUPTURE_PARAMETERS]
+                for param in rup_params:
+                    if param == 'mag':
+                        continue
+                    elif param not in self.params:
+                        raise ValueError(
+                            "GMPE %s requires rupture parameter %s"
+                            % (gmpe_name, param))
+                    elif param not in required_attributes:
+                        required_attributes.append(param)
+                    else:
+                        pass
+            for mag in self.magnitudes:
+                rup = gsim.base.RuptureContext()
+                setattr(rup, 'mag', mag)
+                for attr in required_attributes:
+                    setattr(rup, attr, self.params[attr])
+                self.rctx.append(rup)
 
-    def _preprocess_sites(self):
-        """
-        Preprocesses site parameters to ensure all the necessary rupture
-        information for the GSIMS is found in the input parameters
-        """
+        # sites
         slots = set()
         for gmpe in self.gsims.values():
             slots.update(gmpe.REQUIRES_SITES_PARAMETERS)
@@ -381,9 +368,9 @@ class BaseTrellis(object):
                             np.zeros(self.nsites, dtype=bool))
             elif isinstance(self.params[param], Iterable):
                 if not len(self.params[param]) == self.nsites:
-                    raise ValueError("Length of sites value %s not equal to"
-                                     " number of sites %" % (param,
-                                                             self.nsites))
+                    raise ValueError("Length of sites value %s not equal to "
+                                     "number of sites %s" %
+                                     (param, self.nsites))
                 setattr(self.sctx, param, self.params[param])
             else:
                 pass
