@@ -195,15 +195,6 @@ class BaseTrellis(object):
         GMPEs
     :param list imts:
         List of intensity measures
-    :param dctx:
-        Distance context as instance of :class:
-            openquake.hazardlib.gsim.base.DistancesContext
-    :param rctx:
-        Rupture context as instance of :class:
-            openquake.hazardlib.gsim.base.RuptureContext
-    :param sctx:
-        Rupture context as instance of :class:
-            openquake.hazardlib.gsim.base.SitesContext
     :param int nsites:
         Number of sites
     :param str stddevs:
@@ -232,8 +223,6 @@ class BaseTrellis(object):
 
     def __init__(self, magnitudes, distances, gsims, imts, params,
                  stddevs="Total", rupture=None, **kwargs):
-        """
-        """
         # Set default keyword arguments
         kwargs.setdefault('filename', None)
         kwargs.setdefault('filetype', "png")

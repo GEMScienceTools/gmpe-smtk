@@ -2,12 +2,10 @@
 Implementing the abstract-like interface to be inherited by any
 database/set/collection aiming to support residuals computation on its records
 """
-import sys
 from collections import OrderedDict  # FIXME In Python3.7+, dict is sufficient
 
 import numpy as np
-from openquake.hazardlib.contexts import DistancesContext, RuptureContext, \
-    SitesContext
+from openquake.hazardlib.contexts import DistancesContext, RuptureContext
 
 
 class ResidualsCompliantRecordSet:
@@ -208,6 +206,7 @@ class ResidualsCompliantRecordSet:
                 # FIXME: dtype=float forces Nones to be safely converted to nan
                 # but it assumes obviously all attval elements to be numeric
                 setattr(context, attname, np.asarray(attval, dtype=float))
+        context.sids = np.arange(len(context.vs30), dtype=np.uint32)
 
     def create_observations(self, imts):
         '''creates and returns an observations `dict` from the given imts'''
