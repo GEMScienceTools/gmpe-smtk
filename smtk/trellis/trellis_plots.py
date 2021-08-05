@@ -1098,13 +1098,9 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
             natural period(s) to be used
         """
         imts = ["SA(%s)" % i_m for i_m in imts]
-        super(MagnitudeDistanceSpectraTrellis, self).__init__(magnitudes,
-                                                              distances,
-                                                              gsims,
-                                                              imts,
-                                                              params,
-                                                              stddev,
-                                                              **kwargs)
+        super().__init__(magnitudes, distances, gsims, imts, params,
+                         stddev, **kwargs)
+
     def _preprocess_distances(self):
         """
         In the case of distances one can pass either a dictionary containing
