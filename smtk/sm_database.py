@@ -1104,8 +1104,8 @@ class GroundMotionDatabase(ResidualsCompliantRecordSet):
             elif "SA(" in imtx:
                 target_period = imt.from_string(imtx).period
                 spectrum = fle[selection_string + component +
-                               "/damping_05"].value
-                periods = fle["IMS/H/Spectra/Response/Periods"].value
+                               "/damping_05"][:]
+                periods = fle["IMS/H/Spectra/Response/Periods"][:]
                 values.append(utils.get_interpolated_period(
                     target_period, periods, spectrum))
             else:
@@ -1128,12 +1128,12 @@ class GroundMotionDatabase(ResidualsCompliantRecordSet):
             Horizontal component of IM
         """
         if not ("H" in fle["IMS"].keys()):
-            x_im = fle["IMS/X/Scalar/" + i_m].value[0]
-            y_im = fle["IMS/Y/Scalar/" + i_m].value[0]
+            x_im = fle["IMS/X/Scalar/" + i_m][0]
+            y_im = fle["IMS/Y/Scalar/" + i_m][0]
             return utils.SCALAR_XY[component](x_im, y_im)
         else:
             if i_m in fle["IMS/H/Scalar"].keys():
-                return fle["IMS/H/Scalar/" + i_m].value[0]
+                return fle["IMS/H/Scalar/" + i_m][0]
             else:
                 raise ValueError("Scalar IM %s not in record database" % i_m)
 
