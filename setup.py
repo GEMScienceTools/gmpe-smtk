@@ -29,7 +29,7 @@ Copyright (C) 2014-2019 GEM Foundation
 setup(
     name='smtk',
     version=__version__,
-    description=README,
+    description=README.strip().replace("\n", " "),
     url=url,
     packages=find_packages(exclude=['tests', 'tests.*']),
     # Minimal requirements, for a complete list see requirements-*.txt
