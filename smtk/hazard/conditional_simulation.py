@@ -197,13 +197,8 @@ def get_conditional_gmfs(
     cmaker = ContextMaker(rupture.tectonic_region_type, gmpe_list,
                           dict(imtls={imt: [0] for imt in imts}))
     ctxs = cmaker.get_ctxs([rupture], sites)
-    if len(ctxs) == 1:  # engine version >= 3.13  FIXME: really? (see below)
-        try:
-            rupture, sctx, dctx = ctxs[0]
-        except TypeError:
-            #  ctxs[0] seem to return a single "fat" Rupture Context. Let's
-            #  try like this (FIXME: it work, but is it correct?):
-            rupture = sctx = dctx = ctxs[0]
+    if len(ctxs) == 1:  # engine version >= 3.13
+        rupture = sctx = dctx = ctxs[0]
     else:  # older versions
         _rctx, sctx, dctx = ctxs
     for gsim in gmpe_list:
