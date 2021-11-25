@@ -365,9 +365,9 @@ class SMDatabaseBuilder(object):
             pgd_dset = grp_scalar.create_dataset("PGD", (1,), dtype="f")
             pgd_dset.attrs["Units"] = "cm"
             locn = "/".join(["Time Series", key, "Original Record"])
-            pga_dset[:] = np.max(np.fabs(fle[locn + "/Acceleration"].value))
-            pgv_dset[:] = np.max(np.fabs(fle[locn + "/Velocity"].value))
-            pgd_dset[:] = np.max(np.fabs(fle[locn + "/Displacement"].value))
+            pga_dset[:] = np.max(np.fabs(fle[locn + "/Acceleration"][:]))
+            pgv_dset[:] = np.max(np.fabs(fle[locn + "/Velocity"][:]))
+            pgd_dset[:] = np.max(np.fabs(fle[locn + "/Displacement"][:]))
 
     def build_spectra_hdf5(self, fle, data):
         """
@@ -506,14 +506,14 @@ class AddPGA(HorizontalMotion):
                 "Time Series/X/Original Record/Acceleration",
                 "IMS/X/Scalar")
         else:
-            x_pga = self.fle["IMS/X/Scalar/PGA"].value
+            x_pga = self.fle["IMS/X/Scalar/PGA"][()]
 
         if "PGA" not in self.fle["IMS/Y/Scalar"]:
             y_pga = self._get_pga_from_time_series(
                 "Time Series/Y/Original Record/Acceleration",
                 "IMS/Y/Scalar")
         else:
-            y_pga = self.fle["IMS/Y/Scalar/PGA"].value
+            y_pga = self.fle["IMS/Y/Scalar/PGA"][()]
 
         h_pga = self.fle["IMS/H/Scalar"].create_dataset("PGA", (1,),
                                                         dtype=float)
@@ -526,7 +526,7 @@ class AddPGA(HorizontalMotion):
         If PGA is not found as an attribute of the X or Y dataset then
         this extracts them from the time series.
         """
-        pga = np.max(np.fabs(self.fle[time_series_location].value))
+        pga = np.max(np.fabs(self.fle[time_series_location][()]))
         pga_dset = self.fle[target_location].create_dataset("PGA", (1,),
                                                             dtype=float)
         pga_dset.attrs["Units"] = "cm/s/s"
@@ -548,14 +548,14 @@ class AddPGV(HorizontalMotion):
                 "Time Series/X/Original Record/",
                 "IMS/X/Scalar")
         else:
-            x_pgv = self.fle["IMS/X/Scalar/PGV"].value
+            x_pgv = self.fle["IMS/X/Scalar/PGV"][()]
 
         if "PGV" not in self.fle["IMS/Y/Scalar"]:
             y_pgv = self._get_pgv_from_time_series(
                 "Time Series/Y/Original Record",
                 "IMS/Y/Scalar")
         else:
-            y_pgv = self.fle["IMS/Y/Scalar/PGV"].value
+            y_pgv = self.fle["IMS/Y/Scalar/PGV"][()]
 
         h_pgv = self.fle["IMS/H/Scalar"].create_dataset("PGV", (1,),
                                                         dtype=float)
@@ -573,7 +573,7 @@ class AddPGV(HorizontalMotion):
             # Add velocity to the record
             velocity, _ = ims.get_velocity_displacement(
                 self.fle[accel_loc].attrs["Time-step"],
-                self.fle[accel_loc].value)
+                self.fle[accel_loc][()])
 
             vel_dset = self.fle[time_series_location].create_dataset(
                 "Velocity",
@@ -581,7 +581,7 @@ class AddPGV(HorizontalMotion):
                 dtype=float)
 
         else:
-            velocity = self.fle[time_series_location + "/Velocity"].value
+            velocity = self.fle[time_series_location + "/Velocity"][()]
 
         pgv = np.max(np.fabs(velocity))
         pgv_dset = self.fle[target_location].create_dataset("PGV", (1,),
@@ -604,13 +604,13 @@ class AddResponseSpectrum(HorizontalMotion):
         Adds the response spectrum
         """
         if len(self.periods) == 0:
-            self.periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
+            self.periods = self.fle["IMS/X/Spectra/Response/Periods"][1:]
 
         x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
         y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
-        sax, say = ims.get_response_spectrum_pair(x_acc.value,
+        sax, say = ims.get_response_spectrum_pair(x_acc[:],
                                                   x_acc.attrs["Time-step"],
-                                                  y_acc.value,
+                                                  y_acc[:],
                                                   y_acc.attrs["Time-step"],
                                                   self.periods,
                                                   self.damping)
@@ -671,24 +671,24 @@ class AddGMRotDppSpectrum(AddResponseSpectrum):
             Percentile (pp)
         """
         if len(self.periods) == 0:
-            self.periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
+            self.periods = self.fle["IMS/X/Spectra/Response/Periods"][1:]
 
         x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
         y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
 
-        gmrotdpp = ims.gmrotdpp(x_acc.value, x_acc.attrs["Time-step"],
-                                y_acc.value, y_acc.attrs["Time-step"],
+        gmrotdpp = ims.gmrotdpp(x_acc[:], x_acc.attrs["Time-step"],
+                                y_acc[:], y_acc.attrs["Time-step"],
                                 self.periods, percentile, self.damping)
         dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
         nvals = len(gmrotdpp)
         # Acceleration
-        if not "Acceleration" in self.fle["IMS/H/Spectra/Response"]:
+        if "Acceleration" not in self.fle["IMS/H/Spectra/Response"]:
             acc_grp = self.fle["IMS/H/Spectra/Response"].create_group(
                 "Acceleration")
         else:
             acc_grp = self.fle["IMS/H/Spectra/Response/Acceleration"]
-        acc_cmp_grp = acc_grp.create_group("GMRotD" + 
-                                           str(int(percentile)).zfill(2))
+        acc_cmp_grp = acc_grp.create_group(
+            "GMRotD" + str(int(percentile)).zfill(2))
         acc_dset = acc_cmp_grp.create_dataset(dstring, (nvals,), dtype=float)
         acc_dset.attrs["Units"] = "cm/s/s"
         acc_dset[:] = gmrotdpp["GMRotDpp"]
@@ -705,13 +705,13 @@ class AddRotDppSpectrum(AddResponseSpectrum):
             Percentile (pp)
         """
         if len(self.periods) == 0:
-            self.periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
+            self.periods = self.fle["IMS/X/Spectra/Response/Periods"][1:]
 
         x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
         y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
-        rotdpp = ims.rotdpp(x_acc.value, x_acc.attrs["Time-step"],
-                                y_acc.value, y_acc.attrs["Time-step"],
-                                self.periods, percentile, self.damping)[0]
+        rotdpp = ims.rotdpp(x_acc[:], x_acc.attrs["Time-step"],
+                            y_acc[:], y_acc.attrs["Time-step"],
+                            self.periods, percentile, self.damping)[0]
         dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)
         nvals = len(rotdpp["Pseudo-Acceleration"])
         # Acceleration
@@ -738,12 +738,12 @@ class AddGMRotIppSpectrum(AddResponseSpectrum):
             Percentile (pp)
         """
         if len(self.periods) == 0:
-            self.periods = self.fle["IMS/X/Spectra/Response/Periods"].value[1:]
+            self.periods = self.fle["IMS/X/Spectra/Response/Periods"][1:]
 
         x_acc = self.fle["Time Series/X/Original Record/Acceleration"]
         y_acc = self.fle["Time Series/Y/Original Record/Acceleration"]
-        sa_hor = ims.gmrotipp(x_acc.value, x_acc.attrs["Time-step"],
-                              y_acc.value, y_acc.attrs["Time-step"],
+        sa_hor = ims.gmrotipp(x_acc[:], x_acc.attrs["Time-step"],
+                              y_acc[:], y_acc.attrs["Time-step"],
                               self.periods, percentile, self.damping)
         nvals = len(sa_hor["Acceleration"])
         dstring = "damping_" + str(int(100.0 * self.damping)).zfill(2)

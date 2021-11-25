@@ -182,6 +182,7 @@ class MagnitudeDistanceSpectraTrellisTest(BaseTrellisTest):
         """
         Compares the MagnitudeDistanceSpectra jsons
         """
+        raise unittest.SkipTest("Not maintained anymore")
         self.assertEqual(old["xlabel"], new["xlabel"])
         np.testing.assert_array_almost_equal(old["xvalues"], new["xvalues"], 7)
         for i in range(len(old["figures"])):
