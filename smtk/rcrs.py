@@ -8,6 +8,119 @@ import numpy as np
 from openquake.hazardlib.contexts import DistancesContext, RuptureContext
 
 
+class ContextDB:
+    """This abstract-like class represents a Database (DB) of Contexts suitable
+    for Residual analysis: subclasses of `ContextDB` can be passed as argument
+    to :meth:`gmpe_residuals.Residuals.get_residuals`
+
+    Typical implementation sketch:
+    ```
+        def get_context(nodal_plane_index=1, imts=None, component="Geometric"):
+
+            # loop through
+
+    ```
+    To implement a custom `ContextDB` you have to subclass `get_contexts`.
+    Therein, you iteratively create `Context` dictionaries via `create_context`,
+    and then populate the dict with rupture, site, distance information, as
+    well as observed imt, if present.
+
+    For subclassing examples, see:
+    :class:`smtk.sm_database.GroundMotionDatabase`
+    """
+
+    # SCALAR_IMTS = ["PGA", "PGV", "PGD", "CAV", "Ia"]
+    SCALAR_IMTS = ["PGA", "PGV"]
+
+    sites_context_attrs = ('vs30', 'lons', 'lats', 'depths',
+                           'vs30measured', 'z1pt0', 'z2pt5', 'backarc')
+    distances_context_attrs = tuple(DistancesContext._slots_)
+    rupture_context_attrs = tuple(RuptureContext._slots_)
+
+    def get_contexts(self, nodal_plane_index=1,
+                     imts=None, component="Geometric"):
+        """Returns an iterable of `dict`s, each containing the site, distance
+        and rupture contexts for individual records. Each context dict
+        represents an earthquake event and is of the form:
+        ```
+        {
+         'EventID': earthquake id,
+         'Ctx': :class:`openquake.hazardlib.contexts.RuptureContext`
+        }
+        ```
+        Additionally, if `imts` is not None but a list of Intensity measure
+        types (strings), each dict will contain two additional keys:
+        'Observations' (dict of imts mapped to a numpy array of imt values,
+        one per record) and 'Num. Sites' (the records count)
+        ```
+        """
+        # contexts are dicts which will temporarily be stored in a wrapping
+        # dict `context_dicts` to easily retrieve a context from a record
+        # event_id:
+        context_dicts = {}
+        compute_observations = imts is not None and len(imts)
+        for rec in self.records:
+            evt_id = self.get_record_eventid(rec)  # rec['event_id']
+            dic = context_dicts.get(evt_id, None)
+            if dic is None:
+                dic = self.create_context(evt_id, imts)
+                # we might use defaultdict, but like this is more readable
+                # dic = {
+                #     'EventID': evt_id,
+                #     'Ctx': self.create_context(evt_id)
+                # }
+                # if compute_observations:
+                #     dic["Observations"] = self.create_observations(imts)
+                #     dic["Num. Sites"] = 0
+
+                # set Rupture only once:
+                self.update_rupture_context(rec, dic['Ctx'],
+                                            nodal_plane_index)
+                # assign to wrapping `context_dicts`:
+                context_dicts[evt_id] = dic
+
+            # dic['EventIndex'].append(self.get_record_id(rec))
+            self.update_sites_context(rec, dic['Ctx'])
+            self.update_distances_context(rec, dic['Ctx'])
+            if compute_observations:
+                self.update_observations(rec, dic['Observations'], component)
+                dic["Num. Sites"] += 1
+
+        # converts to numeric arrays (once at the end is faster, see
+        # https://stackoverflow.com/questions/7133885/fastest-way-to-grow-a-numpy-numeric-array
+        # get default attributes not to be changed:
+        for dic in context_dicts.values():
+            self.finalize_context(dic)
+
+        return context_dicts.values()
+
+    def create_context(self, evt_id, imts):
+        """Create a new context sd dict with keys:
+        ```
+        {
+        'EventID': evt_id,
+        'Ctx: :class:`openquake.hazardlib.contexts.RuptureContext`
+        # AND OTPIONALLY (if `imts` is not "falsy", e.g., None, emtpy list):
+        'Observations": dict of Imts mapped to empty list
+        'Num. Sites'
+        }
+        ```
+
+        s, initializes and returns a full context.
+        The returned context is intended to be used in `self.get_contexts`.
+
+        :return:  a
+        """
+        dic = {
+            'EventID': evt_id,
+            'Ctx': RuptureContext()
+        }
+        if imts is not None and len(imts):
+            dic["Observations"] = OrderedDict([(imt, []) for imt in imts])
+            dic["Num. Sites"] = 0
+        return dic
+
+
 class ResidualsCompliantRecordSet:
     '''This abstract-like class represents an iterables of records which can be
     used in :meth:`gmpe_residuals.Residuals.get_residuals` to compute the
@@ -106,78 +219,6 @@ class ResidualsCompliantRecordSet:
         for record in self.records:
             yield record
 
-    def get_contexts(self, nodal_plane_index=1,
-                     imts=None, component="Geometric"):
-        """Returns an iterable of `dict`s, each containing the site, distance
-        and rupture contexts for individual records. Each context dict
-        represents an earthquake event and is of the form:
-        ```
-        {
-         'EventID': earthquake id,
-         'Ctx': :class:`openquake.hazardlib.contexts.RuptureContext`
-        }
-        ```
-        Additionally, if `imts` is not None but a list of Intensity measure
-        types (strings), each dict will contain two additional keys:
-        'Observations' (dict of imts mapped to a numpy array of imt values,
-        one per record) and 'Num. Sites' (the records count)
-        ```
-        """
-        # contexts are dicts which will temporarily be stored in a wrapping
-        # dict `context_dicts` to easily retrieve a context from a record
-        # event_id:
-        context_dicts = {}
-        compute_observations = imts is not None and len(imts)
-        for rec in self.records:
-            evt_id = self.get_record_eventid(rec)  # rec['event_id']
-            dic = context_dicts.get(evt_id, None)
-            if dic is None:
-                # we might use defaultdict, but like this is more readable
-                dic = {
-                    'EventID': evt_id,
-                    'Ctx': self.create_context(evt_id)
-                }
-                if compute_observations:
-                    dic["Observations"] = self.create_observations(imts)
-                    dic["Num. Sites"] = 0
-                # set Rupture only once:
-                self.update_rupture_context(rec, dic['Ctx'],
-                                            nodal_plane_index)
-                # assign to wrapping `context_dicts`:
-                context_dicts[evt_id] = dic
-
-            # dic['EventIndex'].append(self.get_record_id(rec))
-            self.update_sites_context(rec, dic['Ctx'])
-            self.update_distances_context(rec, dic['Ctx'])
-            if compute_observations:
-                self.update_observations(rec, dic['Observations'], component)
-                dic["Num. Sites"] += 1
-
-        # converts to numeric arrays (once at the end is faster, see
-        # https://stackoverflow.com/questions/7133885/fastest-way-to-grow-a-numpy-numeric-array
-        # get default attributes not to be changed:
-        for dic in context_dicts.values():
-            self.finalize_context(dic['Ctx'])
-            if compute_observations:
-                self.finalize_observations(dic['Observations'])
-
-        return context_dicts.values()
-
-    def create_context(self, evt_id):
-        '''Creates, initializes and returns a full context.
-        The returned context is intended to be used in `self.get_contexts`.
-
-        :return:  a :class:`openquake.hazardlib.contexts.RuptureContext`
-        '''
-        ctx = RuptureContext()
-        for _ in self.rupture_context_attrs:
-            setattr(ctx, _, np.nan)
-        for attr in self.sites_context_attrs:
-            setattr(ctx, attr, [])
-        for _ in self.distances_context_attrs:
-            setattr(ctx, _, [])
-        return ctx
-
     def finalize_context(self, context):
         '''Finalizes the `context` object created with
         `self.create_sites_context` and populated in `self.get_contexts`.
@@ -186,39 +227,45 @@ class ResidualsCompliantRecordSet:
 
         :param context: a :class:`openquake.hazardlib.contexts.SitesContext`
         '''
+        ctx = context['Ctx']
         for attname in self.sites_context_attrs:
-            attval = getattr(context, attname)
+            attval = getattr(ctx, attname)
             # remove attribute if its value is empty-like
             if attval is None or not len(attval):
-                delattr(context, attname)
+                delattr(ctx, attname)
             elif attname in ('vs30measured', 'backarc'):
-                setattr(context, attname, np.asarray(attval, dtype=bool))
+                setattr(ctx, attname, np.asarray(attval, dtype=bool))
             else:
                 # dtype=float forces Nones to be safely converted to nan
-                setattr(context, attname, np.asarray(attval, dtype=float))
+                setattr(ctx, attname, np.asarray(attval, dtype=float))
 
         for attname in self.distances_context_attrs:
-            attval = getattr(context, attname)
+            attval = getattr(ctx, attname)
             # remove attribute if its value is empty-like
             if attval is None or not len(attval):
-                delattr(context, attname)
+                delattr(ctx, attname)
             else:
                 # FIXME: dtype=float forces Nones to be safely converted to nan
                 # but it assumes obviously all attval elements to be numeric
-                setattr(context, attname, np.asarray(attval, dtype=float))
-        context.sids = np.arange(len(context.vs30), dtype=np.uint32)
+                setattr(ctx, attname, np.asarray(attval, dtype=float))
+        ctx.sids = np.arange(len(ctx.vs30), dtype=np.uint32)
 
-    def create_observations(self, imts):
-        '''creates and returns an observations `dict` from the given imts'''
-        return OrderedDict([(imtx, []) for imtx in imts])
+        observations = context.get('Observations', None)
+        if observations:
+            for imtx, values in observations.items():
+                observations[imtx] = np.asarray(values, dtype=float)
 
-    def finalize_observations(self, observations):
-        '''Finalizes a the observations `dict` after it has been populated
-        with the database observed values. By default, it converts all dict
-        values to numpy array
-        '''
-        for imtx, values in observations.items():
-            observations[imtx] = np.asarray(values, dtype=float)
+    # def create_observations(self, imts):
+    #     '''creates and returns an observations `dict` from the given imts'''
+    #     return OrderedDict([(imtx, []) for imtx in imts])
+
+    # def finalize_observations(self, observations):
+    #     '''Finalizes a the observations `dict` after it has been populated
+    #     with the database observed values. By default, it converts all dict
+    #     values to numpy array
+    #     '''
+    #     for imtx, values in observations.items():
+    #         observations[imtx] = np.asarray(values, dtype=float)
 
     def get_observations(self, imts, component="Geometric"):
         """Get the observed intensity measure values from the database records,
