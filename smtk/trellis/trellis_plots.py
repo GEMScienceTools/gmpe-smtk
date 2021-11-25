@@ -113,11 +113,16 @@ def _get_gmpe_name(gsim):
         for key in gsim.__dict__:
             if key.startswith("kwargs"):
                 continue
-            additional_args.append("{:s}={:s}".format(key,
-                                   str(gsim.__dict__[key])))
+            val = str(gsim.__dict__[key])
+            # FIXME: to be able to reconstruct back a Gsim from its string (in
+            # potential future applications) we we might think about a better
+            # way than just `str(val)` (json?, simple single-quote of strings?)
+            additional_args.append("{:s}={:s}".format(key, val))
         if len(additional_args):
             gsim_name_str = "({:s})".format(", ".join(additional_args))
-            gsim_name_str = gsim_name_str.replace("_", " ")
+            # Do not replace underscores (see note above):
+            # gsim_name_str = gsim_name_str.replace("_", " ")
+            # (FIXME: why was this implemented? is there some other reason?)
             return gsim_name + gsim_name_str
         else:
             return gsim_name

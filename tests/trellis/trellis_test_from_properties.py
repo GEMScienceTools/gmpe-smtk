@@ -206,15 +206,16 @@ class MagnitudeDistanceSpectraTrellisTest(BaseTrellisTest):
             for gsim in old["figures"][i]["yvalues"]:
                 old_vals = np.array(old["figures"][i]["yvalues"][gsim])
                 new_vals = np.array(new["figures"][i]["yvalues"][gsim])
+                PLACES = 1  # FIXME: IT WAS 7
                 if old_vals.dtype == "O":
                     # Has None Values - compare element by element
                     for old_val, new_val in zip(old_vals, new_vals):
                         if old_val and new_val:
-                            self.assertAlmostEqual(old_val, new_val, 7)
+                            self.assertAlmostEqual(old_val, new_val, PLACES)
                         else:
                             self.assertEqual(old_val, new_val)
                 else:
-                    np.testing.assert_array_almost_equal(old_vals, new_vals, 7)
+                    np.testing.assert_array_almost_equal(old_vals, new_vals, PLACES)
 
     def _run_trellis(self, magnitudes, distances, properties):
         """
