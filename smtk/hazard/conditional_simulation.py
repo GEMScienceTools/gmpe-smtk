@@ -198,7 +198,7 @@ def get_conditional_gmfs(
                           dict(imtls={imt: [0] for imt in imts}))
     ctxs = cmaker.get_ctxs([rupture], sites)
     if len(ctxs) == 1:  # engine version >= 3.13
-        rupture, sctx, dctx = ctxs[0]
+        rupture = sctx = dctx = ctxs[0]
     else:  # older versions
         _rctx, sctx, dctx = ctxs
     for gsim in gmpe_list:
