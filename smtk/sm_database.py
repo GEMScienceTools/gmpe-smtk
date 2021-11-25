@@ -15,7 +15,7 @@ from openquake.hazardlib.geo.point import Point
 from smtk.trellis.configure import vs30_to_z1pt0_as08, z1pt0_to_z2pt5
 from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 import smtk.sm_utils as utils
-from smtk.rcrs import ContextsDB
+from smtk.residuals.context_db import ContextDB
 
 
 class Magnitude(object):
@@ -911,47 +911,30 @@ class GroundMotionRecord(object):
         return self.distance.azimuth
 
 
-class GroundMotionDatabase(ContextsDB):
+class GroundMotionDatabase(ContextDB):
     """
     Class to represent a database of strong motions
-    :param str id:
+    :param str db_id:
         Database identifier
-    :param str name:
+    :param str db_name:
         Database name
-    :param str directory:
+    :param str db_directory:
         Path to database directory
     :param list records:
-        Strong motion data as list of :class: GroundMotionRecord
+        Strong motion data as list of :class: GroundMotionRecord (defaults to
+        None: empty list)
     :param list site_ids:
-        List of site ids
+        List of site ids (defaults to None: empty list)
     """
-    def __init__(self, db_id, db_name, db_directory=None, records=[],
-                 site_ids=[]):
+    def __init__(self, db_id, db_name, db_directory=None, records=None,
+                 site_ids=None):
         """
         """
         self.id = db_id
         self.name = db_name
         self.directory = db_directory
-        self.records = [rec for rec in records]
-        self.site_ids = site_ids
-
-    ##############################################################
-    # Implementing ResidualsCompliantRecordSet ABSTRACT METHODS: #
-    ##############################################################
-
-    # @property
-    # def records(self):
-    #     '''Returns an iterable of records from this database (e.g. list, tuple,
-    #     generator). Note that as any iterable, the returned object does not
-    #     need to define a length whereby `len(self.records)` will work: this
-    #     will depend on subclasses implementation
-    #     '''
-    #     return self._records
-    #
-    # # this is no abstract method, it makes `self.records = new_records` work:
-    # @records.setter
-    # def records(self, list_of_records):
-    #     self._records = list_of_records
+        self.records = list(records) if records is not None else []
+        self.site_ids = list(site_ids) if site_ids is not None else []
 
     def __iter__(self):
         """
@@ -961,12 +944,12 @@ class GroundMotionDatabase(ContextsDB):
         for record in self.records:
             yield record
 
-    # FIXME: REMOVE
-    # def get_record_eventid(self, record):
-    #     '''Returns the record event id (usually int) of the given record'''
-    #     return record.event.id
+    ############################################
+    # Implementing ContextDB ABSTRACT METHODS: #
+    ############################################
 
-    def event_records_iter(self):
+    def get_event_and_records(self):
+        """yield (event, records) tuples. See superclass docstring for details"""
         data = {}
         for record in self.records:
             evt_id = record.event.id
@@ -980,36 +963,9 @@ class GroundMotionDatabase(ContextsDB):
     SCALAR_IMTS = ["PGA", "PGV"]
 
     def get_observations(self, imtx, records, component="Geometric"):
-        '''Updates the observed intensity measures types (imt) with the given
-        `record` data. `observations` is a `dict` of imts (string) mapped to
-        numeric lists. Here you should append to each list the imt value
-        derived from `record`, ususally numeric or NaN (`numpy.nan`):
-        ```
-            for imt, values in observations.items():
-                if imtx in self.SCALAR_IMTS:  # currently, 'PGA' or 'PGV'
-                    val = ... get the imt scalar value from record ...
-                elif "SA(" in imtx:
-                    val = ... get the SA numeric array / list from record ...
-                else:
-                    raise ValueError("IMT %s is unsupported!" % imtx)
-                values.append(val)
-        ```
-        '''
-        # selection_string = "IMS/H/Spectra/Response/Acceleration/"
-        # fle = h5py.File(record.datafile, "r")
-        # for imtx, values in observations.items():
-        #     if imtx in self.SCALAR_IMTS:
-        #         values.append(self.get_scalar(fle, imtx, component))
-        #     elif "SA(" in imtx:
-        #         target_period = imt.from_string(imtx).period
-        #         spectrum = fle[selection_string + component +
-        #                        "/damping_05"][:]
-        #         periods = fle["IMS/H/Spectra/Response/Periods"][:]
-        #         values.append(utils.get_interpolated_period(
-        #             target_period, periods, spectrum))
-        #     else:
-        #         raise ValueError("IMT %s is unsupported!" % imtx)
-        # fle.close()
+        """Return observed values for the given imt, as numpy array.
+        See superclass docstring for details
+        """
 
         values = []
         selection_string = "IMS/H/Spectra/Response/Acceleration/"
@@ -1030,6 +986,9 @@ class GroundMotionDatabase(ContextsDB):
         return values
 
     def update_context(self, ctx, records, nodal_plane_index=1):
+        """Updates the given RuptureContext with data from `records`.
+        See superclass docstring for details
+        """
         self._update_rupture_context(ctx, records, nodal_plane_index)
         self._update_sites_context(ctx, records)
         self._update_distances_context(ctx, records)

@@ -356,18 +356,19 @@ class Residuals(object):
         self.number_records = None
         self.contexts = None
 
-    def get_residuals(self, database, nodal_plane_index=1,
+    def get_residuals(self, ctx_database, nodal_plane_index=1,
                       component="Geometric", normalise=True):
         """
         Calculate the residuals for a set of ground motion records
 
-        :param database: a record database. It can be either a
-            :class:`smtk.sm_database.GroundMotionDatabase` or a
-            :class:`smtk.sm_table.GroundMotionTable`
+        :param ctx_database: a :class:`context_db.ContextDB`, i.e. a database of
+            data capable of returning dicts of Contexts and Observations.
+            See e.g., :class:`smtk.sm_database.GroundMotionDatabase` for an
+            example
         """
 
-        contexts = database.get_contexts(nodal_plane_index, self.imts,
-                                         component)
+        contexts = ctx_database.get_contexts(nodal_plane_index, self.imts,
+                                             component)
 
         # Fetch now outside the loop for efficiency the IMTs which need
         # acceleration units conversion from cm/s/s to g. Conversion will be
