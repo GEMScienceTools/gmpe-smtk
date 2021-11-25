@@ -362,7 +362,8 @@ class Residuals(object):
         Calculate the residuals for a set of ground motion records
 
         :param ctx_database: a :class:`context_db.ContextDB`, i.e. a database of
-            data capable of returning dicts of Contexts and Observations.
+            records capable of returning dicts of earthquake-based Contexts and
+            observed IMTs.
             See e.g., :class:`smtk.sm_database.GroundMotionDatabase` for an
             example
         """

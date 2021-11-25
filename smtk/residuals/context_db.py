@@ -11,14 +11,14 @@ from openquake.hazardlib.contexts import DistancesContext, RuptureContext
 class ContextDB:
     """This abstract-like class represents a Database (DB) of data capable of
     yielding Contexts and Observations suitable for Residual analysis (see
-    argument `context_db` of :meth:`gmpe_residuals.Residuals.get_residuals`)
+    argument `ctx_database` of :meth:`gmpe_residuals.Residuals.get_residuals`)
 
     Concrete subclasses of `ContextDB` must implement three abstract methods
     (e.g. :class:`smtk.sm_database.GroundMotionDatabase`):
      - get_event_and_records(self)
      - update_context(self, ctx, records, nodal_plane_index=1)
      - get_observations(self, imtx, records, component="Geometric")
-       (which is called only if `imts` is passed in :meth:`self.get_contexts`)
+       (which is called only if `imts` is given in :meth:`self.get_contexts`)
 
     Please refer to the functions docstring for further details
     """
@@ -30,12 +30,14 @@ class ContextDB:
 
     def get_contexts(self, nodal_plane_index=1,
                      imts=None, component="Geometric"):
-        """Return an iterable of Contexts. Each Context is a `dict` describing
-        a given earthquake-based context "Ctx" (with sites, distances and rupture
-        information) and optionally its observed IMT values "Observations".
+        """Return an iterable of Contexts. Each Context is a `dict` with
+        earthquake, sites and distances information (`dict["Ctx"]`)
+        and optionally arrays of observed IMT values (`dict["Observations"]`).
+        See `create_context` for details.
+
         This is the only method required by
         :meth:`gmpe_residuals.Residuals.get_residuals`
-        and should not be overwritten unless under very specific circumstances.
+        and should not be overwritten only in very specific circumstances.
         """
         compute_observations = imts is not None and len(imts)
         for evt_id, records in self.get_event_and_records():
@@ -53,10 +55,11 @@ class ContextDB:
             yield dic
 
     def create_context(self, evt_id, imts=None):
-        """Create a new Context `dict`.
+        """Create a new Context `dict`. Objects of this type will be yielded
+        by `get_context`.
 
-        :param evt_id: the event id (e.g. int, or str)
-        :param imts: a list of strings denoting the imts to be included in the
+        :param evt_id: the earthquake id (e.g. int, or str)
+        :param imts: a list of strings denoting the IMTs to be included in the
             context. If missing or None, the returned dict **will NOT** have
             the keys "Observations" and "Num. Sites"
 
@@ -104,10 +107,9 @@ class ContextDB:
 
         :param ctx: a :class:`openquake.hazardlib.contexts.RuptureContext`
             created for a specific event. It is the key 'Ctx' of the Context dict
-            returned by `self.create_context`)
+            returned by `self.create_context`
         :param records: sequence (e.g., list, tuple, pandas DataFrame) of records
-            related to the given earthquake-based context `ctx`
-            (see :meth:`get_event_and_records`)
+            related to the given event (see :meth:`get_event_and_records`)
         """
         raise NotImplementedError('')
 
@@ -122,8 +124,7 @@ class ContextDB:
 
         :param imtx: a string denoting a given Intensity measure type.
         :param records: sequence (e.g., list, tuple, pandas DataFrame) of records
-            related to a given earthquake-based context `ctx`
-            (see :meth:`get_event_and_records`)
+            related to a given event (see :meth:`get_event_and_records`)
 
         :return: a numpy array of observations, the same length of `records`
         """
