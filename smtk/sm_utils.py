@@ -249,15 +249,15 @@ DIP_TYPE = {
     "Reverse": 35.0,
     "Oblique": 60.0,
     "Unknown": 90.0,
-    "N": 60.0, # Flatfile conventions
+    "N": 60.0,  # Flatfile conventions
     "S": 90.0,
     "R": 35.0,
     "U": 90.0,
-    "NF": 60., # ESM flatfile conventions
+    "NF": 60.,  # ESM flatfile conventions
     "SS": 90.,
     "TF": 35.,
-    "NS": 70., # Normal with strike-slip component
-    "TS": 45., # Reverse with strike-slip component
+    "NS": 70.,  # Normal with strike-slip component
+    "TS": 45.,  # Reverse with strike-slip component
     "O": 90.0
 }
 

@@ -23,16 +23,17 @@ of GMPEs
 """
 import sys
 import json
-import numpy as np
 try:  # https://stackoverflow.com/q/53978542
     from collections.abc import Iterable  # noqa
 except ImportError:
     from collections import Iterable  # noqa    
-from cycler import cycler
 from math import floor, ceil
 import matplotlib
+from cycler import cycler
 from copy import deepcopy
 import matplotlib.pyplot as plt
+
+import numpy as np
 from openquake.hazardlib import imt
 from openquake.hazardlib.gsim.base import (RuptureContext, DistancesContext,
                                            SitesContext)
@@ -40,6 +41,7 @@ from openquake.hazardlib.scalerel.wc1994 import WC1994
 from smtk.sm_utils import _save_image, check_gsim_list
 import smtk.trellis.trellis_utils as utils
 from smtk.trellis.configure import GSIMRupture, DEFAULT_POINT
+
 
 # Default - defines a 21 color and line-type cycle
 matplotlib.rcParams["axes.prop_cycle"] = \
@@ -52,40 +54,44 @@ matplotlib.rcParams["axes.prop_cycle"] = \
                           "-.", "-.", "-.", "-.", "-.", "-.", "-.",
                           ":", ":", ":", ":", ":", ":", ":"])
 
-
 # Generic dictionary of parameters needed for a trellis calculation
-PARAM_DICT = {'magnitudes': [],
-              'distances': [],
-              'distance_type': 'rjb',
-              'vs30': [],
-              'strike': None,
-              'dip': None,
-              'rake': None,
-              'ztor': None,
-              'hypocentre_location': (0.5, 0.5),
-              'hypo_loc': (0.5, 0.5),
-              'msr': WC1994()}
+PARAM_DICT = {
+    'magnitudes': [],
+    'distances': [],
+    'distance_type': 'rjb',
+    'vs30': [],
+    'strike': None,
+    'dip': None,
+    'rake': None,
+    'ztor': None,
+    'hypocentre_location': (0.5, 0.5),
+    'hypo_loc': (0.5, 0.5),
+    'msr': WC1994()
+}
 
 # Defines the plotting units for given intensitiy measure type
-PLOT_UNITS = {'PGA': 'g',
-              'PGV': 'cm/s',
-              'SA': 'g',
-              'SD': 'cm',
-              'IA': 'm/s',
-              'CSV': 'g-sec',
-              'RSD': 's',
-              'MMI': ''}
+PLOT_UNITS = {
+    'PGA': 'g',
+    'PGV': 'cm/s',
+    'SA': 'g',
+    'SD': 'cm',
+    'IA': 'm/s',
+    'CSV': 'g-sec',
+    'RSD': 's',
+    'MMI': ''
+}
 
 # Verbose label for each given distance type
-DISTANCE_LABEL_MAP = {'repi': 'Epicentral Dist.',
-                      'rhypo': 'Hypocentral Dist.',
-                      'rjb': 'Joyner-Boore Dist.',
-                      'rrup': 'Rupture Dist.',
-                      'rx': 'Rx Dist.'}
+DISTANCE_LABEL_MAP = {
+    'repi': 'Epicentral Dist.',
+    'rhypo': 'Hypocentral Dist.',
+    'rjb': 'Joyner-Boore Dist.',
+    'rrup': 'Rupture Dist.',
+    'rx': 'Rx Dist.'
+}
 
 # Default figure size
 FIG_SIZE = (7, 5)
-
 
 # RESET Axes tick labels
 matplotlib.rc("xtick", labelsize=12)
@@ -755,13 +761,13 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
     @classmethod
     def from_rupture_properties(cls, properties, magnitude, distances,
                                 gsims, imts, stddev='Total', **kwargs):
-        '''Constructs the Base Trellis Class from a rupture properties.
+        """Constructs the Base Trellis Class from a rupture properties.
         It internally creates a Rupture object and calls
         `from_rupture_model`. When not listed, arguments take the same
         values as `from_rupture_model`
 
         :param distances: a numeric array of chosen distances
-        '''
+        """
         params = {k: properties[k] for k in ['rake', 'initial_point', 'ztor',
                                              'hypocentre_location', 'strike',
                                              'msr', 'tectonic_region']
@@ -1077,7 +1083,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
     @classmethod
     def from_rupture_properties(cls, properties, magnitudes, distance,
                                 gsims, periods, stddev='Total', **kwargs):
-        '''Constructs the Base Trellis Class from a dictionary of
+        """Constructs the Base Trellis Class from a dictionary of
         properties. In this class, this method is simply an alias of
         `from_rupture_model`
 
@@ -1086,7 +1092,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
             natural period(s) to be used. Note that this parameter
             is called `imt` in `from_rupture_model` where the name
             `imt` has been kept for legacy code compatibility
-        '''
+        """
         return cls.from_rupture_model(properties, magnitudes, distance,
                                       gsims, periods, stddev=stddev,
                                       **kwargs)

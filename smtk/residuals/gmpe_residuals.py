@@ -23,21 +23,19 @@ Module to get GMPE residuals - total, inter and intra
 """
 from __future__ import print_function
 import sys
-import re
+from collections import OrderedDict
 import warnings
-import numpy as np
 from datetime import datetime
 from math import sqrt, ceil
+from copy import deepcopy
+
+import numpy as np
 from scipy.special import erf
 from scipy.stats import norm
 from scipy.linalg import solve
-from copy import deepcopy
-from collections import OrderedDict
 from openquake.hazardlib.gsim import get_available_gsims
-from openquake.hazardlib.gsim.gmpe_table import GMPETable
-from openquake.hazardlib.gsim.base import GMPE
-import smtk.intensity_measures as ims
 from openquake.hazardlib import imt
+import smtk.intensity_measures as ims
 from smtk.strong_motion_selector import SMRecordSelector
 from smtk.sm_utils import convert_accel_units, check_gsim_list
 
@@ -47,8 +45,6 @@ GSIM_KEYS = set(GSIM_LIST)
 # SCALAR_IMTS = ["PGA", "PGV", "PGD", "CAV", "Ia"]
 SCALAR_IMTS = ["PGA", "PGV"]
 STDDEV_KEYS = ["Mean", "Total", "Inter event", "Intra event"]
-
-
 
 
 def get_geometric_mean(fle):
@@ -176,10 +172,13 @@ def get_rotd50(fle):
     return sa_rotd50
 
 
-SPECTRA_FROM_FILE = {"Geometric": get_geometric_mean,
-                     "GMRotI50": get_gmroti50,
-                     "GMRotD50": get_gmrotd50,
-                     "RotD50": get_rotd50}
+SPECTRA_FROM_FILE = {
+    "Geometric": get_geometric_mean,
+    "GMRotI50": get_gmroti50,
+    "GMRotD50": get_gmrotd50,
+    "RotD50": get_rotd50
+}
+
 
 # The following methods are used for the MultivariateLLH function
 def _build_matrices(contexts, gmpe, imtx):
@@ -906,7 +905,7 @@ GSIM_MODEL_DATA_TESTS = {
         residuals.get_multivariate_loglikelihood_values(),
     "EDR": lambda residuals, config: residuals.get_edr_values(
         config.get("bandwidth", 0.01), config.get("multiplier", 3.0))
-    }
+}
 
 
 # Deprecated functions for GMPE to data testing - kept here for backward
