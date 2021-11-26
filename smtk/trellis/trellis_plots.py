@@ -118,8 +118,8 @@ class BaseTrellis(object):
          'rhypo': np.ndarray}
         The number of elements in all arrays must be equal
     :param list gsims:
-        List of instance of the openquake.hazardlib.gsim classes to represent
-        GMPEs
+        List of strings or instance of the openquake.hazardlib.gsim classes
+        to representing GMPE names or GMPEs
     :param list imts:
         List of intensity measures
     :param int nsites:
