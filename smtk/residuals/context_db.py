@@ -100,7 +100,7 @@ class ContextDB:
 
     def update_context(self, ctx, records, nodal_plane_index=1):
         """Update the attributes of the earthquake-based context `ctx` with
-        the earthquake data `records`.
+        the data in `records`.
         See `rupture_context_attrs`, `sites_context_attrs`,
         `distances_context_attrs`, for a list of possible attributes. Any
         attribute of `ctx` that is non-scalar should be given as numpy array.
