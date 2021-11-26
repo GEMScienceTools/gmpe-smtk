@@ -43,6 +43,8 @@ else:
 # Get a list of the available GSIMs
 AVAILABLE_GSIMS = get_available_gsims()
 
+_gmpetable_regex = re.compile(r'^GMPETable\(([^)]+?)\)$')
+
 
 def check_gsim_list(gsim_list):
     """
@@ -60,17 +62,17 @@ def check_gsim_list(gsim_list):
     output_gsims = {}
     for gs in gsim_list:
         if isinstance(gs, GMPE):
-            # retrieve the name of an instantated GMPE via `_get_gmpe_name`:
-            output_gsims[_get_gmpe_name(gs)] = gs
-        elif gs.startswith("GMPETable"):
-            # Get filename
-            match = re.match(r'^GMPETable\(([^)]+?)\)$', gs)
-            filepath = match.group(1).split("=")[1]
-            output_gsims[gs] = GMPETable(gmpe_table=filepath)
-        elif gs not in AVAILABLE_GSIMS:
-            raise ValueError('%s Not supported by OpenQuake' % gs)
-        else:
+            output_gsims[_get_gmpe_name(gs)] = gs  # get name of GMPE instance
+        elif gs in AVAILABLE_GSIMS:
             output_gsims[gs] = AVAILABLE_GSIMS[gs]()
+        else:
+            match = _gmpetable_regex.match(gs)  # GMPETable ?
+            if match:
+                filepath = match.group(1).split("=")[1]  # get table filename
+                output_gsims[gs] = GMPETable(gmpe_table=filepath)
+            else:
+                raise ValueError('%s Not supported by OpenQuake' % gs)
+
     return output_gsims
 
 
@@ -78,21 +80,20 @@ def _get_gmpe_name(gsim):
     """
     Returns the name of the GMPE given an instance of the class
     """
-    if gsim.__class__.__name__.startswith("GMPETable"):
-        match = re.match(r'^GMPETable\(([^)]+?)\)$', str(gsim))
+    match = _gmpetable_regex.match(str(gsim))  # GMPETable ?
+    if match:
         filepath = match.group(1).split("=")[1][1:-1]
         return 'GMPETable(gmpe_table=%s)' % filepath
     else:
         gsim_name = gsim.__class__.__name__
         additional_args = []
-        # Try to build the GSIM with arguments. The idea si to provide a sort
-        # of unique representation which might be used to get back the GSIM from
-        # string. So please, NO fancy stuff (replacements, case changee, and so on.
-        # Maybe quote string arguments in the future?)
+        # Build the GSIM string by showing name and arguments. Keep things
+        # simple (no replacements, no case changes) as we might want to be able
+        # to get back the GSIM from its string in the future.
         for key in gsim.__dict__:
             if key.startswith("kwargs"):
                 continue
-            val = str(gsim.__dict__[key])
+            val = str(gsim.__dict__[key])  # quoting strings with json maybe?
             additional_args.append("{:s}={:s}".format(key, val))
         if len(additional_args):
             gsim_name_str = "({:s})".format(", ".join(additional_args))
