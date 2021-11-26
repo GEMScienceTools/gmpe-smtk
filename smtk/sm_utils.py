@@ -46,9 +46,13 @@ AVAILABLE_GSIMS = get_available_gsims()
 
 def check_gsim_list(gsim_list):
     """
-    Checks the list of GSIM models and returns a dict where each gsim in
-    `gsim_list` is mapped to its openquake.hazardlib.gsim class.
-    Raises error if GSIM is not supported in OpenQuake
+    Check the GSIM models or strings in `gsim_list`, and return a dict of
+    gsim names (str) mapped to their :class:`openquake.hazardlib.Gsim`.
+    Raises error if any Gsim in the list is supported in OpenQuake.
+
+    If a Gsim is passed as instance, its string representation is inferred
+    from the class name and optional arguments. If a Gsim is passed as string,
+    the associated class name is fetched from the OpenQuake available Gsims.
 
     :param gsim_list: list of GSIM names (str) or OpenQuake Gsims
     :return: a dict of GSIM names (str) mapped to the associated GSIM
