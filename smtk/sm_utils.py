@@ -277,12 +277,10 @@ DEFAULT_MSR = PeerMSR()
 def get_interpolated_period(target_period, periods, values):
     """
     Returns the spectra interpolated in loglog space
-    :param float target_period:
-        Period required for interpolation
-    :param np.ndarray periods:
-        Spectral Periods
-    :param np.ndarray values:
-        Ground motion values
+
+    :param float target_period: Period required for interpolation
+    :param np.ndarray periods: Spectral Periods
+    :param np.ndarray values: Ground motion values
     """
     if (target_period < np.min(periods)) or (target_period > np.max(periods)):
         raise ValueError("Period not within calculated range: %s" %
