@@ -15,6 +15,7 @@ from openquake.hazardlib.geo.point import Point
 from smtk.trellis.configure import vs30_to_z1pt0_as08, z1pt0_to_z2pt5
 from smtk.trellis.configure import vs30_to_z1pt0_cy14, vs30_to_z2pt5_cb14
 import smtk.sm_utils as utils
+from smtk import surface_utils
 from smtk.residuals.context_db import ContextDB
 
 
@@ -156,7 +157,7 @@ class Rupture(object):
                                self.hypocentre.latitude,
                                self.hypocentre.depth]
             elif key == "surface" and self.surface is not None:
-                output[key] = utils.surface_to_dict[
+                output[key] = surface_utils.surfaces_to_dict[
                     self.surface.__class__.__name__](self.surface)
             else:
                 output[key] = getattr(self, key)
@@ -174,8 +175,8 @@ class Rupture(object):
             if key in ["id", "name", "magnitude", "length", "width", "depth"]:
                 continue
             elif key == "surface" and data["surface"] is not None:
-                rup.surface = utils.surfaces_from_dict(data[key]["type"],
-                                                       mesh_spacing)
+                rup.surface = surface_utils.surfaces_from_dict(data[key]["type"],
+                                                               mesh_spacing)
             else:
                 setattr(rup, key, data[key])
         return rup
@@ -186,10 +187,8 @@ class GCMTNodalPlanes(object):
     Class to represent the nodal plane distribution of the tensor
     Each nodal plane is represented as a dictionary of the form:
     {'strike':, 'dip':, 'rake':}
-    :param dict nodal_plane_1:
-        First nodal plane
-    :param dict nodal_plane_2:
-        Second nodal plane
+    :param Union[dict, None] nodal_plane_1: First nodal plane
+    :param Union[dict, None] nodal_plane_2: Second nodal plane
     """
     def __init__(self):
         """
