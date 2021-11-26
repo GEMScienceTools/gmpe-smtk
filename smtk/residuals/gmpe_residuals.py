@@ -39,8 +39,7 @@ from openquake.hazardlib.gsim.base import GMPE
 import smtk.intensity_measures as ims
 from openquake.hazardlib import imt
 from smtk.strong_motion_selector import SMRecordSelector
-from smtk.trellis.trellis_plots import _get_gmpe_name
-from smtk.sm_utils import convert_accel_units
+from smtk.sm_utils import convert_accel_units, check_gsim_list
 
 GSIM_LIST = get_available_gsims()
 GSIM_KEYS = set(GSIM_LIST)
@@ -50,32 +49,6 @@ SCALAR_IMTS = ["PGA", "PGV"]
 STDDEV_KEYS = ["Mean", "Total", "Inter event", "Intra event"]
 
 
-def _check_gsim_list(gsim_list):
-    """
-    Checks the list of GSIM models and returns an instance of the
-    openquake.hazardlib.gsim class. Raises error if GSIM is not supported in
-    OpenQuake
-    :param list gsim_list:
-        List of GSIM names (str)
-    :returns:
-        Ordered dictionary of GMPE names and instances
-    """
-    output_gsims = []
-    for gsim in gsim_list:
-        if isinstance(gsim, GMPE):
-            # Is an instantated GMPE, so pass directly to list
-            output_gsims.append((_get_gmpe_name(gsim), gsim))
-        elif gsim.startswith("GMPETable"):
-            # Get filename
-            match = re.match(r'^GMPETable\(([^)]+?)\)$', gsim)
-            filepath = match.group(1).split("=")[1]
-            gmpe_table = GMPETable(gmpe_table=filepath[1:-1])
-            output_gsims.append((_get_gmpe_name(gmpe_table), gmpe_table))
-        elif not (gsim in GSIM_LIST):
-            raise ValueError('%s Not supported by OpenQuake' % gsim)
-        else:
-            output_gsims.append((gsim, GSIM_LIST[gsim]()))
-    return OrderedDict(output_gsims)
 
 
 def get_geometric_mean(fle):
@@ -305,7 +278,7 @@ class Residuals(object):
         :param list imts:
             List of Intensity Measures
         """
-        self.gmpe_list = _check_gsim_list(gmpe_list)
+        self.gmpe_list = check_gsim_list(gmpe_list)
         self.number_gmpes = len(self.gmpe_list)
         self.types = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
         self.residuals = []
@@ -1029,7 +1002,7 @@ class SingleStationAnalysis(object):
         """
         self.site_ids = site_id_list
         self.input_gmpe_list = deepcopy(gmpe_list)
-        self.gmpe_list = _check_gsim_list(gmpe_list)
+        self.gmpe_list = check_gsim_list(gmpe_list)
         self.imts = imts
         self.site_residuals = []
         self.types = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])

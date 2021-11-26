@@ -16,13 +16,12 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
-from openquake.hazardlib.scalerel.peer import PeerMSR
-
 """
 Strong motion utilities
 """
 import os
 import sys
+import re
 import numpy as np
 from scipy.integrate import cumtrapz
 from scipy.constants import g
@@ -30,11 +29,72 @@ from collections import OrderedDict
 from openquake.hazardlib.geo import (PlanarSurface, SimpleFaultSurface,
                                      ComplexFaultSurface, MultiSurface,
                                      Point, Line)
+from openquake.hazardlib.gsim import get_available_gsims
+from openquake.hazardlib.scalerel.peer import PeerMSR
+from openquake.hazardlib.gsim.gmpe_table import GMPETable
+from openquake.hazardlib.gsim.base import GMPE
 
 if sys.version_info[0] >= 3:
     import pickle
 else:
     import cPickle as pickle  # pylint: disable=import-error
+
+
+# Get a list of the available GSIMs
+AVAILABLE_GSIMS = get_available_gsims()
+
+
+def check_gsim_list(gsim_list):
+    """
+    Checks the list of GSIM models and returns a dict where each gsim in
+    `gsim_list` is mapped to its openquake.hazardlib.gsim class.
+    Raises error if GSIM is not supported in OpenQuake
+
+    :param gsim_list: list of GSIM names (str) or OpenQuake Gsims
+    :return: a dict of GSIM names (str) mapped to the associated GSIM
+    """
+    output_gsims = {}
+    for gs in gsim_list:
+        if isinstance(gs, GMPE):
+            # retrieve the name of an instantated GMPE via `_get_gmpe_name`:
+            output_gsims[_get_gmpe_name(gs)] = gs
+        elif gs.startswith("GMPETable"):
+            # Get filename
+            match = re.match(r'^GMPETable\(([^)]+?)\)$', gs)
+            filepath = match.group(1).split("=")[1]
+            output_gsims[gs] = GMPETable(gmpe_table=filepath)
+        elif gs not in AVAILABLE_GSIMS:
+            raise ValueError('%s Not supported by OpenQuake' % gs)
+        else:
+            output_gsims[gs] = AVAILABLE_GSIMS[gs]()
+    return output_gsims
+
+
+def _get_gmpe_name(gsim):
+    """
+    Returns the name of the GMPE given an instance of the class
+    """
+    if gsim.__class__.__name__.startswith("GMPETable"):
+        match = re.match(r'^GMPETable\(([^)]+?)\)$', str(gsim))
+        filepath = match.group(1).split("=")[1][1:-1]
+        return 'GMPETable(gmpe_table=%s)' % filepath
+    else:
+        gsim_name = gsim.__class__.__name__
+        additional_args = []
+        # Try to build the GSIM with arguments. The idea si to provide a sort
+        # of unique representation which might be used to get back the GSIM from
+        # string. So please, NO fancy stuff (replacements, case changee, and so on.
+        # Maybe quote string arguments in the future?)
+        for key in gsim.__dict__:
+            if key.startswith("kwargs"):
+                continue
+            val = str(gsim.__dict__[key])
+            additional_args.append("{:s}={:s}".format(key, val))
+        if len(additional_args):
+            gsim_name_str = "({:s})".format(", ".join(additional_args))
+            return gsim_name + gsim_name_str
+        else:
+            return gsim_name
 
 
 def get_time_vector(time_step, number_steps):

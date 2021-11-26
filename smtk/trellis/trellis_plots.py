@@ -22,7 +22,6 @@ Sets up a simple rupture-site configuration to allow for physical comparison
 of GMPEs
 """
 import sys
-import re
 import json
 import numpy as np
 try:  # https://stackoverflow.com/q/53978542
@@ -35,13 +34,10 @@ import matplotlib
 from copy import deepcopy
 import matplotlib.pyplot as plt
 from openquake.hazardlib import imt
-from openquake.hazardlib.gsim import get_available_gsims
-from openquake.hazardlib.gsim.base import (
-    RuptureContext, DistancesContext, SitesContext)
-from openquake.hazardlib.gsim.gmpe_table import GMPETable
-from openquake.hazardlib.gsim.base import GMPE
+from openquake.hazardlib.gsim.base import (RuptureContext, DistancesContext,
+                                           SitesContext)
 from openquake.hazardlib.scalerel.wc1994 import WC1994
-from smtk.sm_utils import _save_image
+from smtk.sm_utils import _save_image, check_gsim_list
 import smtk.trellis.trellis_utils as utils
 from smtk.trellis.configure import GSIMRupture, DEFAULT_POINT
 
@@ -56,8 +52,6 @@ matplotlib.rcParams["axes.prop_cycle"] = \
                           "-.", "-.", "-.", "-.", "-.", "-.", "-.",
                           ":", ":", ":", ":", ":", ":", ":"])
 
-# Get a list of the available GSIMs
-AVAILABLE_GSIMS = get_available_gsims()
 
 # Generic dictionary of parameters needed for a trellis calculation
 PARAM_DICT = {'magnitudes': [],
@@ -96,62 +90,6 @@ FIG_SIZE = (7, 5)
 # RESET Axes tick labels
 matplotlib.rc("xtick", labelsize=12)
 matplotlib.rc("ytick", labelsize=12)
-
-
-def _get_gmpe_name(gsim):
-    """
-    Returns the name of the GMPE given an instance of the class
-    """
-    if gsim.__class__.__name__.startswith("GMPETable"):
-        match = re.match(r'^GMPETable\(([^)]+?)\)$', str(gsim))
-        filepath = match.group(1).split("=")[1][1:-1]
-        # return a consistent name (see _check_gsim_list):
-        return 'GMPETable(gmpe_table=%s)' % filepath
-    else:
-        gsim_name = gsim.__class__.__name__
-        additional_args = []
-        for key in gsim.__dict__:
-            if key.startswith("kwargs"):
-                continue
-            val = str(gsim.__dict__[key])
-            # FIXME: to be able to reconstruct back a Gsim from its string (in
-            # potential future applications) we we might think about a better
-            # way than just `str(val)` (json?, simple single-quote of strings?)
-            additional_args.append("{:s}={:s}".format(key, val))
-        if len(additional_args):
-            gsim_name_str = "({:s})".format(", ".join(additional_args))
-            # Do not replace underscores (see note above):
-            # gsim_name_str = gsim_name_str.replace("_", " ")
-            # (FIXME: why was this implemented? is there some other reason?)
-            return gsim_name + gsim_name_str
-        else:
-            return gsim_name
-
-
-def _check_gsim_list(gsim_list):
-    """
-    Checks the list of GSIM models and returns a dict where each gsim in
-    `gsim_list` is mapped to its openquake.hazardlib.gsim class.
-    Raises error if GSIM is not supported in OpenQuake
-
-    :param gsim_list: list of GSIM names (str) or OpenQuake Gsims
-    :return: a dict of GSIM names (str) mapped to the associated GSIM
-    """
-    output_gsims = {}
-    for gs in gsim_list:
-        if isinstance(gs, GMPE):
-            # retrieve the name of an instantated GMPE via `_get_gmpe_name`:
-            output_gsims[_get_gmpe_name(gs)] = gs
-        elif gs.startswith("GMPETable"):
-            # Get filename
-            match = re.match(r'^GMPETable\(([^)]+?)\)$', gs)
-            filepath = match.group(1).split("=")[1]
-            output_gsims[gs] = GMPETable(gmpe_table=filepath)
-        elif gs not in AVAILABLE_GSIMS:
-            raise ValueError('%s Not supported by OpenQuake' % gs)
-        else:
-            output_gsims[gs] = AVAILABLE_GSIMS[gs]()
-    return output_gsims
 
 
 def _get_imts(imts):
@@ -227,7 +165,7 @@ class BaseTrellis(object):
         self.rupture = rupture
         self.magnitudes = magnitudes
         self.distances = distances
-        self.gsims = _check_gsim_list(gsims)
+        self.gsims = check_gsim_list(gsims)
         self.params = params
         self.imts = imts
         self.dctx = []
