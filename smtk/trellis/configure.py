@@ -866,7 +866,7 @@ class GSIMRupture(object):
         plt.ylabel("%s (km)" % distance2, size='medium')
         plt.title('Rupture: M=%6.1f, Dip=%3.0f, Ztor=%4.1f, Aspect=%5.2f'
                    % (self.magnitude, self.dip, self.ztor, self.aspect))
-        _save_image(filename, filetype, dpi)
+        _save_image(filename, plt.gcf(), filetype, dpi)
         plt.show()
 
     def _calculate_distance(self, distance_type):
@@ -919,6 +919,6 @@ class GSIMRupture(object):
         ax.set_ylabel('Latitude')
         ax.set_zlabel('Depth (km)')
         ax.set_zlim(np.floor(min(depths)), 0.0)
-        _save_image(filename, filetype, dpi)
+        _save_image(filename, plt.gcf(), filetype, dpi)
         plt.show()
-        
+

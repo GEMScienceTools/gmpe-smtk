@@ -97,7 +97,7 @@ class BaseResidualPlot(object):
         for tloc, res_type in enumerate(data.keys(), 1):
             self._residual_plot(plt.subplot(nrow, ncol, tloc), data[res_type],
                                 res_type)
-        _save_image(self.filename, self.filetype, self.dpi)
+        _save_image(self.filename, plt.gcf(), self.filetype, self.dpi)
         if self.show:
             plt.show()
 
@@ -509,7 +509,7 @@ class ResidualWithSite(ResidualPlot):
                 data,
                 res_type)
             tloc += 1
-        _save_image(self.filename, self.filetype, self.dpi)
+        _save_image(self.filename, plt.gcf(), self.filetype, self.dpi)
         if self.show:
             plt.show()
 
@@ -597,7 +597,7 @@ class IntraEventResidualWithSite(ResidualPlot):
         self._residual_plot(fig, data,
                             phi_ss[self.gmpe][self.imt],
                             phi_s2ss[self.gmpe][self.imt])
-        _save_image(self.filename, self.filetype, self.dpi)
+        _save_image(self.filename, plt.gcf(), self.filetype, self.dpi)
         if self.show:
             plt.show()
 

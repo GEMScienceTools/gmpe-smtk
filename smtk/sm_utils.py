@@ -30,7 +30,6 @@ from collections import OrderedDict
 from openquake.hazardlib.geo import (PlanarSurface, SimpleFaultSurface,
                                      ComplexFaultSurface, MultiSurface,
                                      Point, Line)
-import matplotlib.pyplot as plt
 
 if sys.version_info[0] >= 3:
     import pickle
@@ -52,7 +51,7 @@ def nextpow2(nval):
     return int(2.0 ** m_i)
 
 
-def convert_accel_units(acceleration, from_, to_='cm/s/s'):  # pylint: disable=too-many-return-statements
+def convert_accel_units(acceleration, from_, to_='cm/s/s'):  # noqa
     """
     Converts acceleration from/to different units
 
@@ -96,7 +95,7 @@ def convert_accel_units(acceleration, from_, to_='cm/s/s'):  # pylint: disable=t
 
 def get_velocity_displacement(time_step, acceleration, units="cm/s/s",
                               velocity=None, displacement=None):
-    '''
+    """
     Returns the velocity and displacment time series using simple integration
     :param float time_step:
         Time-series time-step (s)
@@ -105,7 +104,7 @@ def get_velocity_displacement(time_step, acceleration, units="cm/s/s",
     :returns:
         velocity - Velocity Time series (cm/s)
         displacement - Displacement Time series (cm)
-    '''
+    """
     acceleration = convert_accel_units(acceleration, units)
     if velocity is None:
         velocity = time_step * cumtrapz(acceleration, initial=0.)
@@ -114,68 +113,32 @@ def get_velocity_displacement(time_step, acceleration, units="cm/s/s",
     return velocity, displacement
 
 
-def build_filename(filename, filetype='png', resolution=300):
+def _save_image(filename, fig, format='png', dpi=300, **kwargs):  # noqa
     """
-    Uses the input properties to create the string of the filename
-    :param str filename:
-        Name of the file
-    :param str filetype:
-        Type of file
-    :param int resolution:
-        DPI resolution of the output figure
+    Saves the matplotlib figure `fig` to `filename`. Wrapper around `fig.savefig`
+    setting `dpi=300` by default and `format` inferred from `filename` extension
+    or, if no extension is found, set as "png".
+    If filename is empty this function does nothing and return
+
+    :param str filename: str, the file path
+    :param figure: a :class:`matplotlib.figure.Figure` (e.g. via
+        `matplotlib.pyplot.figure()`)
+    :param format: string, the image format. Default: infer from filename, otherwise
+        set as 'png'
+    :param str kwargs: additional keyword arguments to pass to `fig.savefig`.
+        For details, see:
+        https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.savefig.html
     """
-    filevals = os.path.splitext(filename)
-    if filevals[1]:
-        filetype = filevals[1][1:]
-    if not filetype:
-        filetype = 'png'
-
-    filename = filevals[0] + '.' + filetype
-
-    if not resolution:
-        resolution = 300
-    return filename, filetype, resolution
-
-
-def _save_image(filename, filetype='png', resolution=300):
-    """
-    If filename is specified, saves the image
-    :param str filename:
-        Name of the file
-    :param str filetype:
-        Type of file
-    :param int resolution:
-        DPI resolution of the output figure
-    """
-    if filename:
-        filename, filetype, resolution = build_filename(filename,
-                                                        filetype,
-                                                        resolution)
-        plt.savefig(filename, dpi=resolution, format=filetype)
-    else:
+    if not filename:
         pass
-    return
 
-
-def _save_image_tight(fig, lgd, filename, filetype='png', resolution=300):
-    """
-    If filename is specified, saves the image
-    :param str filename:
-        Name of the file
-    :param str filetype:
-        Type of file
-    :param int resolution:
-        DPI resolution of the output figure
-    """
-    if filename:
-        filename, filetype, resolution = build_filename(filename,
-                                                        filetype,
-                                                        resolution)
-        fig.savefig(filename, bbox_extra_artists=(lgd,),
-                    bbox_inches="tight", dpi=resolution, format=filetype)
+    name, ext = os.path.splitext(filename)
+    if ext:
+        format = ext[1:]  # noqa
     else:
-        pass
-    return
+        filename = name + '.' + format
+
+    fig.savefig(filename, dpi=dpi, format=format, **kwargs)
 
 
 def load_pickle(pickle_file):

@@ -75,7 +75,7 @@ def db_magnitude_distance(db1, dist_type, figure_size=(7, 5),
     plt.ylabel("Magnitude", fontsize=14)
     if figure_title:
         plt.title(figure_title, fontsize=18)
-    _save_image(filename, filetype, dpi)
+    _save_image(filename, plt.gcf(), filetype, dpi)
     plt.grid()
     plt.show()
 
@@ -152,7 +152,7 @@ def db_magnitude_distance_by_site(db1, dist_type, classification="NEHRP",
     plt.legend(ncol=2,loc="lower right", numpoints=1)
     plt.title("Magnitude vs Distance (by %s Site Class)" % classification,
               fontsize=18)
-    _save_image(filename, filetype, dpi)
+    _save_image(filename, plt.gcf(), filetype, dpi)
     plt.show()
 
 def db_magnitude_distance_by_trt(db1, dist_type,
@@ -175,5 +175,5 @@ def db_magnitude_distance_by_trt(db1, dist_type,
     plt.title("Magnitude vs Distance by Tectonic Region", fontsize=18)
     plt.legend(loc='lower right', numpoints=1)
     plt.grid()
-    _save_image(filename, filetype, dpi)
+    _save_image(filename,  plt.gcf(), filetype, dpi)
     plt.show()

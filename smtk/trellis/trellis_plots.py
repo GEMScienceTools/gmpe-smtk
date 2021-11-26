@@ -17,10 +17,10 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 
-'''
+"""
 Sets up a simple rupture-site configuration to allow for physical comparison
 of GMPEs
-'''
+"""
 import sys
 import re
 import json
@@ -41,7 +41,7 @@ from openquake.hazardlib.gsim.base import (
 from openquake.hazardlib.gsim.gmpe_table import GMPETable
 from openquake.hazardlib.gsim.base import GMPE
 from openquake.hazardlib.scalerel.wc1994 import WC1994
-from smtk.sm_utils import _save_image_tight
+from smtk.sm_utils import _save_image
 import smtk.trellis.trellis_utils as utils
 from smtk.trellis.configure import GSIMRupture, DEFAULT_POINT
 
@@ -544,7 +544,8 @@ class MagnitudeIMTTrellis(BaseTrellis):
                          bbox_to_anchor=(1.1, 0.),
                          fontsize=self.legend_fontsize,
                          ncol=self.ncol)
-        _save_image_tight(fig, lgd, self.filename, self.filetype, self.dpi)
+        _save_image(self.filename, fig, self.filetype, self.dpi,
+                    bbox_extra_artists=(lgd,), bbox_inches="tight")
         return fig
 
     def _build_plot(self, ax, i_m, gmvs):
@@ -1252,7 +1253,8 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                          bbox_to_anchor=(1.1, 0.0),
                          fontsize=self.legend_fontsize)
 
-        _save_image_tight(fig, lgd, self.filename, self.filetype, self.dpi)
+        _save_image(self.filename, fig, self.filetype, self.dpi,
+                    bbox_extra_artists=(lgd,), bbox_inches="tight")
         plt.show()
 
     def get_ground_motion_values(self):

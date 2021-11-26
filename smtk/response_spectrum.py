@@ -319,7 +319,7 @@ def plot_response_spectra(spectra, axis_type="loglog", figure_size=(8, 6),
     ax.set_ylabel("Displacement (cm)", fontsize=12)
     ax.set_xlim(np.min(spectra["Period"]), np.max(spectra["Period"]))
     ax.grid()
-    _save_image(filename, filetype, dpi)
+    _save_image(filename, plt.gcf(), filetype, dpi)
     plt.show()
    
 def plot_time_series(acceleration, time_step, velocity=[], displacement=[],
@@ -367,5 +367,5 @@ def plot_time_series(acceleration, time_step, velocity=[], displacement=[],
     ax.set_xlim(0, end_time)
     ax.set_ylim(-1.1 * pgd, 1.1 * pgd)
     ax.grid()
-    _save_image(filename, filetype, dpi)
+    _save_image(filename, plt.gcf(), filetype, dpi)
     plt.show()

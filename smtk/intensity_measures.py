@@ -111,7 +111,7 @@ def plot_fourier_spectrum(time_series, time_step, figure_size=(7, 5),
     plt.loglog(freq, amplitude, 'b-')
     plt.xlabel("Frequency (Hz)", fontsize=14)
     plt.ylabel("Fourier Amplitude", fontsize=14)
-    _save_image(filename, filetype, dpi)
+    _save_image(filename, plt.gcf(), filetype, dpi)
     plt.show()
 
 def get_hvsr(x_component, x_time_step, y_component, y_time_step, vertical,
@@ -574,7 +574,7 @@ def plot_husid(acceleration, time_step, start_level=0., end_level=1.0,
     plt.ylabel("Fraction of Arias Intensity", fontsize=14)
     plt.title("Husid Plot")
     plt.legend(loc=4, fontsize=14)
-    _save_image(filename, filetype, dpi)
+    _save_image(filename, plt.gcf(), filetype, dpi)
     plt.show()
 
 def get_bracketed_duration(acceleration, time_step, threshold):
