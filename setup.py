@@ -35,8 +35,6 @@ setup(
     # Minimal requirements, for a complete list see requirements-*.txt
     install_requires=[
         'openquake.engine >=3.6',
-        'PyYAML',
-         # 'tables >=3.4.4',
     ],
     author='GEM Foundation',
     author_email='hazard@globalquakemodel.org',
