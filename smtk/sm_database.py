@@ -212,17 +212,16 @@ class GCMTNodalPlanes(object):
             setattr(nps, key, data[key])
         return nps
 
+
 class GCMTPrincipalAxes(object):
     """
     Class to represent the eigensystem of the tensor in terms of  T-, B- and P-
     plunge and azimuth
     #_axis = {'eigenvalue':, 'azimuth':, 'plunge':}
-    :param dict t_axis:
-        The eigensystem of the T-axis
-    :param dict b_axis:
-        The eigensystem of the B-axis
-    :param dict p_axis:
-        The eigensystem of the P-axis
+
+    :param dict | None t_axis: The eigensystem of the T-axis
+    :param dict | None b_axis: The eigensystem of the B-axis
+    :param dict | None p_axis: The eigensystem of the P-axis
     """
     def __init__(self):
         """
@@ -291,8 +290,8 @@ class FocalMechanism(object):
         """
         output = OrderedDict([])
         for key in self.__dict__:
-            if key in ("nodal_planes", "eigenvalues") and getattr(self, key)\
-                is not None:
+            if key in ("nodal_planes", "eigenvalues") and \
+                    getattr(self, key) is not None:
                 output[key] = getattr(self, key).__dict__
             elif key == "tensor":
                 output[key] = self._moment_tensor_to_list()
@@ -484,19 +483,24 @@ class RecordDistance(object):
             setattr(d, key, data[key])
         return d
 
+
 # Eurocode 8 Site Class Vs30 boundaries
 EC8_VS30_BOUNDARIES = {
     "A": (800.0, np.inf),
     "B": (360.0, 800.0),
     "C": (180.0, 360.0),
     "D": (100.0, 180.0),
-    "S1": (-np.inf, 100)}
+    "S1": (-np.inf, 100)
+}
+
 
 # Eurocode 8 Site Class NSPT boundaries
 EC8_NSPT_BOUNDARIES = {
     "B": (50.0, np.inf),
     "C": (15.0, 50.0),
-    "D": (-np.inf, 15.0)}
+    "D": (-np.inf, 15.0)
+}
+
 
 # NEHRP Site Class Vs30 boundaries
 NEHRP_VS30_BOUNDARIES = {
@@ -504,13 +508,16 @@ NEHRP_VS30_BOUNDARIES = {
     "B": (760.0, 1500.0),
     "C": (360.0, 760.0),
     "D": (180.0, 360.0),
-    "E": (-np.inf, 180.0)}
+    "E": (-np.inf, 180.0)
+}
+
 
 # NEHRP Site Class NSPT boundaries
 NEHRP_NSPT_BOUNDARIES = {
     "C": (50.0, np.inf),
     "D": (15.0, 50.0),
-    "E": (-np.inf, 15.0)}
+    "E": (-np.inf, 15.0)
+}
 
 
 class RecordSite(object):
@@ -701,7 +708,6 @@ class RecordSite(object):
             print("Cannot determine NEHRP site class - no Vs30 or NSPT measures!")
         return None
 
-
     def vs30_from_ec8(self):
         """
         Returns an approximation of Vs30 given an EC8 site class (e.g. for the case
@@ -720,25 +726,34 @@ class RecordSite(object):
         else:
             print("Cannot determine Vs30 from EC8 site class")
 
-Filter = {'Type': None,
-          'Order': None,
-          'Passes': None,
-          'Low-Cut': None,
-          'High-Cut': None}
 
-Baseline = {'Type': None,
-            'Start': None,
-            'End': None}
+Filter = {
+    'Type': None,
+    'Order': None,
+    'Passes': None,
+    'Low-Cut': None,
+    'High-Cut': None
+}
 
-ims_dict = {'PGA': None,
-            'PGV': None,
-            'PGD': None,
-            'CAV': None,
-            'Ia': None,
-            'CAV5': None,
-            'arms': None,
-            'd5_95': None,
-            'd5_75': None}
+
+Baseline = {
+    'Type': None,
+    'Start': None,
+    'End': None
+}
+
+
+ims_dict = {
+    'PGA': None,
+    'PGV': None,
+    'PGD': None,
+    'CAV': None,
+    'Ia': None,
+    'CAV5': None,
+    'arms': None,
+    'd5_95': None,
+    'd5_75': None
+}
 
 
 class Component(object):
@@ -873,7 +888,7 @@ class GroundMotionRecord(object):
         """
         """
         reqs = ["id", "time_series_file", "event", "distance", "site",
-               "xrecord", "yrecord", "vertical"]
+                "xrecord", "yrecord", "vertical"]
         evnt = cls(data["id"],
                    data["time_series_file"],
                    Earthquake.from_dict(data["event"]),
@@ -893,7 +908,6 @@ class GroundMotionRecord(object):
             else:
                 setattr(evnt, key, data[key])
         return evnt
-            
 
     def get_azimuth(self):
         """

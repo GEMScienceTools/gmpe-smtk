@@ -25,16 +25,15 @@ import matplotlib.pyplot as plt
 from copy import deepcopy
 from collections import OrderedDict
 from math import floor, ceil
-from scipy.stats import norm  # , linregress
+from scipy.stats import norm
 from smtk.sm_utils import _save_image
-from smtk.residuals.gmpe_residuals import (Residuals,
-                                           Likelihood,
-                                           SingleStationAnalysis)
+from smtk.residuals.gmpe_residuals import Residuals, SingleStationAnalysis
 
-from smtk.residuals.residual_plots import residuals_density_distribution, \
-    likelihood,\
-    residuals_with_magnitude, residuals_with_vs30, \
-    residuals_with_distance, residuals_with_depth
+from smtk.residuals.residual_plots import (residuals_density_distribution,
+                                           likelihood, residuals_with_magnitude,
+                                           residuals_with_vs30,
+                                           residuals_with_distance,
+                                           residuals_with_depth)
 
 
 class BaseResidualPlot(object):
@@ -102,7 +101,7 @@ class BaseResidualPlot(object):
             plt.show()
 
     def get_plot_data(self):
-        '''
+        """
         Builds the data to be plotted.
         This is an abstract-like method which subclasses need to implement.
 
@@ -113,11 +112,11 @@ class BaseResidualPlot(object):
         (See :module:`smtk.residuals.residual_plots` for a list of available
         functions that return these kind of dict's and should be in principle
         be called here)
-        '''
+        """
         raise NotImplementedError()
 
     def get_subplots_rowcols(self):
-        '''
+        """
         Configures the plot layout (subplots grid).
         This is an abstract-like method which subclasses need to implement.
 
@@ -125,7 +124,7 @@ class BaseResidualPlot(object):
         figure to be displayed. The returned tuple should be consistent with
         the residual types available for the given GMPE (`self.gmpe`) and
         IMT (`self.imt`)
-        '''
+        """
         raise NotImplementedError()
 
     def _residual_plot(self, ax, res_data, res_type):
@@ -143,7 +142,7 @@ class BaseResidualPlot(object):
             ax.set_title(title_string, **self.title_styling_kwargs)
 
     def draw(self, ax, res_data, res_type):
-        '''
+        """
         Draws the given residual data into the matplotlib `Axes` object `ax`.
         This is an abstract-like method which subclasses need to implement.
 
@@ -159,11 +158,11 @@ class BaseResidualPlot(object):
         :param res_type: string denoting the residual type such as, e.g.
             "Inter event". It's one of the keys of the dict returned by
             `self.get_plot_data` (`res_data` is the corresponding value)
-        '''
+        """
         raise NotImplementedError()
 
     def get_axis_xlim(self, res_data, res_type):
-        '''
+        """
         Sets the x-axis limit for each `Axes` object (sub-plot).
         This method can be overridden by subclasses, by default it returns
         None, None (i.e., automatic axis limit).
@@ -181,11 +180,11 @@ class BaseResidualPlot(object):
         :return: a numeric tuple denoting the axis minimum and maximum.
             None's are allowed and delegate matplotlib for calculating the
             limits
-        '''
+        """
         return None, None
 
     def get_axis_ylim(self, res_data, res_type):
-        '''
+        """
         Sets the y-axis limit for each plot.
         This method can be overridden by subclasses, by default it returns
         None, None (i.e., automatic axis limit).
@@ -203,11 +202,11 @@ class BaseResidualPlot(object):
         :return: a numeric tuple denoting the axis minimum and maximum.
             None's are allowed and delegate matplotlib for calculating the
             limits
-        '''
+        """
         return None, None
 
     def get_axis_title(self, res_data, res_type):
-        '''
+        """
         Sets the title for each plot.
         This method can be overridden by subclasses, by default it returns
         "" (i.e., no title).
@@ -223,7 +222,7 @@ class BaseResidualPlot(object):
             `self.get_plot_data` (`res_data` is the corresponding value)
 
         :return: a string denoting the axis title
-        '''
+        """
         return ""
 
 

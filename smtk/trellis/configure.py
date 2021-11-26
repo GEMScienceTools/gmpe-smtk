@@ -255,7 +255,7 @@ def _rup_to_point(distance, surface, origin, azimuth, distance_type='rjb',
                                    (azimuth + 180.) % 360.)
         elif distance_type == 'rrup':
             rrup = surface.get_min_distance(pt1mesh).flatten()
-            if azimuth >= 0.0 and azimuth <= 180.0:
+            if 0.0 <= azimuth <= 180.0:
                 # On hanging wall
                 r_diff = dist_sin_dip - (rrup / sin_dip)
             else:
@@ -292,8 +292,8 @@ class PointAtRuptureDistance(PointAtDistance):
     """
 
     def point_at_distance(self, model, distance, vs30, line_azimuth=90., 
-            origin_point=(0.5, 0.), vs30measured=True, z1pt0=None, z2pt5=None,
-            backarc=False):
+                          origin_point=(0.5, 0.), vs30measured=True,
+                          z1pt0=None, z2pt5=None, backarc=False):
         """
         Generates a site given a specified rupture distance from the 
         rupture surface
@@ -390,10 +390,12 @@ class PointAtHypocentralDistance(PointAtDistance):
             backarc=backarc)])
 
 
-POINT_AT_MAPPING = {'rrup': PointAtRuptureDistance(),
-                    'rjb': PointAtJoynerBooreDistance(),
-                    'repi': PointAtEpicentralDistance(),
-                    'rhypo': PointAtHypocentralDistance()}
+POINT_AT_MAPPING = {
+    'rrup': PointAtRuptureDistance(),
+    'rjb': PointAtJoynerBooreDistance(),
+    'repi': PointAtEpicentralDistance(),
+    'rhypo': PointAtHypocentralDistance()
+}
 
 
 class GSIMRupture(object):
@@ -646,9 +648,9 @@ class GSIMRupture(object):
 
     @staticmethod
     def _convert_distances(distances, as_log=False):
-        '''assures distances is a numpy numeric array, sorts it
+        """assures distances is a numpy numeric array, sorts it
         and converts its value to a logaritmic scale preserving the array
-        bounds (min and max)'''
+        bounds (min and max)"""
         dist = np.asarray(distances)
         dist.sort()
         if as_log:
@@ -743,7 +745,7 @@ class GSIMRupture(object):
             raise ValueError("Distance type must be one of: Rupture ('rrup'), "
                              "Joyner-Boore ('rjb'), Epicentral ('repi') or "
                              "Hypocentral ('rhyp')")
-        #input_origin_point = deepcopy(origin_point)
+
         azimuth, origin_location, z1pt0, z2pt5 = _setup_site_peripherals(
             line_azimuth,
             origin_point,
