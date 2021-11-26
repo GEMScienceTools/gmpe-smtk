@@ -43,6 +43,7 @@ else:
 # Get a list of the available GSIMs
 AVAILABLE_GSIMS = get_available_gsims()
 
+# Regular expression to get a GMPETable from string:
 _gmpetable_regex = re.compile(r'^GMPETable\(([^)]+?)\)$')
 
 
@@ -284,7 +285,8 @@ def get_interpolated_period(target_period, periods, values):
         Ground motion values
     """
     if (target_period < np.min(periods)) or (target_period > np.max(periods)):
-        return None, "Period not within calculated range %s"
+        raise ValueError("Period not within calculated range: %s" %
+                         str(target_period))
     lval = np.where(periods <= target_period)[0][-1]
     uval = np.where(periods >= target_period)[0][0]
 
