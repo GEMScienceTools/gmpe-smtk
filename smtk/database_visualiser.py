@@ -25,18 +25,24 @@ import matplotlib.pyplot as plt
 from smtk.sm_utils import _save_image
 from smtk.strong_motion_selector import SMRecordSelector 
 
-DISTANCES = {"repi": lambda rec: rec.distance.repi,
-             "rhypo": lambda rec: rec.distance.rhypo,
-             "rjb": lambda rec: rec.distance.rjb,
-             "rrup": lambda rec: rec.distance.rrup,
-             "r_x": lambda rec: rec.distance.r_x,
-             }
 
-DISTANCE_LABEL = {"repi": "Epicentral Distance (km)",
-                  "rhypo": "Hypocentral Distance (km)",
-                  "rjb": "Joyner-Boore Distance (km)",
-                  "rrup": "Rupture Distance (km)",
-                  "r_x": "R-x Distance (km)"}
+DISTANCES = {
+    "repi": lambda rec: rec.distance.repi,
+    "rhypo": lambda rec: rec.distance.rhypo,
+    "rjb": lambda rec: rec.distance.rjb,
+    "rrup": lambda rec: rec.distance.rrup,
+    "r_x": lambda rec: rec.distance.r_x,
+}
+
+
+DISTANCE_LABEL = {
+    "repi": "Epicentral Distance (km)",
+    "rhypo": "Hypocentral Distance (km)",
+    "rjb": "Joyner-Boore Distance (km)",
+    "rrup": "Rupture Distance (km)",
+    "r_x": "R-x Distance (km)"
+}
+
 
 def get_magnitude_distances(db1, dist_type):
     """
@@ -63,8 +69,10 @@ def get_magnitude_distances(db1, dist_type):
             dists.append(DISTANCES[dist_type](record))
     return mags, dists
 
+
 def db_magnitude_distance(db1, dist_type, figure_size=(7, 5),
-        figure_title=None,filename=None, filetype="png", dpi=300):
+                          figure_title=None,filename=None, filetype="png",
+                          dpi=300):
     """
     Creates a plot of magnitude verses distance for a strong motion database
     """
@@ -75,20 +83,27 @@ def db_magnitude_distance(db1, dist_type, figure_size=(7, 5),
     plt.ylabel("Magnitude", fontsize=14)
     if figure_title:
         plt.title(figure_title, fontsize=18)
-    _save_image(filename, filetype, dpi)
+    _save_image(filename, plt.gcf(), filetype, dpi)
     plt.grid()
     plt.show()
 
-NEHRP_BOUNDS = {"A": (1500.0, np.inf),
-                "B": (760.0, 1500.0),
-                "C": (360.0, 760.),
-                "D": (180., 360.),
-                "E": (0., 180.)}
 
-EC8_BOUNDS = {"A": (800., np.inf),
-              "B": (360.0, 800.),
-              "C": (180.0, 360.),
-              "D": (0., 360)}
+NEHRP_BOUNDS = {
+    "A": (1500.0, np.inf),
+    "B": (760.0, 1500.0),
+    "C": (360.0, 760.),
+    "D": (180., 360.),
+    "E": (0., 180.)
+}
+
+
+EC8_BOUNDS = {
+    "A": (800., np.inf),
+    "B": (360.0, 800.),
+    "C": (180.0, 360.),
+    "D": (0., 360)
+}
+
 
 def _site_selection(db1, site_class, classifier):
     """
@@ -103,7 +118,7 @@ def _site_selection(db1, site_class, classifier):
               
             if rec.site.vs30:
                 if (rec.site.vs30 >= NEHRP_BOUNDS[site_class][0]) and\
-                    (rec.site.vs30 < NEHRP_BOUNDS[site_class][1]):
+                   (rec.site.vs30 < NEHRP_BOUNDS[site_class][1]):
                     idx.append(iloc)
         elif classifier == "EC8":
             if rec.site.ec8 and (rec.site.ec8 == site_class):
@@ -112,15 +127,17 @@ def _site_selection(db1, site_class, classifier):
               
             if rec.site.vs30:
                 if (rec.site.vs30 >= EC8_BOUNDS[site_class][0]) and\
-                    (rec.site.vs30 < EC8_BOUNDS[site_class][1]):
+                   (rec.site.vs30 < EC8_BOUNDS[site_class][1]):
                     idx.append(iloc)
         else:
             raise ValueError("Unrecognised Site Classifier!")
             
     return idx
 
+
 def db_magnitude_distance_by_site(db1, dist_type, classification="NEHRP",
-        figure_size=(7, 5), filename=None, filetype="png", dpi=300):
+                                  figure_size=(7, 5), filename=None,
+                                  filetype="png", dpi=300):
     """
     Plot magnitude-distance comparison by site NEHRP or Eurocode 8 Site class   
     """ 
@@ -152,11 +169,12 @@ def db_magnitude_distance_by_site(db1, dist_type, classification="NEHRP",
     plt.legend(ncol=2,loc="lower right", numpoints=1)
     plt.title("Magnitude vs Distance (by %s Site Class)" % classification,
               fontsize=18)
-    _save_image(filename, filetype, dpi)
+    _save_image(filename, plt.gcf(), filetype, dpi)
     plt.show()
 
-def db_magnitude_distance_by_trt(db1, dist_type,
-        figure_size=(7, 5), filename=None, filetype="png", dpi=300):
+
+def db_magnitude_distance_by_trt(db1, dist_type, figure_size=(7, 5),
+                                 filename=None, filetype="png", dpi=300):
     """
     Plot magnitude-distance comparison by tectonic region
     """
@@ -175,5 +193,5 @@ def db_magnitude_distance_by_trt(db1, dist_type,
     plt.title("Magnitude vs Distance by Tectonic Region", fontsize=18)
     plt.legend(loc='lower right', numpoints=1)
     plt.grid()
-    _save_image(filename, filetype, dpi)
+    _save_image(filename,  plt.gcf(), filetype, dpi)
     plt.show()

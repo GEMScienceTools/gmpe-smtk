@@ -23,24 +23,21 @@ Module to get GMPE residuals - total, inter and intra
 """
 from __future__ import print_function
 import sys
-import re
+from collections import OrderedDict
 import warnings
-import numpy as np
 from datetime import datetime
 from math import sqrt, ceil
+from copy import deepcopy
+
+import numpy as np
 from scipy.special import erf
 from scipy.stats import norm
 from scipy.linalg import solve
-from copy import deepcopy
-from collections import OrderedDict
 from openquake.hazardlib.gsim import get_available_gsims
-from openquake.hazardlib.gsim.gmpe_table import GMPETable
-from openquake.hazardlib.gsim.base import GMPE
-import smtk.intensity_measures as ims
 from openquake.hazardlib import imt
+import smtk.intensity_measures as ims
 from smtk.strong_motion_selector import SMRecordSelector
-from smtk.trellis.trellis_plots import _get_gmpe_name
-from smtk.sm_utils import convert_accel_units
+from smtk.sm_utils import convert_accel_units, check_gsim_list
 
 GSIM_LIST = get_available_gsims()
 GSIM_KEYS = set(GSIM_LIST)
@@ -48,34 +45,6 @@ GSIM_KEYS = set(GSIM_LIST)
 # SCALAR_IMTS = ["PGA", "PGV", "PGD", "CAV", "Ia"]
 SCALAR_IMTS = ["PGA", "PGV"]
 STDDEV_KEYS = ["Mean", "Total", "Inter event", "Intra event"]
-
-
-def _check_gsim_list(gsim_list):
-    """
-    Checks the list of GSIM models and returns an instance of the
-    openquake.hazardlib.gsim class. Raises error if GSIM is not supported in
-    OpenQuake
-    :param list gsim_list:
-        List of GSIM names (str)
-    :returns:
-        Ordered dictionary of GMPE names and instances
-    """
-    output_gsims = []
-    for gsim in gsim_list:
-        if isinstance(gsim, GMPE):
-            # Is an instantated GMPE, so pass directly to list
-            output_gsims.append((_get_gmpe_name(gsim), gsim))
-        elif gsim.startswith("GMPETable"):
-            # Get filename
-            match = re.match(r'^GMPETable\(([^)]+?)\)$', gsim)
-            filepath = match.group(1).split("=")[1]
-            gmpe_table = GMPETable(gmpe_table=filepath[1:-1])
-            output_gsims.append((_get_gmpe_name(gmpe_table), gmpe_table))
-        elif not (gsim in GSIM_LIST):
-            raise ValueError('%s Not supported by OpenQuake' % gsim)
-        else:
-            output_gsims.append((gsim, GSIM_LIST[gsim]()))
-    return OrderedDict(output_gsims)
 
 
 def get_geometric_mean(fle):
@@ -203,10 +172,13 @@ def get_rotd50(fle):
     return sa_rotd50
 
 
-SPECTRA_FROM_FILE = {"Geometric": get_geometric_mean,
-                     "GMRotI50": get_gmroti50,
-                     "GMRotD50": get_gmrotd50,
-                     "RotD50": get_rotd50}
+SPECTRA_FROM_FILE = {
+    "Geometric": get_geometric_mean,
+    "GMRotI50": get_gmroti50,
+    "GMRotD50": get_gmrotd50,
+    "RotD50": get_rotd50
+}
+
 
 # The following methods are used for the MultivariateLLH function
 def _build_matrices(contexts, gmpe, imtx):
@@ -305,7 +277,7 @@ class Residuals(object):
         :param list imts:
             List of Intensity Measures
         """
-        self.gmpe_list = _check_gsim_list(gmpe_list)
+        self.gmpe_list = check_gsim_list(gmpe_list)
         self.number_gmpes = len(self.gmpe_list)
         self.types = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
         self.residuals = []
@@ -356,18 +328,20 @@ class Residuals(object):
         self.number_records = None
         self.contexts = None
 
-    def get_residuals(self, database, nodal_plane_index=1,
+    def get_residuals(self, ctx_database, nodal_plane_index=1,
                       component="Geometric", normalise=True):
         """
         Calculate the residuals for a set of ground motion records
 
-        :param database: a record database. It can be either a
-            :class:`smtk.sm_database.GroundMotionDatabase` or a
-            :class:`smtk.sm_table.GroundMotionTable`
+        :param ctx_database: a :class:`context_db.ContextDB`, i.e. a database of
+            records capable of returning dicts of earthquake-based Contexts and
+            observed IMTs.
+            See e.g., :class:`smtk.sm_database.GroundMotionDatabase` for an
+            example
         """
 
-        contexts = database.get_contexts(nodal_plane_index, self.imts,
-                                         component)
+        contexts = ctx_database.get_contexts(nodal_plane_index, self.imts,
+                                             component)
 
         # Fetch now outside the loop for efficiency the IMTs which need
         # acceleration units conversion from cm/s/s to g. Conversion will be
@@ -931,7 +905,7 @@ GSIM_MODEL_DATA_TESTS = {
         residuals.get_multivariate_loglikelihood_values(),
     "EDR": lambda residuals, config: residuals.get_edr_values(
         config.get("bandwidth", 0.01), config.get("multiplier", 3.0))
-    }
+}
 
 
 # Deprecated functions for GMPE to data testing - kept here for backward
@@ -1027,7 +1001,7 @@ class SingleStationAnalysis(object):
         """
         self.site_ids = site_id_list
         self.input_gmpe_list = deepcopy(gmpe_list)
-        self.gmpe_list = _check_gsim_list(gmpe_list)
+        self.gmpe_list = check_gsim_list(gmpe_list)
         self.imts = imts
         self.site_residuals = []
         self.types = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])

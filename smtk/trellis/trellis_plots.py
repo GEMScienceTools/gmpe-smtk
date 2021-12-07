@@ -17,33 +17,31 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 
-'''
+"""
 Sets up a simple rupture-site configuration to allow for physical comparison
 of GMPEs
-'''
+"""
 import sys
-import re
 import json
-import numpy as np
 try:  # https://stackoverflow.com/q/53978542
     from collections.abc import Iterable  # noqa
 except ImportError:
     from collections import Iterable  # noqa    
-from cycler import cycler
 from math import floor, ceil
 import matplotlib
+from cycler import cycler
 from copy import deepcopy
 import matplotlib.pyplot as plt
+
+import numpy as np
 from openquake.hazardlib import imt
-from openquake.hazardlib.gsim import get_available_gsims
-from openquake.hazardlib.gsim.base import (
-    RuptureContext, DistancesContext, SitesContext)
-from openquake.hazardlib.gsim.gmpe_table import GMPETable
-from openquake.hazardlib.gsim.base import GMPE
+from openquake.hazardlib.gsim.base import (RuptureContext, DistancesContext,
+                                           SitesContext)
 from openquake.hazardlib.scalerel.wc1994 import WC1994
-from smtk.sm_utils import _save_image_tight
+from smtk.sm_utils import _save_image, check_gsim_list
 import smtk.trellis.trellis_utils as utils
 from smtk.trellis.configure import GSIMRupture, DEFAULT_POINT
+
 
 # Default - defines a 21 color and line-type cycle
 matplotlib.rcParams["axes.prop_cycle"] = \
@@ -56,97 +54,48 @@ matplotlib.rcParams["axes.prop_cycle"] = \
                           "-.", "-.", "-.", "-.", "-.", "-.", "-.",
                           ":", ":", ":", ":", ":", ":", ":"])
 
-# Get a list of the available GSIMs
-AVAILABLE_GSIMS = get_available_gsims()
-
 # Generic dictionary of parameters needed for a trellis calculation
-PARAM_DICT = {'magnitudes': [],
-              'distances': [],
-              'distance_type': 'rjb',
-              'vs30': [],
-              'strike': None,
-              'dip': None,
-              'rake': None,
-              'ztor': None,
-              'hypocentre_location': (0.5, 0.5),
-              'hypo_loc': (0.5, 0.5),
-              'msr': WC1994()}
+PARAM_DICT = {
+    'magnitudes': [],
+    'distances': [],
+    'distance_type': 'rjb',
+    'vs30': [],
+    'strike': None,
+    'dip': None,
+    'rake': None,
+    'ztor': None,
+    'hypocentre_location': (0.5, 0.5),
+    'hypo_loc': (0.5, 0.5),
+    'msr': WC1994()
+}
 
 # Defines the plotting units for given intensitiy measure type
-PLOT_UNITS = {'PGA': 'g',
-              'PGV': 'cm/s',
-              'SA': 'g',
-              'SD': 'cm',
-              'IA': 'm/s',
-              'CSV': 'g-sec',
-              'RSD': 's',
-              'MMI': ''}
+PLOT_UNITS = {
+    'PGA': 'g',
+    'PGV': 'cm/s',
+    'SA': 'g',
+    'SD': 'cm',
+    'IA': 'm/s',
+    'CSV': 'g-sec',
+    'RSD': 's',
+    'MMI': ''
+}
 
 # Verbose label for each given distance type
-DISTANCE_LABEL_MAP = {'repi': 'Epicentral Dist.',
-                      'rhypo': 'Hypocentral Dist.',
-                      'rjb': 'Joyner-Boore Dist.',
-                      'rrup': 'Rupture Dist.',
-                      'rx': 'Rx Dist.'}
+DISTANCE_LABEL_MAP = {
+    'repi': 'Epicentral Dist.',
+    'rhypo': 'Hypocentral Dist.',
+    'rjb': 'Joyner-Boore Dist.',
+    'rrup': 'Rupture Dist.',
+    'rx': 'Rx Dist.'
+}
 
 # Default figure size
 FIG_SIZE = (7, 5)
 
-
 # RESET Axes tick labels
 matplotlib.rc("xtick", labelsize=12)
 matplotlib.rc("ytick", labelsize=12)
-
-
-def _get_gmpe_name(gsim):
-    """
-    Returns the name of the GMPE given an instance of the class
-    """
-    if gsim.__class__.__name__.startswith("GMPETable"):
-        match = re.match(r'^GMPETable\(([^)]+?)\)$', str(gsim))
-        filepath = match.group(1).split("=")[1][1:-1]
-        # return a consistent name (see _check_gsim_list):
-        return 'GMPETable(gmpe_table=%s)' % filepath
-    else:
-        gsim_name = gsim.__class__.__name__
-        additional_args = []
-        for key in gsim.__dict__:
-            if key.startswith("kwargs"):
-                continue
-            additional_args.append("{:s}={:s}".format(key,
-                                   str(gsim.__dict__[key])))
-        if len(additional_args):
-            gsim_name_str = "({:s})".format(", ".join(additional_args))
-            gsim_name_str = gsim_name_str.replace("_", " ")
-            return gsim_name + gsim_name_str
-        else:
-            return gsim_name
-
-
-def _check_gsim_list(gsim_list):
-    """
-    Checks the list of GSIM models and returns a dict where each gsim in
-    `gsim_list` is mapped to its openquake.hazardlib.gsim class.
-    Raises error if GSIM is not supported in OpenQuake
-
-    :param gsim_list: list of GSIM names (str) or OpenQuake Gsims
-    :return: a dict of GSIM names (str) mapped to the associated GSIM
-    """
-    output_gsims = {}
-    for gs in gsim_list:
-        if isinstance(gs, GMPE):
-            # retrieve the name of an instantated GMPE via `_get_gmpe_name`:
-            output_gsims[_get_gmpe_name(gs)] = gs
-        elif gs.startswith("GMPETable"):
-            # Get filename
-            match = re.match(r'^GMPETable\(([^)]+?)\)$', gs)
-            filepath = match.group(1).split("=")[1]
-            output_gsims[gs] = GMPETable(gmpe_table=filepath)
-        elif gs not in AVAILABLE_GSIMS:
-            raise ValueError('%s Not supported by OpenQuake' % gs)
-        else:
-            output_gsims[gs] = AVAILABLE_GSIMS[gs]()
-    return output_gsims
 
 
 def _get_imts(imts):
@@ -175,8 +124,8 @@ class BaseTrellis(object):
          'rhypo': np.ndarray}
         The number of elements in all arrays must be equal
     :param list gsims:
-        List of instance of the openquake.hazardlib.gsim classes to represent
-        GMPEs
+        List of strings or instance of the openquake.hazardlib.gsim classes
+        to representing GMPE names or GMPEs
     :param list imts:
         List of intensity measures
     :param int nsites:
@@ -222,7 +171,7 @@ class BaseTrellis(object):
         self.rupture = rupture
         self.magnitudes = magnitudes
         self.distances = distances
-        self.gsims = _check_gsim_list(gsims)
+        self.gsims = check_gsim_list(gsims)
         self.params = params
         self.imts = imts
         self.dctx = []
@@ -539,7 +488,8 @@ class MagnitudeIMTTrellis(BaseTrellis):
                          bbox_to_anchor=(1.1, 0.),
                          fontsize=self.legend_fontsize,
                          ncol=self.ncol)
-        _save_image_tight(fig, lgd, self.filename, self.filetype, self.dpi)
+        _save_image(self.filename, fig, self.filetype, self.dpi,
+                    bbox_extra_artists=(lgd,), bbox_inches="tight")
         return fig
 
     def _build_plot(self, ax, i_m, gmvs):
@@ -811,13 +761,13 @@ class DistanceIMTTrellis(MagnitudeIMTTrellis):
     @classmethod
     def from_rupture_properties(cls, properties, magnitude, distances,
                                 gsims, imts, stddev='Total', **kwargs):
-        '''Constructs the Base Trellis Class from a rupture properties.
+        """Constructs the Base Trellis Class from a rupture properties.
         It internally creates a Rupture object and calls
         `from_rupture_model`. When not listed, arguments take the same
         values as `from_rupture_model`
 
         :param distances: a numeric array of chosen distances
-        '''
+        """
         params = {k: properties[k] for k in ['rake', 'initial_point', 'ztor',
                                              'hypocentre_location', 'strike',
                                              'msr', 'tectonic_region']
@@ -1133,7 +1083,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
     @classmethod
     def from_rupture_properties(cls, properties, magnitudes, distance,
                                 gsims, periods, stddev='Total', **kwargs):
-        '''Constructs the Base Trellis Class from a dictionary of
+        """Constructs the Base Trellis Class from a dictionary of
         properties. In this class, this method is simply an alias of
         `from_rupture_model`
 
@@ -1142,7 +1092,7 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
             natural period(s) to be used. Note that this parameter
             is called `imt` in `from_rupture_model` where the name
             `imt` has been kept for legacy code compatibility
-        '''
+        """
         return cls.from_rupture_model(properties, magnitudes, distance,
                                       gsims, periods, stddev=stddev,
                                       **kwargs)
@@ -1247,7 +1197,8 @@ class MagnitudeDistanceSpectraTrellis(BaseTrellis):
                          bbox_to_anchor=(1.1, 0.0),
                          fontsize=self.legend_fontsize)
 
-        _save_image_tight(fig, lgd, self.filename, self.filetype, self.dpi)
+        _save_image(self.filename, fig, self.filetype, self.dpi,
+                    bbox_extra_artists=(lgd,), bbox_inches="tight")
         plt.show()
 
     def get_ground_motion_values(self):

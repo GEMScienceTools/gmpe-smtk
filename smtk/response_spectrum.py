@@ -17,28 +17,26 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 
-'''
-Simple Python Script to integrate a strong motion record using 
+"""
+Simple Python Script to integrate a strong motion record using
 the Newmark-Beta method
-'''
+"""
 
 import numpy as np
 from math import sqrt
-from scipy.integrate import cumtrapz
+
 import matplotlib.pyplot as plt
-from smtk.sm_utils import (_save_image,
-                      get_time_vector,
-                      convert_accel_units,
-                      get_velocity_displacement)
+from smtk.sm_utils import (_save_image, get_time_vector, convert_accel_units,
+                           get_velocity_displacement)
                      
 
 class ResponseSpectrum(object):
-    '''
+    """
     Base Class to implement a response spectrum calculation
-    '''
+    """
     def __init__(self, acceleration, time_step, periods, damping=0.05,
             units="cm/s/s"):
-        '''
+        """
         Setup the response spectrum calculator
         :param numpy.ndarray time_hist:
             Acceleration time history [Time, Acceleration]
@@ -49,7 +47,7 @@ class ResponseSpectrum(object):
         :param str units:
             Units of the acceleration time history {"g", "m/s", "cm/s/s"}
 
-        '''
+        """
         self.periods = periods
         self.num_per = len(periods)
         self.acceleration = convert_accel_units(acceleration, units)
@@ -61,9 +59,8 @@ class ResponseSpectrum(object):
         self.omega = (2. * np.pi) / self.periods
         self.response_spectrum = None
 
-
     def __call__(self):
-        '''
+        """
         Evaluates the response spectrum
         :returns:
             Response Spectrum - Dictionary containing all response spectrum
@@ -73,7 +70,7 @@ class ResponseSpectrum(object):
                 'Velocity' - Velocity Response Spectrum (cm/s)
                 'Displacement' - Displacement Response Spectrum (cm)
                 'Pseudo-Velocity' - Pseudo-Velocity Response Spectrum (cm/s)
-                'Pseudo-Acceleration' - Pseudo-Acceleration Response Spectrum 
+                'Pseudo-Acceleration' - Pseudo-Acceleration Response Spectrum
                                        (cm/s/s)
 
             Time Series - Dictionary containing all time-series data
@@ -84,21 +81,21 @@ class ResponseSpectrum(object):
                 'PGA' - Peak ground acceleration (cm/s/s)
                 'PGV' - Peak ground velocity (cm/s)
                 'PGD' - Peak ground displacement (cm)
-                
-            accel - Acceleration response of Single Degree of Freedom Oscillator 
-            vel - Velocity response of Single Degree of Freedom Oscillator 
-            disp - Displacement response of Single Degree of Freedom Oscillator 
-        '''
+
+            accel - Acceleration response of Single Degree of Freedom Oscillator
+            vel - Velocity response of Single Degree of Freedom Oscillator
+            disp - Displacement response of Single Degree of Freedom Oscillator
+        """
         raise NotImplementedError("Cannot call Base Response Spectrum")
 
 
 class NewmarkBeta(ResponseSpectrum):
-    '''
+    """
     Evaluates the response spectrum using the Newmark-Beta methodology
-    '''
+    """
 
     def __call__(self):
-        '''
+        """
         Evaluates the response spectrum
         :returns:
             Response Spectrum - Dictionary containing all response spectrum
@@ -108,7 +105,7 @@ class NewmarkBeta(ResponseSpectrum):
                 'Velocity' - Velocity Response Spectrum (cm/s)
                 'Displacement' - Displacement Response Spectrum (cm)
                 'Pseudo-Velocity' - Pseudo-Velocity Response Spectrum (cm/s)
-                'Pseudo-Acceleration' - Pseudo-Acceleration Response Spectrum 
+                'Pseudo-Acceleration' - Pseudo-Acceleration Response Spectrum
                                        (cm/s/s)
 
             Time Series - Dictionary containing all time-series data
@@ -119,11 +116,11 @@ class NewmarkBeta(ResponseSpectrum):
                 'PGA' - Peak ground acceleration (cm/s/s)
                 'PGV' - Peak ground velocity (cm/s)
                 'PGD' - Peak ground displacement (cm)
-                
-            accel - Acceleration response of Single Degree of Freedom Oscillator 
-            vel - Velocity response of Single Degree of Freedom Oscillator 
-            disp - Displacement response of Single Degree of Freedom Oscillator 
-        '''
+
+            accel - Acceleration response of Single Degree of Freedom Oscillator
+            vel - Velocity response of Single Degree of Freedom Oscillator
+            disp - Displacement response of Single Degree of Freedom Oscillator
+        """
         omega = (2. * np.pi) / self.periods
         cval = self.damping * 2. * omega
         kval = ((2. * np.pi) / self.periods) ** 2.
@@ -147,10 +144,9 @@ class NewmarkBeta(ResponseSpectrum):
             'PGV': np.max(np.fabs(self.velocity)),
             'PGD': np.max(np.fabs(self.displacement))}
         return self.response_spectrum, time_series, accel, vel, disp
-        
 
     def _newmark_beta(self, omega, cval, kval):
-        '''
+        """
         Newmark-beta integral
         :param numpy.ndarray omega:
             Angular period - (2 * pi) / T
@@ -164,8 +160,7 @@ class NewmarkBeta(ResponseSpectrum):
             vel - Velocity response of a SDOF oscillator
             disp - Displacement response of a SDOF oscillator
             a_t - Acceleration response of a SDOF oscillator
-
-        '''
+        """
         # Pre-allocate arrays
         accel = np.zeros([self.num_steps, self.num_per], dtype=float)
         vel = np.zeros([self.num_steps, self.num_per], dtype=float)
@@ -205,10 +200,12 @@ class NigamJennings(ResponseSpectrum):
         omega2 = omega ** 2.
         omega3 = omega ** 3.
         omega_d = omega * sqrt(1.0 - (self.damping ** 2.))
-        const = {'f1': (2.0 * self.damping) / (omega3 * self.d_t),
-                'f2': 1.0 / omega2,
-                'f3': self.damping * omega,
-                'f4': 1.0 / omega_d}
+        const = {  # noqa
+            'f1': (2.0 * self.damping) / (omega3 * self.d_t),
+            'f2': 1.0 / omega2,
+            'f3': self.damping * omega,
+            'f4': 1.0 / omega_d
+        }
         const['f5'] = const['f3'] * const['f4']
         const['f6'] = 2.0 * const['f3']
         const['e'] = np.exp(-const['f3'] * self.d_t)
@@ -279,14 +276,16 @@ class NigamJennings(ResponseSpectrum):
         return x_a, x_v, x_d
 
 
-PLOT_TYPE = {"loglog": lambda ax, x, y : ax.loglog(x, y),
-             "semilogx": lambda ax, x, y : ax.semilogx(x, y),
-             "semilogy": lambda ax, x, y : ax.semilogy(x, y),
-             "linear": lambda ax, x, y : ax.plot(x, y)}
+PLOT_TYPE = {
+    "loglog": lambda ax, x, y : ax.loglog(x, y),
+    "semilogx": lambda ax, x, y : ax.semilogx(x, y),
+    "semilogy": lambda ax, x, y : ax.semilogy(x, y),
+    "linear": lambda ax, x, y : ax.plot(x, y)
+}
 
 
 def plot_response_spectra(spectra, axis_type="loglog", figure_size=(8, 6),
-        filename=None, filetype="png", dpi=300):
+                          filename=None, filetype="png", dpi=300):
     """
     Creates a plot of the suite of response spectra (Acceleration,
     Velocity, Displacement, Pseudo-Acceleration, Pseudo-Velocity) derived
@@ -319,12 +318,13 @@ def plot_response_spectra(spectra, axis_type="loglog", figure_size=(8, 6),
     ax.set_ylabel("Displacement (cm)", fontsize=12)
     ax.set_xlim(np.min(spectra["Period"]), np.max(spectra["Period"]))
     ax.grid()
-    _save_image(filename, filetype, dpi)
+    _save_image(filename, plt.gcf(), filetype, dpi)
     plt.show()
-   
+
+
 def plot_time_series(acceleration, time_step, velocity=[], displacement=[],
-        units="cm/s/s", figure_size=(8, 6), filename=None, filetype="png",
-        dpi=300, linewidth=1.5):
+                     units="cm/s/s", figure_size=(8, 6), filename=None,
+                     filetype="png", dpi=300, linewidth=1.5):
     """
     Creates a plot of acceleration, velocity and displacement for a specific
     ground motion record
@@ -367,5 +367,5 @@ def plot_time_series(acceleration, time_step, velocity=[], displacement=[],
     ax.set_xlim(0, end_time)
     ax.set_ylim(-1.1 * pgd, 1.1 * pgd)
     ax.grid()
-    _save_image(filename, filetype, dpi)
+    _save_image(filename, plt.gcf(), filetype, dpi)
     plt.show()

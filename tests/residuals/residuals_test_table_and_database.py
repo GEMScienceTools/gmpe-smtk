@@ -11,8 +11,6 @@ import unittest
 import numpy as np
 from smtk.parsers.esm_flatfile_parser import ESMFlatfileParser
 import smtk.residuals.gmpe_residuals as res
-from smtk.sm_table_parsers import EsmParser
-from smtk.sm_table import GroundMotionTable
 
 if sys.version_info[0] >= 3:
     import pickle
@@ -72,31 +70,6 @@ class ResidualsTestCase(unittest.TestCase):
         cls.gsims = ["AkkarEtAlRjb2014",  "ChiouYoungs2014"]
         cls.imts = ["PGA", "SA(1.0)"]
 
-        # create the sm table:
-        cls.out_location2 = cls.out_location + '_table'
-        EsmParser.parse(ifile, cls.out_location2, delimiter=';')
-        cls.dbtable = \
-            GroundMotionTable(cls.out_location2,
-                              os.path.splitext(os.path.basename(ifile))[0])
-#         with GroundMotionTable(cls.out_location2,
-#                   os.path.splitext(os.path.basename(ifile))[0]) as gmdb:
-#             gmdb.table.nrows
-#         with open(ifile, newline='') as csvfile:
-#             reader = csv.DictReader(csvfile, delimiter=';')
-#             for row in reader:
-#                 row
-#        cls.statsfile = os.path.join(os.path.dirname(ifile),
-#                                     'residual_stats.pickle')
-
-#        cls._data = {}
-#     @classmethod
-#     def write_results(cls, key, value):
-#         if os.path.isfile(cls.statsfile):
-#             return
-#         if not hasattr(cls, '_data'):
-#             cls._data = {}
-#         cls._data[key] = value
-
     def test_correct_build_load(self):
         """
         Verifies that the database has been built and loaded correctly
@@ -104,9 +77,6 @@ class ResidualsTestCase(unittest.TestCase):
         self.assertEqual(len(self.database), 41)
         self.assertListEqual([rec.id for rec in self.database],
                              EXPECTED_IDS)
-        # assert the table has also 41 elements:
-        with self.dbtable.table as table:  # open underlying HDF5 file
-            assert table.nrows == 41
 
     def _check_residual_dictionary_correctness(self, res_dict):
         """
@@ -132,58 +102,6 @@ class ResidualsTestCase(unittest.TestCase):
                         len(res_dict[gsim][imt]["Intra event"]), 41)
                 self.assertEqual(
                         len(res_dict[gsim][imt]["Total"]), 41)
-
-    def _check_new_context_vs_old(self, contexts_old, contexts_new):
-        self.assertEqual(len(contexts_old),
-                         len(contexts_new))
-
-        cmp = self._cmp_objects
-
-        for cont1, cont2 in zip(contexts_old, contexts_new):
-            ctx1, ctx2 = cont1['Ctx'], cont2['Ctx']
-            cmp(ctx1, ctx2)
-            obs1, obs2 = cont1['Observations'], cont2['Observations']
-            cmp(obs1, obs2)
-            expected1, expected2 = cont1['Expected'], cont2['Expected']
-            cmp(expected1, expected2)
-            res1, res2 = cont1['Residual'], cont2['Residual']
-            cmp(res1, res2)
-
-    def _cmp_objects(self, obj1, obj2, exclude=None, rtol=1e-4):
-        '''compares (deeply) equality of objects attributes or dicts keys'''
-        exclude = set() if not exclude else set(exclude)
-        self.assertEqual(type(obj1), type(obj2))
-        compare_dicts = isinstance(obj1, dict)
-        if compare_dicts:
-            keys1, keys2 = obj1.keys(), obj2.keys()
-        else:
-            keys1, keys2 = dir(obj1), dir(obj2)
-        atts1 = [_ for _ in keys1 if _[:1] != '_' and _ not in exclude]
-        atts2 = [_ for _ in keys2 if _[:1] != '_' and _ not in exclude]
-        # assert attrs are the same:
-        self.assertFalse(set(atts1)-set(atts2))
-        # compare att values:
-        for att in atts1:
-            if att in exclude:
-                continue
-            if compare_dicts:
-                val1, val2 = obj1[att], obj2[att]
-            else:
-                val1, val2 = getattr(obj1, att), getattr(obj2, att)
-            try:
-                self.assertTrue(np.allclose(val1, val2, rtol=rtol,
-                                            equal_nan=True))
-            except TypeError:
-                if isinstance(val1, dict) and isinstance(val2, dict):
-                    # sub-array have a relaxed condition: rtol = .5e-1,
-                    # meaning they must not differ by 50% of the rel value:
-                    self._cmp_objects(val1, val2, None, rtol=rtol)
-                # attributes are not coimparable (e.g. mehtods)
-                pass
-            except Exception as _:  # pylint: disable=broad-except
-                # just a breakpoint for inspecting assertion errors
-                # when debugging in editor
-                raise
 
     def test_residuals_execution(self):
         """
@@ -211,15 +129,6 @@ class ResidualsTestCase(unittest.TestCase):
             assert np.allclose(residuals1.contexts[0]['Observations'][imtx],
                                expected_res_obs[imtx], rtol=.5e-3)
 
-        residuals2 = res.Residuals(self.gsims, self.imts)
-        residuals2.get_residuals(self.dbtable, component="Geometric")
-        self._check_residual_dictionary_correctness(residuals2.residuals)
-        stats2 = residuals2.get_residual_statistics()
-
-        self._check_new_context_vs_old(residuals1.contexts,
-                                       residuals2.contexts)
-        self._cmp_objects(stats1, stats2)
-
     def test_likelihood_execution(self):
         """
         Tests basic execution of residuals - not correctness of values -
@@ -230,14 +139,6 @@ class ResidualsTestCase(unittest.TestCase):
         lkh1.get_residuals(self.database, component="Geometric")
         self._check_residual_dictionary_correctness(lkh1.residuals)
         lkh1.get_likelihood_values()
-
-        lkh2 = res.Residuals(self.gsims, self.imts)
-        lkh2.get_residuals(self.dbtable, component="Geometric")
-        self._check_residual_dictionary_correctness(lkh2.residuals)
-        lkh2.get_likelihood_values()
-
-        self._check_new_context_vs_old(lkh1.contexts,
-                                       lkh2.contexts)
 
     def test_llh_execution(self):
         """
@@ -250,14 +151,6 @@ class ResidualsTestCase(unittest.TestCase):
         self._check_residual_dictionary_correctness(llh1.residuals)
         llh1.get_loglikelihood_values(self.imts)
 
-        llh2 = res.Residuals(self.gsims, self.imts)
-        llh2.get_residuals(self.dbtable, component="Geometric")
-        self._check_residual_dictionary_correctness(llh2.residuals)
-        llh2.get_loglikelihood_values(self.imts)
-
-        self._check_new_context_vs_old(llh1.contexts,
-                                       llh2.contexts)
-
     def test_multivariate_llh_execution(self):
         """
         Tests execution of multivariate llh - not correctness of values -
@@ -269,14 +162,6 @@ class ResidualsTestCase(unittest.TestCase):
         self._check_residual_dictionary_correctness(multi_llh1.residuals)
         multi_llh1.get_multivariate_loglikelihood_values()
 
-        multi_llh2 = res.Residuals(self.gsims, self.imts)
-        multi_llh2.get_residuals(self.dbtable, component="Geometric")
-        self._check_residual_dictionary_correctness(multi_llh2.residuals)
-        multi_llh2.get_multivariate_loglikelihood_values()
-
-        self._check_new_context_vs_old(multi_llh1.contexts,
-                                       multi_llh2.contexts)
-
     def test_edr_execution(self):
         """
         Tests execution of EDR - not correctness of values -
@@ -287,14 +172,6 @@ class ResidualsTestCase(unittest.TestCase):
         edr1.get_residuals(self.database, component="Geometric")
         self._check_residual_dictionary_correctness(edr1.residuals)
         edr1.get_edr_values()
-
-        edr2 = res.Residuals(self.gsims, self.imts)
-        edr2.get_residuals(self.dbtable, component="Geometric")
-        self._check_residual_dictionary_correctness(edr2.residuals)
-        edr2.get_edr_values()
-
-        self._check_new_context_vs_old(edr1.contexts,
-                                       edr2.contexts)
 
     def test_multiple_metrics(self):
         """
@@ -310,12 +187,6 @@ class ResidualsTestCase(unittest.TestCase):
         #             "MultivariateLLH", "EDR"]:
         #     _ = res.GSIM_MODEL_DATA_TESTS[key](residuals, config)
 
-        residuals = res.Residuals(self.gsims, self.imts)
-        residuals.get_residuals(self.dbtable, component="Geometric")
-        config = {}
-        for key in ["Residuals", "Likelihood", "LLH",
-                    "MultivariateLLH", "EDR"]:
-            _ = res.GSIM_MODEL_DATA_TESTS[key](residuals, config)
 
     @classmethod
     def tearDownClass(cls):
@@ -323,9 +194,6 @@ class ResidualsTestCase(unittest.TestCase):
         Deletes the database
         """
         shutil.rmtree(cls.out_location)
-        os.remove(cls.out_location2)
-#         if hasattr(cls, '_data'):
-#             pickle.dump(cls._data, cls.statsfile)
 
 
 if __name__ == "__main__":

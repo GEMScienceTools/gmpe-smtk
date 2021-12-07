@@ -17,32 +17,31 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 
-'''
+"""
 General Class for extracting Ground Motion Intensity Measures (IMs) from a
 set of acceleration time series
-'''
+"""
 
 import numpy as np
 from math import pi
 from scipy.integrate import cumtrapz
-from scipy.stats import scoreatpercentile
 from scipy import constants
 import matplotlib.pyplot as plt
 import smtk.response_spectrum as rsp
 from smtk.smoothing import konno_ohmachi
-from smtk.sm_utils import (get_velocity_displacement,
-                           get_time_vector,
-                           convert_accel_units,
-                           _save_image,
-                           nextpow2)
+from smtk.sm_utils import get_time_vector, _save_image, nextpow2
 
-RESP_METHOD = {'Newmark-Beta': rsp.NewmarkBeta,
-               'Nigam-Jennings': rsp.NigamJennings}
+
+RESP_METHOD = {
+    'Newmark-Beta': rsp.NewmarkBeta,
+    'Nigam-Jennings': rsp.NigamJennings
+}
+
 
 SMOOTHING = {"KonnoOhmachi": konno_ohmachi.KonnoOhmachi}
 
-def get_peak_measures(time_step, acceleration, get_vel=False, 
-    get_disp=False):
+
+def get_peak_measures(time_step, acceleration, get_vel=False, get_disp=False):
     """
     Returns the peak measures from acceleration, velocity and displacement
     time-series
@@ -101,8 +100,9 @@ def get_fourier_spectrum(time_series, time_step):
     freq = d_f * np.arange(0., (n_val / 2.0), 1.0)
     return freq, time_step * np.absolute(fspec[:int(n_val / 2.0)])
 
+
 def plot_fourier_spectrum(time_series, time_step, figure_size=(7, 5),
-        filename=None, filetype="png", dpi=300):
+                          filename=None, filetype="png", dpi=300):
     """
     Plots the Fourier spectrum of a time series 
     """
@@ -111,11 +111,12 @@ def plot_fourier_spectrum(time_series, time_step, figure_size=(7, 5),
     plt.loglog(freq, amplitude, 'b-')
     plt.xlabel("Frequency (Hz)", fontsize=14)
     plt.ylabel("Fourier Amplitude", fontsize=14)
-    _save_image(filename, filetype, dpi)
+    _save_image(filename, plt.gcf(), filetype, dpi)
     plt.show()
 
+
 def get_hvsr(x_component, x_time_step, y_component, y_time_step, vertical,
-        vertical_time_step, smoothing_params):
+             vertical_time_step, smoothing_params):
     """
     :param x_component:
         Time series of the x-component of the data
@@ -160,9 +161,10 @@ def get_hvsr(x_component, x_time_step, y_component, y_time_step, vertical,
     max_loc = np.argmax(hvsr)
     return hvsr, xfreq, hvsr[max_loc], 1.0 / xfreq[max_loc]
 
+
 def get_response_spectrum(acceleration, time_step, periods, damping=0.05, 
-        units="cm/s/s", method="Nigam-Jennings"):
-    '''
+                          units="cm/s/s", method="Nigam-Jennings"):
+    """
     Returns the elastic response spectrum of the acceleration time series.
     :param numpy.ndarray acceleration:
         Acceleration time series
@@ -180,7 +182,7 @@ def get_response_spectrum(acceleration, time_step, periods, damping=0.05,
         - "Nigam-Jennings"
     :returns:
         Outputs from :class: smtk.response_spectrum.BaseResponseSpectrum
-    '''
+    """
     response_spec = RESP_METHOD[method](acceleration,
                                         time_step,
                                         periods, 
@@ -194,9 +196,9 @@ def get_response_spectrum(acceleration, time_step, periods, damping=0.05,
 
 
 def get_response_spectrum_pair(acceleration_x, time_step_x, acceleration_y,
-        time_step_y, periods, damping=0.05, units="cm/s/s",
-        method="Nigam-Jennings"):
-    '''
+                               time_step_y, periods, damping=0.05,
+                               units="cm/s/s", method="Nigam-Jennings"):
+    """
     Returns the response spectra of a record pair
     :param numpy.ndarray acceleration_x:
         Acceleration time-series of x-component of record
@@ -206,7 +208,7 @@ def get_response_spectrum_pair(acceleration_x, time_step_x, acceleration_y,
         Acceleration time-series of y-component of record
     :param float time_step_y:
         Time step of y-time series (s)
-    '''
+    """
 
     sax = get_response_spectrum(acceleration_x,
                                 time_step_x,
@@ -221,6 +223,7 @@ def get_response_spectrum_pair(acceleration_x, time_step_x, acceleration_y,
                                 units, 
                                 method)[0]
     return sax, say
+
 
 def geometric_mean_spectrum(sax, say):
     """
@@ -238,6 +241,7 @@ def geometric_mean_spectrum(sax, say):
             sa_gm[key] = np.sqrt(sax[key] * say[key])
     return sa_gm
 
+
 def arithmetic_mean_spectrum(sax, say):
     """
     Returns the arithmetic mean of the response spectrum
@@ -249,6 +253,7 @@ def arithmetic_mean_spectrum(sax, say):
         else:
             sa_am[key] = (sax[key] + say[key]) / 2.0
     return sa_am
+
 
 def envelope_spectrum(sax, say):
     """
@@ -263,6 +268,7 @@ def envelope_spectrum(sax, say):
                                  axis=1)
     return sa_env
 
+
 def larger_pga(sax, say):
     """
     Returns the spectral acceleration from the component with the larger PGA
@@ -271,6 +277,7 @@ def larger_pga(sax, say):
         return sax
     else:
         return say
+
 
 def rotate_horizontal(series_x, series_y, angle):
     """
@@ -286,6 +293,7 @@ def rotate_horizontal(series_x, series_y, angle):
     rot_hist_x = (np.cos(angle) * series_x) + (np.sin(angle) * series_y)
     rot_hist_y = (-np.sin(angle) * series_x) + (np.cos(angle) * series_y)
     return rot_hist_x, rot_hist_y
+
 
 def equalise_series(series_x, series_y):
     """
@@ -307,8 +315,9 @@ def equalise_series(series_x, series_y):
     else:
         return series_x, series_y
 
+
 def gmrotdpp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
-        percentile, damping=0.05, units="cm/s/s", method="Nigam-Jennings"):
+             percentile, damping=0.05, units="cm/s/s", method="Nigam-Jennings"):
     """
     Returns the rotationally-dependent geometric mean
     :param float percentile:
@@ -349,17 +358,21 @@ def gmrotdpp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
                                            np.max(np.fabs(rot_y), axis=0))
 
     gmrotd = np.percentile(max_a_theta, percentile, axis=0)
-    return {"angles": angles,
-            "periods": periods,
-            "GMRotDpp": gmrotd,
-            "GeoMeanPerAngle": max_a_theta}
+    return {
+        "angles": angles,
+        "periods": periods,
+        "GMRotDpp": gmrotd,
+        "GeoMeanPerAngle": max_a_theta
+    }
+
 
 KEY_LIST = ["PGA", "PGV", "PGD", "Acceleration", "Velocity", 
             "Displacement", "Pseudo-Acceleration", "Pseudo-Velocity"]
 
+
 def gmrotdpp_slow(acceleration_x, time_step_x, acceleration_y, time_step_y,
-        periods, percentile, damping=0.05, units="cm/s/s",
-        method="Nigam-Jennings"):
+                  periods, percentile, damping=0.05, units="cm/s/s",
+                  method="Nigam-Jennings"):
     """
     Returns the rotationally-dependent geometric mean. This "slow" version
     will rotate the original time-series and calculate the response spectrum
@@ -371,9 +384,7 @@ def gmrotdpp_slow(acceleration_x, time_step_x, acceleration_y, time_step_y,
         raise ValueError("Percentile for GMRotDpp must be between 0. and 100.")
     accel_x, accel_y = equalise_series(acceleration_x, acceleration_y)
     angles = np.arange(0., 90., 1.)
-    #max_a_theta = np.zeros([len(angles), len(periods) + 3], dtype=float)
-    #max_a_theta[0, :] = np.sqrt(np.max(np.fabs(accel_x), axis=0) *
-    #                            np.max(np.fabs(accel_y), axis=0))
+
     gmrotdpp = {
         "Period": periods,
         "PGA": np.zeros(len(angles), dtype=float),
@@ -408,6 +419,7 @@ def gmrotdpp_slow(acceleration_x, time_step_x, acceleration_y, time_step_y,
         gmrotdpp[key] = np.percentile(gmrotdpp[key], percentile, axis=0)
     return gmrotdpp
 
+
 def _get_gmrotd_penalty(gmrotd, gmtheta):
     """
     Calculates the penalty function of 4 of Boore, Watson-Lamprey and
@@ -428,7 +440,7 @@ def _get_gmrotd_penalty(gmrotd, gmtheta):
 
 
 def gmrotipp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
-        percentile, damping=0.05, units="cm/s/s", method="Nigam-Jennings"):
+             percentile, damping=0.05, units="cm/s/s", method="Nigam-Jennings"):
     """
     Returns the rotationally-independent geometric mean (GMRotIpp)
     """
@@ -453,8 +465,9 @@ def gmrotipp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
     gmroti["GMRotD{:.2f}".format(percentile)] = gmrot["GMRotDpp"]
     return gmroti
 
+
 def rotdpp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
-        percentile, damping=0.05, units="cm/s/s", method="Nigam-Jennings"):
+           percentile, damping=0.05, units="cm/s/s", method="Nigam-Jennings"):
     """
     Returns the rotationally dependent spectrum RotDpp as defined by Boore
     (2010)
@@ -490,8 +503,9 @@ def rotdpp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
               "PGD": rotddpp[0]}
     return output, max_a_theta, max_v_theta, max_d_theta, theta_set
 
+
 def rotipp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
-        percentile, damping=0.05, units="cm/s/s", method="Nigam-Jennings"):
+           percentile, damping=0.05, units="cm/s/s", method="Nigam-Jennings"):
     """
     Returns the rotationally independent spectrum RotIpp as defined by
     Boore (2010)
@@ -518,6 +532,7 @@ def rotipp(acceleration_x, time_step_x, acceleration_y, time_step_y, periods,
 
 ARIAS_FACTOR = pi / (2.0 * (constants.g * 100.))
 
+
 def get_husid(acceleration, time_step):
     """
     Returns the Husid vector, defined as \int{acceleration ** 2.}
@@ -529,6 +544,7 @@ def get_husid(acceleration, time_step):
     time_vector = get_time_vector(time_step, len(acceleration))
     husid = np.hstack([0., cumtrapz(acceleration ** 2., time_vector)])
     return husid, time_vector
+
 
 def get_arias_intensity(acceleration, time_step, start_level=0., end_level=1.):
     """
@@ -549,7 +565,7 @@ def get_arias_intensity(acceleration, time_step, start_level=0., end_level=1.):
 
 
 def plot_husid(acceleration, time_step, start_level=0., end_level=1.0,
-        figure_size=(7, 5), filename=None, filetype="png", dpi=300):
+               figure_size=(7, 5), filename=None, filetype="png", dpi=300):
     """
     Creates a Husid plot for the record
     :param tuple figure_size:
@@ -574,8 +590,9 @@ def plot_husid(acceleration, time_step, start_level=0., end_level=1.0,
     plt.ylabel("Fraction of Arias Intensity", fontsize=14)
     plt.title("Husid Plot")
     plt.legend(loc=4, fontsize=14)
-    _save_image(filename, filetype, dpi)
+    _save_image(filename, plt.gcf(), filetype, dpi)
     plt.show()
+
 
 def get_bracketed_duration(acceleration, time_step, threshold):
     """
@@ -592,6 +609,7 @@ def get_bracketed_duration(acceleration, time_step, threshold):
         time_vector = get_time_vector(time_step, len(acceleration))
         return time_vector[idx[-1]] - time_vector[idx[0]] + time_step
 
+
 def get_uniform_duration(acceleration, time_step, threshold):
     """
     Returns the total duration for which the record exceeds the threshold
@@ -599,8 +617,9 @@ def get_uniform_duration(acceleration, time_step, threshold):
     idx = np.where(np.fabs(acceleration) >= threshold)[0]
     return time_step * float(len(idx))
 
+
 def get_significant_duration(acceleration, time_step, start_level=0.,
-        end_level=1.0):
+                             end_level=1.0):
     """
     Returns the significant duration of the record
     """
@@ -623,6 +642,7 @@ def get_cav(acceleration, time_step, threshold=0.0):
     else:
         return 0.0
 
+
 def get_arms(acceleration, time_step):
     """
     Returns the root mean square acceleration, defined as
@@ -630,6 +650,7 @@ def get_arms(acceleration, time_step):
     """
     dur = time_step * float(len(acceleration) - 1)
     return np.sqrt((1. / dur) * np.trapz(acceleration  ** 2., dx=time_step))
+
 
 def get_response_spectrum_intensity(spec):
     """
@@ -665,7 +686,8 @@ def get_quadratic_intensity(acc_x, acc_y, time_step):
     """
     assert len(acc_x) == len(acc_y)
     dur = time_step * float(len(acc_x) - 1)
-    return (1. /  dur) * np.trapz(acc_x * acc_y, dx=time_step)
+    return (1. / dur) * np.trapz(acc_x * acc_y, dx=time_step)
+
 
 def get_principal_axes(time_step, acc_x, acc_y, acc_z=None):
     """
@@ -702,18 +724,18 @@ def get_principal_axes(time_step, acc_x, acc_y, acc_z=None):
     # Transform the time-series
     phi = np.matrix(phi)
     acc_trans = phi.T * np.matrix(acc.T)
-    acc_1 = (acc_trans[0, :].A).flatten()
-    acc_2 = (acc_trans[1, :].A).flatten()
+    acc_1 = acc_trans[0, :].A.flatten()
+    acc_2 = acc_trans[1, :].A.flatten()
     if nhist == 3:
-        acc_3 = (acc_trans[2, :].A).flatten()
+        acc_3 = acc_trans[2, :].A.flatten()
     else:
         acc_3 = None
 
     alpha3z, theta1x = get_rotation_angles(phi, nhist)
 
     return acc_1, acc_2, acc_3, {"alpha3z": alpha3z, "theta1x": theta1x,
-        "phi": phi, "sigma": sigma, "rho": rho,
-        "principal_sigma": np.matrix(ppal_sigma)}
+                                 "phi": phi, "sigma": sigma, "rho": rho,
+                                 "principal_sigma": np.matrix(ppal_sigma)}
 
 
 def get_rotation_angles(transf_matrix, nhist):
@@ -730,11 +752,11 @@ def get_rotation_angles(transf_matrix, nhist):
 
     # Angle between axis x and the projection of axis 1 in the xy plane: theta
     if nhist==3:    
-        #v_x is a unitary vector in the direction of axis x.
-        #v_1 is a unitary vector in the direction of axis 1,
-        #then projected onto the xy plane by setting is z coordinate
-        #to zero. Theta1x is then the angle between axis x and the
-        #projection of axis 1 over the xy plane.
+        # v_x is a unitary vector in the direction of axis x.
+        # v_1 is a unitary vector in the direction of axis 1,
+        # then projected onto the xy plane by setting is z coordinate
+        # to zero. Theta1x is then the angle between axis x and the
+        # projection of axis 1 over the xy plane.
                 
         v_x = np.array([1., 0., 0.])
         inv_transf_matrix = np.linalg.inv(transf_matrix)
@@ -742,12 +764,11 @@ def get_rotation_angles(transf_matrix, nhist):
         v_1[2] = 0.0
         theta1x = icf * np.arccos(np.dot(v_x,v_1) / np.linalg.norm(v_1))
         theta1x = float(theta1x)
-        
-        
-        #v_y is a unitary vector in the direction of axis y.
-        #v_2 is a unitary vector in the direction of axis 2,
-        #then projected onto the xy plane by setting is z coordinate
-        #to zero.       
+
+        # v_y is a unitary vector in the direction of axis y.
+        # v_2 is a unitary vector in the direction of axis 2,
+        # then projected onto the xy plane by setting is z coordinate
+        # to zero.
         v_y = np.array([0., 1., 0.])
         v_2 = inv_transf_matrix[:, 1]
         v_2[2] = 0.0
