@@ -187,7 +187,7 @@ def _build_matrices(contexts, gmpe, imtx):
     in the supplement to Mak et al (2017)
     """
     neqs = len(contexts)
-    nrecs = sum([ctxt["Num. Sites"] for ctxt in contexts])
+    nrecs = sum(ctxt["Num. Sites"] for ctxt in contexts)
 
     r_mat = np.zeros(nrecs, dtype=float)
     z_g_mat = np.zeros([nrecs, neqs], dtype=float)
@@ -196,7 +196,7 @@ def _build_matrices(contexts, gmpe, imtx):
     observations = np.zeros(nrecs)
     i = 0
     # Determine the total number of records and pass the log of the
-    # obserations to the observations dictionary
+    # observations to the observations dictionary
     for ctxt in contexts:
         n_s = ctxt["Num. Sites"]
         observations[i:(i + n_s)] = np.log(ctxt["Observations"][imtx])
@@ -241,8 +241,23 @@ def get_multivariate_ll(contexts, gmpe, imt):
         contexts, gmpe, imt)
     sign, logdetv = np.linalg.slogdet(v_mat)
     b_mat = observations - expected_mat
+    # `solve` below needs only finite values (see doc), but unfortunately raises
+    # in case. In order to silently skip non-finite values:
+    # 1. Check v_mat (square matrix), by simply returning nan if any cell value
+    # is nan (FIXME: handle better?):
+    if not np.isfinite(v_mat).all():
+        return np.nan
+    # 2. Check b_mat (array) by removing finite values:
+    b_finite = np.isfinite(b_mat)
+    if not b_finite.all():
+        if not b_finite.any():
+            return np.nan
+        b_mat = b_mat[b_finite]
+        v_mat = v_mat[b_finite, :][:, b_finite]
+    # call `solve(...check_finite=False)` because the check is already done.
+    # The function shouldn't raise anymore:
     return (float(nrecs) * np.log(2.0 * np.pi) + logdetv +
-            (b_mat.T.dot(solve(v_mat, b_mat)))) / 2.
+            (b_mat.T.dot(solve(v_mat, b_mat, check_finite=False)))) / 2.
 
 
 def bootstrap_llh(ij, contexts, gmpes, imts):
@@ -383,18 +398,17 @@ class Residuals(object):
                                 # Inter event residuals per-site e.g. Chiou
                                 # & Youngs (2008; 2014) case
                                 self.residuals[gmpe][imtx][res_type].extend(
-                                    inter_ev.tolist())
+                                    inter_ev)
                                 self.unique_indices[gmpe][imtx].append(
                                     np.arange(len(inter_ev)))
                         else:
                             self.residuals[gmpe][imtx][res_type].extend(
-                                context["Residual"][gmpe][imtx][res_type].
-                                tolist())
+                                context["Residual"][gmpe][imtx][res_type])
                         self.modelled[gmpe][imtx][res_type].extend(
-                            context["Expected"][gmpe][imtx][res_type].tolist())
+                            context["Expected"][gmpe][imtx][res_type])
 
                     self.modelled[gmpe][imtx]["Mean"].extend(
-                        context["Expected"][gmpe][imtx]["Mean"].tolist())
+                        context["Expected"][gmpe][imtx]["Mean"])
 
             self.contexts.append(context)
 
@@ -857,6 +871,11 @@ class Residuals(object):
         Calculated the Euclidean Distanced-Based Rank for a set of
         observed and expected values from a particular GMPE
         """
+        finite = np.isfinite(obs) & np.isfinite(expected) & np.isfinite(stddev)
+        if not finite.any():
+            return np.nan, np.nan, np.nan
+        elif not finite.all():
+            obs, expected, stddev = obs[finite], expected[finite], stddev[finite]
         nvals = len(obs)
         min_d = bandwidth / 2.
         kappa = self._get_edr_kappa(obs, expected)
