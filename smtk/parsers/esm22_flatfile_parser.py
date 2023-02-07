@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
@@ -955,7 +954,7 @@ def _get_ESM18_headers(ESM22,default_string,r_fm_type,r_datetime):
     DATA = os.path.abspath('')
     os.mkdir('temp')
     converted_base_data_path = os.path.join(DATA,'temp')
-    converted_filename='\converted_flatfile.csv'
+    converted_filename='\\converted_flatfile.csv'
     converted_flatfile_path = converted_base_data_path+converted_filename
     ESM_original_headers.to_csv(converted_flatfile_path,sep=';') #Need to specify output path and filename for converted flatfile
 
