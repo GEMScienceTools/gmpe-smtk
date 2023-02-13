@@ -27,6 +27,7 @@ class gmpe_ranking_metrics_wrt_imt_test(unittest.TestCase):
     DATA = os.path.dirname(__file__)
     input_fileset = os.path.join(DATA, 'data',
                                  'Ranking_Metrics_Test_Flatfile.csv')
+    output_database = tempfile.mkdtemp()
     output_database = os.path.join(DATA, 'data', 'metadata')
     if os.path.exists(output_database):
         shutil.rmtree(output_database)
@@ -202,4 +203,5 @@ class gmpe_ranking_metrics_wrt_imt_test(unittest.TestCase):
     if np.all(test_array) < 1.005 and np.all(test_array) > 0.995 and kappa_ratio==1:
         print ('Pass') #acceptable match observed for all metrics
 
+    shutil.rmtree(output_database)
     shutil.rmtree(output_directory)
