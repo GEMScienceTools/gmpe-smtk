@@ -16,13 +16,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 """
-Parser from the ESM23 flatfile format (i.e. flatfile downloaded from custom header HTML) to SMTK
+Parser from the ESM23 flatfile format (i.e. flatfile downloaded from custom
+header HTML) to SMTK
 
-This parser assumes you have selected all available headers in your URL search when downloading the flatfile
+This parser assumes you have selected all available headers in your URL search
+when downloading the flatfile
 """
 import pandas as pd
 import os, sys
 import shutil
+import tempfile
 import csv
 import numpy as np
 import copy
@@ -145,16 +148,18 @@ class ESM23FlatfileParser(SMDatabaseReader):
             counter += 1
 
     @classmethod
-    def autobuild(cls, dbid, dbname, output_location, ESM23_flatfile_directory):
+    def autobuild(cls, dbid, dbname, output_location, 
+                  ESM23_flatfile_directory):
         """
         Quick and dirty full database builder!
         """
         
         # Import ESM 2023 format strong-motion flatfile
-        ESM23 = pd.read_csv(ESM23_flatfile_directory) #Need to specify ESM23_flatfile_directory and filename
+        ESM23 = pd.read_csv(ESM23_flatfile_directory)
  
-        # Create default values for headers not considered in ESM23 flatfile format
-        default_string = pd.Series(np.full(np.size(ESM23.esm_event_id),str("")))
+        # Create default values for headers not considered in ESM23 format
+        default_string = pd.Series(np.full(np.size(ESM23.esm_event_id),
+                                           str("")))
         
         # Assign strike-slip to unknown faulting mechanism
         r_fm_type = ESM23.fm_type_code.fillna('SS') 
@@ -162,7 +167,7 @@ class ESM23FlatfileParser(SMDatabaseReader):
         #Reformat datetime
         r_datetime = ESM23.event_time.str.replace('T',' ')
         
-        converted_flatfile_path, converted_base_data_path=_get_ESM18_headers(
+        converted_base_data_path=_get_ESM18_headers(
             ESM23,default_string,r_fm_type,r_datetime)
                 
         if os.path.exists(output_location):
@@ -172,7 +177,7 @@ class ESM23FlatfileParser(SMDatabaseReader):
         # Add on the records folder
         os.mkdir(os.path.join(output_location, "records"))
         # Create an instance of the parser class
-        database = cls(dbid, dbname, converted_flatfile_path)
+        database = cls(dbid, dbname, converted_base_data_path)
         # Parse the records
         print("Parsing Records ...")
         database.parse(location=output_location)
@@ -181,9 +186,6 @@ class ESM23FlatfileParser(SMDatabaseReader):
         print("Storing metadata to file %s" % metadata_file)
         with open(metadata_file, "wb+") as f:
             pickle.dump(database.database, f)
-            
-        if os.path.exists(converted_base_data_path):
-           shutil.rmtree(converted_base_data_path)
            
         return database
 
@@ -646,7 +648,7 @@ def _get_ESM18_headers(ESM23,default_string,r_fm_type,r_datetime):
     "instrument_code":ESM23.instrument_type_code,     
     "sensor_depth_m":ESM23.sensor_depth_m,
     "proximity_code":ESM23.proximity,
-    "housing_code":ESM23.hounsing,    #Currently typo in their database header for 'housing'
+    "housing_code":ESM23.hounsing,    #Currently typo in their database header
     "installation_code":ESM23.installation,
     "st_nation_code":ESM23.st_nation_code,
     "st_latitude":ESM23.st_latitude,
@@ -708,7 +710,7 @@ def _get_ESM18_headers(ESM23,default_string,r_fm_type,r_datetime):
     "W_T90":ESM23.w_t90,
     "rotD50_T90":ESM23.rotd50_t90,
     "rotD100_T90":ESM23.rotd100_t90,
-    "rotD00_T90":ESM23.rot_d00_t90, #This header has typo in current version of the ESM23 database
+    "rotD00_T90":ESM23.rot_d00_t90, #This header has typo in current db version 
     "U_housner":ESM23.u_housner,
     "V_housner":ESM23.v_housner,
     "W_housner":ESM23.w_housner,
@@ -953,10 +955,8 @@ def _get_ESM18_headers(ESM23,default_string,r_fm_type,r_datetime):
     
     # Output to folder where converted flatfile read into parser   
     DATA = os.path.abspath('')
-    os.mkdir('temp')
-    converted_base_data_path = os.path.join(DATA,'temp')
-    converted_filename='\\converted_flatfile.csv'
-    converted_flatfile_path = converted_base_data_path+converted_filename
-    ESM_original_headers.to_csv(converted_flatfile_path,sep=';') #Need to specify output path and filename for converted flatfile
+    converted_base_data_path = tempfile.mkdtemp()
+    converted_base_data_path = os.path.join(DATA,'converted_flatfile.csv')
+    ESM_original_headers.to_csv(converted_base_data_path,sep=';')
 
-    return converted_flatfile_path, converted_base_data_path
+    return converted_base_data_path

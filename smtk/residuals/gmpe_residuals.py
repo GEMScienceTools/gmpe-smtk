@@ -722,8 +722,13 @@ class Residuals(object):
             weights_with_imt = np.array([2.0 ** -self.llh[gmpe][imt]
                                          for gmpe in self.gmpe_list])
             weights_with_imt = weights_with_imt/np.sum(weights_with_imt)
-            self.model_weights_with_imt[imt] = OrderedDict([(gmpe, weights_with_imt[iloc])
-                                                            for iloc, gmpe in enumerate(self.gmpe_list)])
+            self.model_weights_with_imt[imt] = OrderedDict([(gmpe, 
+                                                             weights_with_imt
+                                                             [iloc])
+                                                            for iloc, gmpe
+                                                            in enumerate(
+                                                                self.gmpe_list
+                                                                )])
         return self.llh, self.model_weights, self.model_weights_with_imt
         
     # Mak et al multivariate LLH functions
@@ -857,7 +862,8 @@ class Residuals(object):
             edr_values[gmpe]["EDR"] = results[2]
         return edr_values
     
-    def get_edr_values_wrt_spectral_period(self, bandwidth=0.01, multiplier=3.0):
+    def get_edr_values_wrt_spectral_period(self, bandwidth=0.01,
+                                           multiplier=3.0):
         """
         Calculates the EDR values for each GMPE according to the Euclidean
         Distance Ranking method of Kale & Akkar (2013) for each imt
@@ -874,7 +880,8 @@ class Residuals(object):
             "Multiplier of standard deviation (equation 8 of Kale and Akkar)
         """
         
-        self.edr_values_wrt_imt = OrderedDict([(gmpe, {}) for gmpe in self.gmpe_list])
+        self.edr_values_wrt_imt = OrderedDict([(gmpe, {}) for 
+                                               gmpe in self.gmpe_list])
         for gmpe in self.gmpe_list:
             obs_wrt_imt, expected_wrt_imt, stddev_wrt_imt = self._get_edr_gmpe_information_wrt_spectral_period(gmpe)
             results = self._get_edr_wrt_spectral_period(obs_wrt_imt,
@@ -909,7 +916,7 @@ class Residuals(object):
         Extract the observed ground motions, expected and total standard
         deviation for the GMPE (per imt)
         """  
-        #Remove non-acceleration imts from residuals.imts for generation of residuals
+        #Remove non-acceleration imts from residuals.imts
         imt_append=pd.DataFrame(self.imts,index=self.imts)
         imt_append.columns=['imt']
         for imt_idx in range(0,np.size(self.imts)):
@@ -938,8 +945,10 @@ class Residuals(object):
             stddev = np.array([], dtype=float)
             for context in self.contexts:
                 obs = np.hstack([obs, np.log(context["Observations"][imtx])])
-                expected = np.hstack([expected,context["Expected"][gmpe][imtx]["Mean"]])
-                stddev = np.hstack([stddev,context["Expected"][gmpe][imtx]["Total"]])
+                expected = np.hstack([expected,context["Expected"][gmpe]
+                                      [imtx]["Mean"]])
+                stddev = np.hstack([stddev,context["Expected"][gmpe]
+                                    [imtx]["Total"]])
             obs_wrt_imt[imtx]=obs
             expected_wrt_imt[imtx]=expected
             stddev_wrt_imt[imtx]=stddev
@@ -955,7 +964,8 @@ class Residuals(object):
         if not finite.any():
             return np.nan, np.nan, np.nan
         elif not finite.all():
-            obs, expected, stddev = obs[finite], expected[finite], stddev[finite]
+            obs, expected, stddev = obs[finite], expected[finite],
+            stddev[finite]
         nvals = len(obs)
         min_d = bandwidth / 2.
         kappa = self._get_edr_kappa(obs, expected)
@@ -979,7 +989,9 @@ class Residuals(object):
         edr = np.sqrt(kappa * inv_n * np.sum(mde ** 2.))
         return mde_norm, np.sqrt(kappa), edr            
     
-    def _get_edr_wrt_spectral_period(self, obs_wrt_imt, expected_wrt_imt, stddev_wrt_imt, bandwidth=0.01, multiplier=3.0):
+    def _get_edr_wrt_spectral_period(self, obs_wrt_imt, expected_wrt_imt,
+                                     stddev_wrt_imt, bandwidth=0.01,
+                                     multiplier=3.0):
         """
         Calculated the Euclidean Distanced-Based Rank for a set of
         observed and expected values from a particular GMPE over imts
@@ -991,10 +1003,13 @@ class Residuals(object):
         for imt in self.imts_appended:
             nvals = len(obs_wrt_imt[imt])
             min_d = bandwidth / 2.
-            kappa_wrt_imt[imt] = self._get_edr_kappa(obs_wrt_imt[imt], expected_wrt_imt[imt])
+            kappa_wrt_imt[imt] = self._get_edr_kappa(obs_wrt_imt[imt],
+                                                     expected_wrt_imt[imt])
             mu_d = obs_wrt_imt[imt] - expected_wrt_imt[imt]
-            d1c = np.fabs(obs_wrt_imt[imt] - (expected_wrt_imt[imt] - (multiplier * stddev_wrt_imt[imt])))
-            d2c = np.fabs(obs_wrt_imt[imt] - (expected_wrt_imt[imt] + (multiplier * stddev_wrt_imt[imt])))
+            d1c = np.fabs(obs_wrt_imt[imt] - (expected_wrt_imt[imt] - (
+                multiplier * stddev_wrt_imt[imt])))
+            d2c = np.fabs(obs_wrt_imt[imt] - (expected_wrt_imt[imt] + (
+                multiplier * stddev_wrt_imt[imt])))
             dc_max = ceil(np.max(np.array([np.max(d1c), np.max(d2c)])))
             num_d = len(np.arange(min_d, dc_max, bandwidth))
             mde_wrt_imt = np.zeros(nvals)
@@ -1009,7 +1024,8 @@ class Residuals(object):
                 mde_wrt_imt += (p_2 - p_1) * d_val
             inv_n = 1.0 / float(nvals)
             mde_norm_wrt_imt[imt] = np.sqrt(inv_n * np.sum(mde_wrt_imt ** 2.))
-            edr_wrt_imt[imt] = np.sqrt(kappa_wrt_imt[imt] * inv_n * np.sum(mde_wrt_imt ** 2.))
+            edr_wrt_imt[imt] = np.sqrt(kappa_wrt_imt[imt] * inv_n * np.sum(
+                mde_wrt_imt ** 2.))
 
         return mde_norm_wrt_imt, np.sqrt(pd.Series(kappa_wrt_imt)), edr_wrt_imt            
 

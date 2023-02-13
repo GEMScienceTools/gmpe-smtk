@@ -70,25 +70,33 @@ class gmpe_ranking_metrics_wrt_imt_test(unittest.TestCase):
         original_avg_llh[gmpe]=original_llh[gmpe]['All']
     avg_llh_original=np.array(pd.Series(original_avg_llh))
 
-    rspl.LoglikelihoodTable(residuals,filename) #Get loglikelihood wrt spectral period (from table function)
+    rspl.LoglikelihoodTable(
+        residuals,filename) # Get loglikelihood wrt spectral period
     llh_wrt_period = residuals.final_llh_df
-    avg_llh_from_wrt_period_function = llh_wrt_period.loc['Avg over all periods'] #Get values within table
+    avg_llh_from_wrt_period_function = llh_wrt_period.loc[
+        'Avg over all periods'] #Get values within table
     avg_llh_new = np.array(pd.Series(avg_llh_from_wrt_period_function))
 
-    rspl.WeightsTable(residuals,filename) #Get model weights wrt spectral period (from table function)
+    rspl.WeightsTable(residuals,
+                      filename) # Get model weights wrt spectral period
     model_weights_wrt_period=residuals.final_model_weights_df
-    avg_model_weights_from_wrt_period_function=model_weights_wrt_period.loc['Avg over all periods'] #Get values within table
-    avg_model_weights_new=np.array(pd.Series(avg_model_weights_from_wrt_period_function))
+    avg_model_weights_from_wrt_period_function=model_weights_wrt_period.loc[
+        'Avg over all periods'] #Get values within table
+    avg_model_weights_new=np.array(pd.Series(
+        avg_model_weights_from_wrt_period_function))
 
     # Evaluate equivalencies of values computed from w.r.t. imt function
     # outputs and original function outputs
     test_equivalency_llh=avg_llh_new/avg_llh_original
     test_equivalency_model_weights = (np.array(avg_model_weights_new) /
         np.array(pd.Series(avg_model_weights_original)))
-    test_array = np.array((test_equivalency_llh,test_equivalency_model_weights))
+    test_array = np.array((test_equivalency_llh,
+                           test_equivalency_model_weights))
 
-    # Compute equal values of kappa using (1) all observations, expected and stddev
-    # values as within original function and (2) using all subsets (indexed by imt)
+    # Compute equal values of kappa using (1) all observations, expected and
+    # stddev
+    # values as within original function and (2) using all subsets
+    # (indexed by imt)
     # reassembled from 'new' function.
 
     # Note: cumulative dist. functions are used to compute MDE norm and EDR
@@ -96,22 +104,23 @@ class gmpe_ranking_metrics_wrt_imt_test(unittest.TestCase):
     # MDE Norm, sqrt(kappa) and EDR values based on aggregation of CDFs for each imt
     # will not equal the value computed within the original functions
     # (due to computing a CDF using observations, expected and stddev for all
-    # imts within a single array in the original function, rather than one array per imt).
+    # imts within a single array in the original function, rather than one
+    # array per imt).
 
-    # Therefore, here, the subsets of observations, expected and stddev for each
-    # imt per gmpe are recombined, and then kappa values matching those
+    # Therefore, here, the subsets of observations, expected and stddev for
+    # each imt per gmpe are recombined, and then kappa values matching those
     # provided by the original functions are attained to test these functions.
 
     # Compute equal kappa from original and wrt spectral period functions
 
-    #Function for EDR metrics wrt spectral period
+    # Function for EDR metrics wrt spectral period
     for gmpe in residuals.gmpe_list:
         #_get_edr_gmpe_information_wrt_spectral_period(self,gmpe)
             """
             Extract the observed ground motions, expected and total standard
             deviation for the GMPE (per imt)
             """
-            #Remove non-acceleration imts from residuals.imts for generation of residuals
+            # Remove non-acceleration imts from residuals.imts
             imt_append=pd.DataFrame(residuals.imts,index=residuals.imts)
             imt_append.columns=['imt']
             for imt_idx in range(0,np.size(residuals.imts)):
@@ -139,14 +148,17 @@ class gmpe_ranking_metrics_wrt_imt_test(unittest.TestCase):
                 expected = np.array([], dtype=float)
                 stddev = np.array([], dtype=float)
                 for context in residuals.contexts:
-                    obs = np.hstack([obs, np.log(context["Observations"][imtx])])
-                    expected = np.hstack([expected,context["Expected"][gmpe][imtx]["Mean"]])
-                    stddev = np.hstack([stddev,context["Expected"][gmpe][imtx]["Total"]])
+                    obs = np.hstack([obs, np.log(context["Observations"]
+                                                 [imtx])])
+                    expected = np.hstack([expected,context["Expected"]
+                                          [gmpe][imtx]["Mean"]])
+                    stddev = np.hstack([stddev,context["Expected"]
+                                        [gmpe][imtx]["Total"]])
                 obs_wrt_imt[imtx]=obs
                 expected_wrt_imt[imtx]=expected
                 stddev_wrt_imt[imtx]=stddev
 
-    #Function for EDR metrics aggregating over all imts (original function)
+    # Function for EDR metrics aggregating over all imts (original function)
     for gmpe in residuals.gmpe_list:
         #def _get_edr_gmpe_information(self, gmpe):
             """
@@ -158,13 +170,16 @@ class gmpe_ranking_metrics_wrt_imt_test(unittest.TestCase):
             stddev = np.array([], dtype=float)
             for imtx in residuals.imts:
                 for context in residuals.contexts:
-                    obs = np.hstack([obs, np.log(context["Observations"][imtx])])
+                    obs = np.hstack([obs, np.log(
+                        context["Observations"][imtx])])
                     expected = np.hstack([expected,
-                                          context["Expected"][gmpe][imtx]["Mean"]])
+                                          context["Expected"]
+                                          [gmpe][imtx]["Mean"]])
                     stddev = np.hstack([stddev,
-                                        context["Expected"][gmpe][imtx]["Total"]])
+                                        context["Expected"]
+                                        [gmpe][imtx]["Total"]])
 
-    #Compute original kappa ratio
+    # Compute original kappa ratio
     mu_a = np.mean(obs)
     mu_y = np.mean(expected)
     b_1 = np.sum((obs - mu_a) * (expected - mu_y)) /\
@@ -175,7 +190,7 @@ class gmpe_ranking_metrics_wrt_imt_test(unittest.TestCase):
     de_corr = np.sum((obs - y_c) ** 2.)
     original_kappa = de_orig / de_corr
 
-    #Compute 'new' kappa from reassembled subsets
+    # Compute 'new' kappa from reassembled subsets
     all_new_function_obs=pd.DataFrame()
     all_new_function_expected=pd.DataFrame()
     for imt in residuals.imts_appended:
@@ -188,20 +203,25 @@ class gmpe_ranking_metrics_wrt_imt_test(unittest.TestCase):
 
     mu_a = np.mean(all_new_function_obs_1)
     mu_y = np.mean(all_new_function_expected_1)
-    b_1 = np.sum((all_new_function_obs_1 - mu_a) * (all_new_function_expected_1 - mu_y)) /\
+    b_1 = np.sum((all_new_function_obs_1 - mu_a) * (
+        all_new_function_expected_1 - mu_y)) /\
               np.sum((all_new_function_obs_1 - mu_a) ** 2.)
     b_0 = mu_y - b_1 * mu_a
-    y_c = all_new_function_expected_1 - ((b_0 + b_1 * all_new_function_obs_1) - all_new_function_obs_1)
-    de_orig = np.sum((all_new_function_obs_1 - all_new_function_expected_1) ** 2.)
+    y_c = all_new_function_expected_1 - ((b_0 + b_1 * all_new_function_obs_1)
+                                         - all_new_function_obs_1)
+    de_orig = np.sum((all_new_function_obs_1 -
+                      all_new_function_expected_1) ** 2.)
     de_corr = np.sum((all_new_function_obs_1 - y_c) ** 2.)
 
     new_kappa=de_orig/de_corr
 
-    #Evaluate 'new' and original kappa
+    # Evaluate 'new' and original kappa
     kappa_ratio=new_kappa/original_kappa
 
-    if np.all(test_array) < 1.005 and np.all(test_array) > 0.995 and kappa_ratio==1:
-        print ('Pass') #acceptable match observed for all metrics
+    if np.all(
+            test_array) < 1.005 and np.all(
+                test_array) > 0.995 and kappa_ratio==1:
+        print ('Pass') # Acceptable match observed for all metrics
 
     shutil.rmtree(output_database)
     shutil.rmtree(output_directory)

@@ -286,9 +286,11 @@ class ResidualPlot(ResidualHistogramPlot):
         x = res_data['x']
         xdata = np.arange(x[0], x[-1] + self.bin_width + 0.01, 0.01)
         ax.plot(xdata, norm.pdf(xdata, mean, stddev), '-',
-                color="LightSlateGrey", linewidth=2.0, label = 'Normal dist. from dataset')
+                color="LightSlateGrey", linewidth=2.0, 
+                label = 'Normal dist. from dataset')
         ax.plot(xdata, norm.pdf(xdata, 0.0, 1.0), '-',
-                color='k', linewidth=2.0, label = 'Standard. normal dist. \n (mean = 0, std. dev. = 1')
+                color='k', linewidth=2.0, 
+                label = 'Standard. normal dist. \n (mean = 0, std. dev. = 1')
         ax.legend(loc = 'best')
         x_limit = max(abs(x))
         ax.set_xlim(x_limit*-1,x_limit)
@@ -902,7 +904,7 @@ def PlotEDRWithSpectralPeriod(residuals,filename,custom_cycler=0,
     for imt_idx in range(0,np.size(residuals.imts)):
          if x_EDR_with_imt.imt_str[imt_idx]=='PGA':
             x_EDR_with_imt.imt_float.iloc[imt_idx]=0
-    x_EDR_with_imt=x_EDR_with_imt.dropna() #Remove any non-acceleration imt if still present
+    x_EDR_with_imt=x_EDR_with_imt.dropna() #Remove any non-acceleration imt
 
     #Define colours for plots
     colour_cycler = (cycler(color=['b', 'g', 'r', 'c','y','m']) *
@@ -967,7 +969,7 @@ def PlotResidualPDFWithSpectralPeriod(residuals,filename,custom_cycler=0,
     for imt_idx in range(0,np.size(residuals.imts)):
         if imts_to_plot.imt_str[imt_idx]=='PGA':
            imts_to_plot.imt_float.iloc[imt_idx]=0
-    imts_to_plot=imts_to_plot.dropna() #Remove any non-acceleration imt if still present
+    imts_to_plot=imts_to_plot.dropna() #Remove any non-acceleration imt
 
     #Get all residuals for all gmpes at all imts
     res_statistics={}
@@ -1212,7 +1214,7 @@ def WeightsTable(residuals,filename):
     #Reassign original imts to residuals.imts
     residuals.imts = preserve_imts
     
-    #Assign final model weights dataframe to residuals object (for test unit case use)
+    #Assign final model weights dataframe to residuals object (for unit test)
     residuals.final_model_weights_df=final_model_weights_df
     return residuals.final_model_weights_df
 
@@ -1282,7 +1284,7 @@ def PDFTable(residuals,filename):
     for imt_idx in range(0,np.size(residuals.imts)):
         if imts_to_plot.imt_str[imt_idx]=='PGA':
            imts_to_plot.imt_float.iloc[imt_idx]=0
-    imts_to_plot=imts_to_plot.dropna() #Remove any non-acceleration imt if still present
+    imts_to_plot=imts_to_plot.dropna() #Remove any non-acceleration imt
 
     #Get all residuals for all gmpes at all imts
     res_statistics={}

@@ -16,11 +16,13 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 """
-Parser from the ESM22 flatfile format (i.e. flatfile downloaded from web service) to SMTK
+Parser from the ESM22 flatfile format (i.e. flatfile downloaded from web
+service) to SMTK
 """
 import pandas as pd
 import os, sys
 import shutil
+import tempfile
 import csv
 import numpy as np
 import copy
@@ -160,7 +162,7 @@ class ESM22FlatfileParser(SMDatabaseReader):
         #Reformat datetime
         r_datetime = ESM22.event_time.str.replace('T',' ')
         
-        converted_flatfile_path,converted_base_data_path=_get_ESM18_headers(
+        converted_base_data_path=_get_ESM18_headers(
             ESM22,default_string,r_fm_type,r_datetime)
                 
         if os.path.exists(output_location):
@@ -170,7 +172,7 @@ class ESM22FlatfileParser(SMDatabaseReader):
         # Add on the records folder
         os.mkdir(os.path.join(output_location, "records"))
         # Create an instance of the parser class
-        database = cls(dbid, dbname, converted_flatfile_path)
+        database = cls(dbid, dbname, converted_base_data_path)
         # Parse the records
         print("Parsing Records ...")
         database.parse(location=output_location)
@@ -179,9 +181,6 @@ class ESM22FlatfileParser(SMDatabaseReader):
         print("Storing metadata to file %s" % metadata_file)
         with open(metadata_file, "wb+") as f:
             pickle.dump(database.database, f)
-            
-        if os.path.exists(converted_base_data_path):
-           shutil.rmtree(converted_base_data_path)
     
         return database
 
@@ -598,7 +597,8 @@ class ESM22FlatfileParser(SMDatabaseReader):
 def _get_ESM18_headers(ESM22,default_string,r_fm_type,r_datetime):
     
     """
-    Convert first from ESM22 format flatfile to ESM18 format flatfile readable by parser
+    Convert first from ESM22 format flatfile to ESM18 format flatfile 
+    readable by parser
     """
     
     #Construct dataframe with original ESM format 
@@ -683,7 +683,9 @@ def _get_ESM18_headers(ESM22,default_string,r_fm_type,r_datetime):
     "V_lp":ESM22.V_lp,
     "W_lp":ESM22.W_lp,
 
-    #GMIM headers --> equivalency assumed for geometric mean and RotD50 within parser if RotD50 empty (RotD is not provided in ESM22 format flatfile from web service)
+    # GMIM headers --> equivalency assumed for geometric mean and RotD50 within
+    # parser if RotD50 empty (RotD is not provided in ESM22 format flatfile 
+    # from web service)
      
     "U_pga":ESM22.U_pga,
     "V_pga":ESM22.V_pga,
@@ -952,10 +954,8 @@ def _get_ESM18_headers(ESM22,default_string,r_fm_type,r_datetime):
     
     # Output to folder where converted flatfile read into parser   
     DATA = os.path.abspath('')
-    os.mkdir('temp')
-    converted_base_data_path = os.path.join(DATA,'temp')
-    converted_filename='\\converted_flatfile.csv'
-    converted_flatfile_path = converted_base_data_path+converted_filename
-    ESM_original_headers.to_csv(converted_flatfile_path,sep=';') #Need to specify output path and filename for converted flatfile
+    converted_base_data_path = tempfile.mkdtemp()
+    converted_base_data_path = os.path.join(DATA,'converted_flatfile.csv')
+    ESM_original_headers.to_csv(converted_base_data_path,sep=';')
 
-    return converted_flatfile_path, converted_base_data_path
+    return converted_base_data_path

@@ -923,11 +923,14 @@ class GSIMRupture(object):
         ax.set_zlim(2*min(depths), 0.0)
         ax.axis('equal')
         
-        #Add title with rupture properties and maximum source-to-site distance considered
-        max_distance=max(self.hypocentre.distance_to_mesh(self.target_sites.mesh,
-                                                              with_depths=False))
+        # Add title with rupture properties and maximum source-to-site
+        # distance considered
+        max_distance=max(
+            self.hypocentre.distance_to_mesh(
+                self.target_sites.mesh,with_depths=False))
         plt.title('Rupture: M =%5.1f, Dip =%3.0f, Ztor =%4.1f, Aspect =%5.2f, Max Distance =%3.0f km'
-                     % (self.magnitude, self.dip, self.ztor, self.aspect, max_distance))
+                     % (self.magnitude, self.dip, self.ztor, self.aspect,
+                        max_distance))
         
         _save_image(filename, plt.gcf(), filetype, dpi)
         plt.show()
