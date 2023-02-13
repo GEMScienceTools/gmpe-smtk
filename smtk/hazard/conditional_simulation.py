@@ -196,7 +196,6 @@ def get_conditional_gmfs(
     gmpe_list = [GSIM_LIST[gmpe]() for gmpe in gsims]
     cmaker = ContextMaker(rupture.tectonic_region_type, gmpe_list,
                           dict(imtls={imt: [0] for imt in imts}))
-    #ctxs = cmaker.get_ctxs([rupture], sites)
     ctxs = list(cmaker.get_ctx_iter([rupture], sites))
     if len(ctxs) == 1:  # engine version >= 3.13
         rupture = sctx = dctx = ctxs[0]
