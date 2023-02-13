@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
@@ -36,6 +35,7 @@ from openquake.hazardlib.gsim.base import (
 from smtk.sm_utils import _save_image
 from openquake.hazardlib.contexts import get_distances
 
+KM_TO_DEGREES = 0.0089932  # 1 degree == 111 km
 TO_RAD = pi / 180.
 FROM_RAD = 180. / pi
 # Default point - some random location on Earth
@@ -892,8 +892,8 @@ class GSIMRupture(object):
             raise ValueError('Unsupported Distance Measure: %s' 
                              % distance_type)
 
-    def plot_model_configuration(self, marker_style="o", figure_size=(7, 5), 
-            filename=None, filetype="png", dpi=300):
+    def plot_model_configuration(self, marker_style=".", figure_size=(7, 5), 
+            filename=None, filetype="jpeg", dpi=300):
         """
         Produces a 3D plot of the current model configuration
         """
@@ -908,19 +908,29 @@ class GSIMRupture(object):
                     self.surface.top_left]:
             lons.append(pnt.longitude)
             lats.append(pnt.latitude)
-            depths.append(-pnt.depth)
+            depths.append(-pnt.depth*KM_TO_DEGREES)
         ax.plot(lons, lats, depths, "k-", lw=2)
 
-        # Scatter the target sites
+        # Scatter the target sites 
         ax.scatter(self.target_sites.mesh.lons,
                    self.target_sites.mesh.lats,
-                   np.ones_like(self.target_sites.mesh.lons),
+                   np.zeros_like(self.target_sites.mesh.lons),
                    c='r',
                    marker=marker_style)
         ax.set_xlabel('Longitude')
         ax.set_ylabel('Latitude')
-        ax.set_zlabel('Depth (km)')
-        ax.set_zlim(np.floor(min(depths)), 0.0)
+        ax.set_zlabel('Depth (decimal degrees)')
+        ax.set_zlim(2*min(depths), 0.0)
+        ax.axis('equal')
+        
+        # Add title with rupture properties and maximum source-to-site
+        # distance considered
+        max_distance=max(
+            self.hypocentre.distance_to_mesh(
+                self.target_sites.mesh,with_depths=False))
+        plt.title('Rupture: M =%5.1f, Dip =%3.0f, Ztor =%4.1f, Aspect =%5.2f, Max Distance =%3.0f km'
+                     % (self.magnitude, self.dip, self.ztor, self.aspect,
+                        max_distance))
+        
         _save_image(filename, plt.gcf(), filetype, dpi)
         plt.show()
-

@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
@@ -17,9 +16,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 """
-Parser from the ESM Flatfile to SMTK
+Parser from the ESM23 flatfile format (i.e. flatfile downloaded from custom
+header HTML) to SMTK
+
+This parser assumes you have selected all available headers in your URL search
+when downloading the flatfile
 """
+import pandas as pd
 import os, sys
+import shutil
+import tempfile
 import csv
 import numpy as np
 import copy
@@ -97,16 +103,17 @@ COUNTRY_CODES = {"AL": "Albania", "AM": "Armenia", "AT": "Austria",
                  "UA": "Ukraine", "UZ": "Uzbekistan", "XK": "Kosovo"}
 
 
-class ESMFlatfileParser(SMDatabaseReader):
+class ESM23FlatfileParser(SMDatabaseReader):
+    
     """
     Parses the ESM metadata from the flatfile to a set of metadata objects
     """
+    
     M_PRECEDENCE = ["EMEC_Mw", "Mw", "Ms", "ML"]
     BUILD_FINITE_DISTANCES = False
 
-    def parse(self, location="./"):
+    def parse(self, location='./'):
         """
-
         """
         assert os.path.isfile(self.filename)
         headers = getline(self.filename, 1).rstrip("\n").split(";")
@@ -141,10 +148,28 @@ class ESMFlatfileParser(SMDatabaseReader):
             counter += 1
 
     @classmethod
-    def autobuild(cls, dbid, dbname, output_location, flatfile_location):
+    def autobuild(cls, dbid, dbname, output_location, 
+                  ESM23_flatfile_directory):
         """
         Quick and dirty full database builder!
         """
+        
+        # Import ESM 2023 format strong-motion flatfile
+        ESM23 = pd.read_csv(ESM23_flatfile_directory)
+ 
+        # Create default values for headers not considered in ESM23 format
+        default_string = pd.Series(np.full(np.size(ESM23.esm_event_id),
+                                           str("")))
+        
+        # Assign strike-slip to unknown faulting mechanism
+        r_fm_type = ESM23.fm_type_code.fillna('SS') 
+        
+        #Reformat datetime
+        r_datetime = ESM23.event_time.str.replace('T',' ')
+        
+        converted_base_data_path=_get_ESM18_headers(
+            ESM23,default_string,r_fm_type,r_datetime)
+                
         if os.path.exists(output_location):
             raise IOError("Target database directory %s already exists!"
                           % output_location)
@@ -152,7 +177,7 @@ class ESMFlatfileParser(SMDatabaseReader):
         # Add on the records folder
         os.mkdir(os.path.join(output_location, "records"))
         # Create an instance of the parser class
-        database = cls(dbid, dbname, flatfile_location)
+        database = cls(dbid, dbname, converted_base_data_path)
         # Parse the records
         print("Parsing Records ...")
         database.parse(location=output_location)
@@ -161,6 +186,7 @@ class ESMFlatfileParser(SMDatabaseReader):
         print("Storing metadata to file %s" % metadata_file)
         with open(metadata_file, "wb+") as f:
             pickle.dump(database.database, f)
+           
         return database
 
     def _sanitise(self, row, reader):
@@ -573,3 +599,364 @@ class ESMFlatfileParser(SMDatabaseReader):
                     scalars["U"][key] * scalars["V"][key])
         return scalars, spectra
 
+def _get_ESM18_headers(ESM23,default_string,r_fm_type,r_datetime):
+    
+    """
+    Convert first from ESM23 format flatfile to ESM18 format flatfile readable by parser
+    """
+    
+    #Construct dataframe with original ESM format 
+    ESM_original_headers = pd.DataFrame(
+    {
+    #Non-GMIM headers   
+    "event_id":ESM23.esm_event_id,                                       
+    "event_time":r_datetime,
+    "ISC_ev_id":default_string,
+    "USGS_ev_id":default_string,
+    "INGV_ev_id":default_string,
+    "EMSC_ev_id":default_string,
+    "ev_nation_code":ESM23.ev_nation_code,
+    "ev_latitude":ESM23.ev_latitude,    
+    "ev_longitude":ESM23.ev_longitude,   
+    "ev_depth_km":ESM23.ev_depth_km,
+    "ev_hyp_ref":default_string,
+    "fm_type_code":r_fm_type,
+    "ML":ESM23.ml,
+    "ML_ref":default_string,
+    "Mw":ESM23.mw,
+    "Mw_ref":default_string,
+    "Ms":ESM23.mw,
+    "Ms_ref":default_string,
+    "EMEC_Mw":ESM23.mw,
+    "EMEC_Mw_type":default_string,
+    "EMEC_Mw_ref":default_string,
+    "event_source_id":default_string,
+ 
+    "es_strike":default_string,
+    "es_dip":default_string,
+    "es_rake":default_string,
+    "es_strike_dip_rake_ref":default_string, 
+    "es_z_top":default_string,
+    "es_z_top_ref":default_string,
+    "es_length":default_string,   
+    "es_width":default_string,
+    "es_geometry_ref":default_string,
+ 
+    "network_code":ESM23.network_code,
+    "station_code":ESM23.station_code,
+    "location_code":ESM23.location_code,
+    "instrument_code":ESM23.instrument_type_code,     
+    "sensor_depth_m":ESM23.sensor_depth_m,
+    "proximity_code":ESM23.proximity,
+    "housing_code":ESM23.hounsing,    #Currently typo in their database header
+    "installation_code":ESM23.installation,
+    "st_nation_code":ESM23.st_nation_code,
+    "st_latitude":ESM23.st_latitude,
+    "st_longitude":ESM23.st_longitude,
+    "st_elevation":ESM23.st_elevation,
+    
+    "ec8_code":default_string,
+    "ec8_code_method":ESM23.ec8_code_from_topography,
+    "ec8_code_ref":default_string,
+    "vs30_m_sec":ESM23.vs30_m_s_wa,
+    "vs30_ref":default_string,
+    "vs30_calc_method":default_string, 
+    "vs30_meas_type":default_string,
+    "slope_deg":default_string,
+    "vs30_m_sec_WA":default_string,
+ 
+    "epi_dist":ESM23.epi_dist,
+    "epi_az":ESM23.epi_az,  
+    "JB_dist":ESM23.jb_dist,
+    "rup_dist":ESM23.rup_dist, 
+    "Rx_dist":ESM23.rx_dist, 
+    "Ry0_dist":ESM23.ry0_dist,
+ 
+    "instrument_type_code":ESM23.instrument_type_code,      
+    "late_triggered_flag_01":ESM23.late_triggered_event_01,
+    "U_channel_code":ESM23.u_channel_code,
+    "U_azimuth_deg":ESM23.u_azimuth_deg,
+    "V_channel_code":ESM23.v_channel_code,
+    "V_azimuth_deg":ESM23.v_azimuth_deg,
+    "W_channel_code":ESM23.w_channel_code,
+    
+    "U_hp":ESM23.u_hp,
+    "V_hp":ESM23.v_hp,
+    "W_hp":ESM23.w_hp,  
+    "U_lp":ESM23.u_lp,
+    "V_lp":ESM23.v_lp,
+    "W_lp":ESM23.w_lp,
+     
+    "U_pga":ESM23.u_pga,
+    "V_pga":ESM23.v_pga,
+    "W_pga":ESM23.w_pga,
+    "rotD50_pga":ESM23.rotd50_pga,
+    "rotD100_pga":ESM23.rotd100_pga,
+    "rotD00_pga":ESM23.rotd00_pga,
+    "U_pgv":ESM23.u_pgv,
+    "V_pgv":ESM23.v_pgv,
+    "W_pgv":ESM23.w_pgv,
+    "rotD50_pgv":ESM23.rotd50_pgv,
+    "rotD100_pgv":ESM23.rotd100_pgv,
+    "rotD00_pgv":ESM23.rotd00_pgv,
+    "U_pgd":ESM23.u_pgd,
+    "V_pgd":ESM23.v_pgd,
+    "W_pgd":ESM23.w_pgd,
+    "rotD50_pgd":ESM23.rotd50_pgd,
+    "rotD100_pgd":ESM23.rotd100_pgd,
+    "rotD00_pgd":ESM23.rotd00_pgv,
+    "U_T90":ESM23.u_t90,
+    "V_T90":ESM23.v_t90,
+    "W_T90":ESM23.w_t90,
+    "rotD50_T90":ESM23.rotd50_t90,
+    "rotD100_T90":ESM23.rotd100_t90,
+    "rotD00_T90":ESM23.rot_d00_t90, #This header has typo in current db version 
+    "U_housner":ESM23.u_housner,
+    "V_housner":ESM23.v_housner,
+    "W_housner":ESM23.w_housner,
+    "rotD50_housner":ESM23.rotd50_housner,
+    "rotD100_housner":ESM23.rotd100_housner,
+    "rotD00_housner":ESM23.rotd00_housner,
+    "U_CAV":ESM23.u_cav,
+    "V_CAV":ESM23.v_cav,
+    "W_CAV":ESM23.w_cav,
+    "rotD50_CAV":ESM23.rotd50_cav,
+    "rotD100_CAV":ESM23.rotd100_cav,
+    "rotD00_CAV":ESM23.rotd00_cav,
+    "U_ia":ESM23.u_ia,
+    "V_ia":ESM23.v_ia,
+    "W_ia":ESM23.w_ia,
+    "rotD50_ia":ESM23.rotd50_ia,
+    "rotD100_ia":ESM23.rotd100_ia,
+    "rotD00_ia":ESM23.rotd00_ia,
+    
+    "U_T0_010":ESM23.u_t0_010,
+    "U_T0_025":ESM23.u_t0_025,
+    "U_T0_040":ESM23.u_t0_040,
+    "U_T0_050":ESM23.u_t0_050,
+    "U_T0_070":ESM23.u_t0_070,
+    "U_T0_100":ESM23.u_t0_100,
+    "U_T0_150":ESM23.u_t0_150,
+    "U_T0_200":ESM23.u_t0_200,
+    "U_T0_250":ESM23.u_t0_250,
+    "U_T0_300":ESM23.u_t0_300,
+    "U_T0_350":ESM23.u_t0_350,
+    "U_T0_400":ESM23.u_t0_400,
+    "U_T0_450":ESM23.u_t0_450,
+    "U_T0_500":ESM23.u_t0_500,
+    "U_T0_600":ESM23.u_t0_600,
+    "U_T0_700":ESM23.u_t0_700,
+    "U_T0_750":ESM23.u_t0_750,
+    "U_T0_800":ESM23.u_t0_800,
+    "U_T0_900":ESM23.u_t0_900,
+    "U_T1_000":ESM23.u_t1_000,
+    "U_T1_200":ESM23.u_t1_200,
+    "U_T1_400":ESM23.u_t1_400,
+    "U_T1_600":ESM23.u_t1_600,
+    "U_T1_800":ESM23.u_t1_800,
+    "U_T2_000":ESM23.u_t2_000,
+    "U_T2_500":ESM23.u_t2_500,
+    "U_T3_000":ESM23.u_t3_000,
+    "U_T3_500":ESM23.u_t3_500,
+    "U_T4_000":ESM23.u_t4_000,
+    "U_T4_500":ESM23.u_t4_500,
+    "U_T5_000":ESM23.u_t5_000,
+    "U_T6_000":ESM23.u_t6_000,
+    "U_T7_000":ESM23.u_t7_000,
+    "U_T8_000":ESM23.u_t8_000,
+    "U_T9_000":ESM23.u_t9_000,
+    "U_T10_000":ESM23.u_t10_000,
+       
+    "V_T0_010":ESM23.v_t0_010,
+    "V_T0_025":ESM23.v_t0_025,
+    "V_T0_040":ESM23.v_t0_040,
+    "V_T0_050":ESM23.v_t0_050,
+    "V_T0_070":ESM23.v_t0_070,
+    "V_T0_100":ESM23.v_t0_100,
+    "V_T0_150":ESM23.v_t0_150,
+    "V_T0_200":ESM23.v_t0_200,
+    "V_T0_250":ESM23.v_t0_250,
+    "V_T0_300":ESM23.v_t0_300,
+    "V_T0_350":ESM23.v_t0_350,
+    "V_T0_400":ESM23.v_t0_400,
+    "V_T0_450":ESM23.v_t0_450,
+    "V_T0_500":ESM23.v_t0_500,
+    "V_T0_600":ESM23.v_t0_600,
+    "V_T0_700":ESM23.v_t0_700,
+    "V_T0_750":ESM23.v_t0_750,
+    "V_T0_800":ESM23.v_t0_800,
+    "V_T0_900":ESM23.v_t0_900,
+    "V_T1_000":ESM23.v_t1_000,
+    "V_T1_200":ESM23.v_t1_200,
+    "V_T1_400":ESM23.v_t1_400,
+    "V_T1_600":ESM23.v_t1_600,
+    "V_T1_800":ESM23.v_t1_800,
+    "V_T2_000":ESM23.v_t2_000,
+    "V_T2_500":ESM23.v_t2_500,
+    "V_T3_000":ESM23.v_t3_000,
+    "V_T3_500":ESM23.v_t3_500,
+    "V_T4_000":ESM23.v_t4_000,
+    "V_T4_500":ESM23.v_t4_500,
+    "V_T5_000":ESM23.v_t5_000,
+    "V_T6_000":ESM23.v_t6_000,
+    "V_T7_000":ESM23.v_t7_000,
+    "V_T8_000":ESM23.v_t8_000,
+    "V_T9_000":ESM23.v_t9_000,
+    "V_T10_000":ESM23.v_t10_000,
+    
+    "W_T0_010":ESM23.w_t0_010,
+    "W_T0_025":ESM23.w_t0_025,
+    "W_T0_040":ESM23.w_t0_040,
+    "W_T0_050":ESM23.w_t0_050,
+    "W_T0_070":ESM23.w_t0_070,
+    "W_T0_100":ESM23.w_t0_100,
+    "W_T0_150":ESM23.w_t0_150,
+    "W_T0_200":ESM23.w_t0_200,
+    "W_T0_250":ESM23.w_t0_250,
+    "W_T0_300":ESM23.w_t0_300,
+    "W_T0_350":ESM23.w_t0_350,
+    "W_T0_400":ESM23.w_t0_400,
+    "W_T0_450":ESM23.w_t0_450,
+    "W_T0_500":ESM23.w_t0_500,
+    "W_T0_600":ESM23.w_t0_600,
+    "W_T0_700":ESM23.w_t0_700,
+    "W_T0_750":ESM23.w_t0_750,
+    "W_T0_800":ESM23.w_t0_800,
+    "W_T0_900":ESM23.w_t0_900,
+    "W_T1_000":ESM23.w_t1_000,
+    "W_T1_200":ESM23.w_t1_200,
+    "W_T1_400":ESM23.w_t1_400,
+    "W_T1_600":ESM23.w_t1_600,
+    "W_T1_800":ESM23.w_t1_800,
+    "W_T2_000":ESM23.w_t2_000,
+    "W_T2_500":ESM23.w_t2_500,
+    "W_T3_000":ESM23.w_t3_000,
+    "W_T3_500":ESM23.w_t3_500,
+    "W_T4_000":ESM23.w_t4_000,
+    "W_T4_500":ESM23.w_t4_500,
+    "W_T5_000":ESM23.w_t5_000,
+    "W_T6_000":ESM23.w_t6_000,
+    "W_T7_000":ESM23.w_t7_000,
+    "W_T8_000":ESM23.w_t8_000,
+    "W_T9_000":ESM23.w_t9_000,
+    "W_T10_000":ESM23.w_t10_000,
+    
+    "rotD50_T0_010":ESM23.rotd50_t0_010,
+    "rotD50_T0_025":ESM23.rotd50_t0_025,
+    "rotD50_T0_040":ESM23.rotd50_t0_040,
+    "rotD50_T0_050":ESM23.rotd50_t0_050,
+    "rotD50_T0_070":ESM23.rotd50_t0_070,
+    "rotD50_T0_100":ESM23.rotd50_t0_100,
+    "rotD50_T0_150":ESM23.rotd50_t0_150,
+    "rotD50_T0_200":ESM23.rotd50_t0_200,
+    "rotD50_T0_250":ESM23.rotd50_t0_250,
+    "rotD50_T0_300":ESM23.rotd50_t0_300,
+    "rotD50_T0_350":ESM23.rotd50_t0_350,
+    "rotD50_T0_400":ESM23.rotd50_t0_400,
+    "rotD50_T0_450":ESM23.rotd50_t0_450,
+    "rotD50_T0_500":ESM23.rotd50_t0_500,
+    "rotD50_T0_600":ESM23.rotd50_t0_600,
+    "rotD50_T0_700":ESM23.rotd50_t0_700,
+    "rotD50_T0_750":ESM23.rotd50_t0_750,
+    "rotD50_T0_800":ESM23.rotd50_t0_800,
+    "rotD50_T0_900":ESM23.rotd50_t0_900,
+    "rotD50_T1_000":ESM23.rotd50_t1_000,
+    "rotD50_T1_200":ESM23.rotd50_t1_200,
+    "rotD50_T1_400":ESM23.rotd50_t1_400,
+    "rotD50_T1_600":ESM23.rotd50_t1_600,
+    "rotD50_T1_800":ESM23.rotd50_t1_800,
+    "rotD50_T2_000":ESM23.rotd50_t2_000,
+    "rotD50_T2_500":ESM23.rotd50_t2_500,
+    "rotD50_T3_000":ESM23.rotd50_t3_000,
+    "rotD50_T3_500":ESM23.rotd50_t3_500,
+    "rotD50_T4_000":ESM23.rotd50_t4_000,
+    "rotD50_T4_500":ESM23.rotd50_t4_500,
+    "rotD50_T5_000":ESM23.rotd50_t5_000,
+    "rotD50_T6_000":ESM23.rotd50_t6_000,
+    "rotD50_T7_000":ESM23.rotd50_t7_000,
+    "rotD50_T8_000":ESM23.rotd50_t8_000,
+    "rotD50_T9_000":ESM23.rotd50_t9_000,
+    "rotD50_T10_000":ESM23.rotd50_t10_000,
+       
+    
+    "rotD100_T0_010":ESM23.rotd100_t0_010,
+    "rotD100_T0_025":ESM23.rotd100_t0_025,
+    "rotD100_T0_040":ESM23.rotd100_t0_040,
+    "rotD100_T0_050":ESM23.rotd100_t0_050,
+    "rotD100_T0_070":ESM23.rotd100_t0_070,
+    "rotD100_T0_100":ESM23.rotd100_t0_100,
+    "rotD100_T0_150":ESM23.rotd100_t0_150,
+    "rotD100_T0_200":ESM23.rotd100_t0_200,
+    "rotD100_T0_250":ESM23.rotd100_t0_250,
+    "rotD100_T0_300":ESM23.rotd100_t0_300,
+    "rotD100_T0_350":ESM23.rotd100_t0_350,
+    "rotD100_T0_400":ESM23.rotd100_t0_400,
+    "rotD100_T0_450":ESM23.rotd100_t0_450,
+    "rotD100_T0_500":ESM23.rotd100_t0_500,
+    "rotD100_T0_600":ESM23.rotd100_t0_600,
+    "rotD100_T0_700":ESM23.rotd100_t0_700,
+    "rotD100_T0_750":ESM23.rotd100_t0_750,
+    "rotD100_T0_800":ESM23.rotd100_t0_800,
+    "rotD100_T0_900":ESM23.rotd100_t0_900,
+    "rotD100_T1_000":ESM23.rotd100_t1_000,
+    "rotD100_T1_200":ESM23.rotd100_t1_200,
+    "rotD100_T1_400":ESM23.rotd100_t1_400,
+    "rotD100_T1_600":ESM23.rotd100_t1_600,
+    "rotD100_T1_800":ESM23.rotd100_t1_800,
+    "rotD100_T2_000":ESM23.rotd100_t2_000,
+    "rotD100_T2_500":ESM23.rotd100_t2_500,
+    "rotD100_T3_000":ESM23.rotd100_t3_000,
+    "rotD100_T3_500":ESM23.rotd100_t3_500,
+    "rotD100_T4_000":ESM23.rotd100_t4_000,
+    "rotD100_T4_500":ESM23.rotd100_t4_500,
+    "rotD100_T5_000":ESM23.rotd100_t5_000,
+    "rotD100_T6_000":ESM23.rotd100_t6_000,
+    "rotD100_T7_000":ESM23.rotd100_t7_000,
+    "rotD100_T8_000":ESM23.rotd100_t8_000,
+    "rotD100_T9_000":ESM23.rotd100_t9_000,
+    "rotD100_T10_000":ESM23.rotd100_t10_000,      
+ 
+    "rotD00_T0_010":ESM23.rotd00_t0_010,
+    "rotD00_T0_025":ESM23.rotd00_t0_025,
+    "rotD00_T0_040":ESM23.rotd00_t0_040,
+    "rotD00_T0_050":ESM23.rotd00_t0_050,
+    "rotD00_T0_070":ESM23.rotd00_t0_070,
+    "rotD00_T0_100":ESM23.rotd00_t0_100,
+    "rotD00_T0_150":ESM23.rotd00_t0_150,
+    "rotD00_T0_200":ESM23.rotd00_t0_200,
+    "rotD00_T0_250":ESM23.rotd00_t0_250,
+    "rotD00_T0_300":ESM23.rotd00_t0_300,
+    "rotD00_T0_350":ESM23.rotd00_t0_350,
+    "rotD00_T0_400":ESM23.rotd00_t0_400,
+    "rotD00_T0_450":ESM23.rotd00_t0_450,
+    "rotD00_T0_500":ESM23.rotd00_t0_500,
+    "rotD00_T0_600":ESM23.rotd00_t0_600,
+    "rotD00_T0_700":ESM23.rotd00_t0_700,
+    "rotD00_T0_750":ESM23.rotd00_t0_750,
+    "rotD00_T0_800":ESM23.rotd00_t0_800,
+    "rotD00_T0_900":ESM23.rotd00_t0_900,
+    "rotD00_T1_000":ESM23.rotd00_t1_000,
+    "rotD00_T1_200":ESM23.rotd00_t1_200,
+    "rotD00_T1_400":ESM23.rotd00_t1_400,
+    "rotD00_T1_600":ESM23.rotd00_t1_600,
+    "rotD00_T1_800":ESM23.rotd00_t1_800,
+    "rotD00_T2_000":ESM23.rotd00_t2_000,
+    "rotD00_T2_500":ESM23.rotd00_t2_500,
+    "rotD00_T3_000":ESM23.rotd00_t3_000,
+    "rotD00_T3_500":ESM23.rotd00_t3_500,
+    "rotD00_T4_000":ESM23.rotd00_t4_000,
+    "rotD00_T4_500":ESM23.rotd00_t4_500,
+    "rotD00_T5_000":ESM23.rotd00_t5_000,
+    "rotD00_T6_000":ESM23.rotd00_t6_000,
+    "rotD00_T7_000":ESM23.rotd00_t7_000,
+    "rotD00_T8_000":ESM23.rotd00_t8_000,
+    "rotD00_T9_000":ESM23.rotd00_t9_000,
+    "rotD00_T10_000":ESM23.rotd00_t10_000})
+    
+    # Output to folder where converted flatfile read into parser   
+    DATA = os.path.abspath('')
+    converted_base_data_path = tempfile.mkdtemp()
+    converted_base_data_path = os.path.join(DATA,'converted_flatfile.csv')
+    ESM_original_headers.to_csv(converted_base_data_path,sep=';')
+
+    return converted_base_data_path
