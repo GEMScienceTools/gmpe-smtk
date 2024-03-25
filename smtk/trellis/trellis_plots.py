@@ -76,6 +76,7 @@ PLOT_UNITS = {
     'SA': 'g',
     'SD': 'cm',
     'IA': 'm/s',
+    'CAV': 'g-sec',
     'CSV': 'g-sec',
     'RSD': 's',
     'MMI': ''
