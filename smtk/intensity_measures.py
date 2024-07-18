@@ -24,7 +24,7 @@ set of acceleration time series
 
 import numpy as np
 from math import pi
-from scipy.integrate import cumtrapz
+from scipy.integrate import cumulative_trapezoid
 from scipy import constants
 import matplotlib.pyplot as plt
 import smtk.response_spectrum as rsp
@@ -67,12 +67,12 @@ def get_peak_measures(time_step, acceleration, get_vel=False, get_disp=False):
     if get_disp:
         get_vel = True
     if get_vel:
-        velocity = time_step * cumtrapz(acceleration, initial=0.)
+        velocity = time_step * cumulative_trapezoid(acceleration, initial=0.)
         pgv = np.max(np.fabs(velocity))
     else:
         pgv = None
     if get_disp:
-        displacement = time_step * cumtrapz(velocity, initial=0.)
+        displacement = time_step * cumulative_trapezoid(velocity, initial=0.)
         pgd = np.max(np.fabs(displacement))
     else:
         pgd = None
@@ -542,7 +542,7 @@ def get_husid(acceleration, time_step):
         Time-step of record (s)
     """
     time_vector = get_time_vector(time_step, len(acceleration))
-    husid = np.hstack([0., cumtrapz(acceleration ** 2., time_vector)])
+    husid = np.hstack([0., cumulative_trapezoid(acceleration ** 2., time_vector)])
     return husid, time_vector
 
 
