@@ -1,3 +1,6 @@
+**PLEASE NOTE THAT THIS REPO IS NO LONGER MAINTAINED - PLEASE LOOK AT THE 'gmc' MODULE IN THE MODEL BUILDING TOOLKIT at https://github.com/GEMScienceTools/oq-mbtk**
+
+
 gmpe-smtk
 =========
 [![Build Status](https://travis-ci.org/GEMScienceTools/gmpe-smtk.svg?branch=master)](https://travis-ci.org/GEMScienceTools/gmpe-smtk)
