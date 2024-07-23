@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
@@ -30,6 +29,7 @@ from math import sqrt, ceil
 from copy import deepcopy
 
 import numpy as np
+import pandas as pd
 from scipy.special import erf
 from scipy.stats import norm
 from scipy.linalg import solve
@@ -690,7 +690,7 @@ class Residuals(object):
                                      for gmpe in self.gmpe_list])
         imt_list = [(imtx, None) for imtx in imts]
         imt_list.append(("All", None))
-        llh = OrderedDict([(gmpe, OrderedDict(imt_list))
+        self.llh = OrderedDict([(gmpe, OrderedDict(imt_list))
                            for gmpe in self.gmpe_list])
         for gmpe in self.gmpe_list:
             for imtx in imts:
@@ -705,19 +705,32 @@ class Residuals(object):
                 log_residuals[gmpe] = np.hstack([
                     log_residuals[gmpe],
                     asll])
-                llh[gmpe][imtx] = -(1.0 / float(len(asll))) * np.sum(asll)
+                self.llh[gmpe][imtx] = -(1.0 / float(len(asll))) * np.sum(asll)
 
-            llh[gmpe]["All"] = -(1. / float(len(log_residuals[gmpe]))) *\
+            self.llh[gmpe]["All"] = -(1. / float(len(log_residuals[gmpe]))) *\
                 np.sum(log_residuals[gmpe])
-        # Get weights
-        weights = np.array([2.0 ** -llh[gmpe]["All"]
+        # Get mean weights
+        weights = np.array([2.0 ** -self.llh[gmpe]["All"]
                             for gmpe in self.gmpe_list])
         weights = weights / np.sum(weights)
-        model_weights = OrderedDict([
+        self.model_weights = OrderedDict([
             (gmpe, weights[iloc]) for iloc, gmpe in enumerate(self.gmpe_list)]
             )
-        return llh, model_weights
-
+        # Get weights with imt
+        self.model_weights_with_imt={}
+        for imt in self.imts:
+            weights_with_imt = np.array([2.0 ** -self.llh[gmpe][imt]
+                                         for gmpe in self.gmpe_list])
+            weights_with_imt = weights_with_imt/np.sum(weights_with_imt)
+            self.model_weights_with_imt[imt] = OrderedDict([(gmpe, 
+                                                             weights_with_imt
+                                                             [iloc])
+                                                            for iloc, gmpe
+                                                            in enumerate(
+                                                                self.gmpe_list
+                                                                )])
+        return self.llh, self.model_weights, self.model_weights_with_imt
+        
     # Mak et al multivariate LLH functions
     def get_multivariate_loglikelihood_values(self, sum_imts=False):
         """
@@ -848,6 +861,38 @@ class Residuals(object):
             edr_values[gmpe]["sqrt Kappa"] = results[1]
             edr_values[gmpe]["EDR"] = results[2]
         return edr_values
+    
+    def get_edr_values_wrt_spectral_period(self, bandwidth=0.01,
+                                           multiplier=3.0):
+        """
+        Calculates the EDR values for each GMPE according to the Euclidean
+        Distance Ranking method of Kale & Akkar (2013) for each imt
+
+        Kale, O., and Akkar, S. (2013) "A New Procedure for Selecting and
+        Ranking Ground Motion Predicion Equations (GMPEs): The Euclidean
+        Distance-Based Ranking Method", Bulletin of the Seismological Society
+        of America, 103(2A), 1069 - 1084.
+
+        :param float bandwidth:
+            Discretisation width
+
+        :param float multiplier:
+            "Multiplier of standard deviation (equation 8 of Kale and Akkar)
+        """
+        
+        self.edr_values_wrt_imt = OrderedDict([(gmpe, {}) for 
+                                               gmpe in self.gmpe_list])
+        for gmpe in self.gmpe_list:
+            obs_wrt_imt, expected_wrt_imt, stddev_wrt_imt = self._get_edr_gmpe_information_wrt_spectral_period(gmpe)
+            results = self._get_edr_wrt_spectral_period(obs_wrt_imt,
+                                    expected_wrt_imt,
+                                    stddev_wrt_imt,
+                                    bandwidth,
+                                    multiplier)
+            self.edr_values_wrt_imt[gmpe]["MDE Norm"] = results[0]
+            self.edr_values_wrt_imt[gmpe]["sqrt Kappa"] = results[1]
+            self.edr_values_wrt_imt[gmpe]["EDR"] = results[2]
+        return self.edr_values_wrt_imt
 
     def _get_edr_gmpe_information(self, gmpe):
         """
@@ -865,7 +910,51 @@ class Residuals(object):
                 stddev = np.hstack([stddev,
                                     context["Expected"][gmpe][imtx]["Total"]])
         return obs, expected, stddev
-
+    
+    def _get_edr_gmpe_information_wrt_spectral_period(self, gmpe):
+        """
+        Extract the observed ground motions, expected and total standard
+        deviation for the GMPE (per imt)
+        """  
+        #Remove non-acceleration imts from residuals.imts
+        imt_append=pd.DataFrame(self.imts,index=self.imts)
+        imt_append.columns=['imt']
+        for imt_idx in range(0,np.size(self.imts)):
+             if self.imts[imt_idx]=='PGV':
+                 imt_append=imt_append.drop(imt_append.loc['PGV'])
+             if self.imts[imt_idx]=='PGD':
+                 imt_append=imt_append.drop(imt_append.loc['PGD'])
+             if self.imts[imt_idx]=='CAV':
+                 imt_append=imt_append.drop(imt_append.loc['CAV'])
+             if self.imts[imt_idx]=='Ia':
+                 imt_append=imt_append.drop(imt_append.loc['Ia'])
+            
+        imt_append_list=pd.DataFrame()
+        for idx in range(0,len(imt_append)):
+             imt_append_list[idx]=imt_append.iloc[idx]
+        imt_append=imt_append.reset_index()
+        imt_append_list.columns=imt_append.imt
+        self.imts_appended=list(imt_append_list)
+        
+        obs_wrt_imt={}
+        expected_wrt_imt={}
+        stddev_wrt_imt={}
+        for imtx in self.imts_appended:
+            obs = np.array([], dtype=float)
+            expected = np.array([], dtype=float)
+            stddev = np.array([], dtype=float)
+            for context in self.contexts:
+                obs = np.hstack([obs, np.log(context["Observations"][imtx])])
+                expected = np.hstack([expected,context["Expected"][gmpe]
+                                      [imtx]["Mean"]])
+                stddev = np.hstack([stddev,context["Expected"][gmpe]
+                                    [imtx]["Total"]])
+            obs_wrt_imt[imtx]=obs
+            expected_wrt_imt[imtx]=expected
+            stddev_wrt_imt[imtx]=stddev
+            
+        return obs_wrt_imt, expected_wrt_imt, stddev_wrt_imt
+    
     def _get_edr(self, obs, expected, stddev, bandwidth=0.01, multiplier=3.0):
         """
         Calculated the Euclidean Distanced-Based Rank for a set of
@@ -875,7 +964,8 @@ class Residuals(object):
         if not finite.any():
             return np.nan, np.nan, np.nan
         elif not finite.all():
-            obs, expected, stddev = obs[finite], expected[finite], stddev[finite]
+            obs, expected, stddev = obs[finite], expected[finite],
+            stddev[finite]
         nvals = len(obs)
         min_d = bandwidth / 2.
         kappa = self._get_edr_kappa(obs, expected)
@@ -897,7 +987,47 @@ class Residuals(object):
         inv_n = 1.0 / float(nvals)
         mde_norm = np.sqrt(inv_n * np.sum(mde ** 2.))
         edr = np.sqrt(kappa * inv_n * np.sum(mde ** 2.))
-        return mde_norm, np.sqrt(kappa), edr
+        return mde_norm, np.sqrt(kappa), edr            
+    
+    def _get_edr_wrt_spectral_period(self, obs_wrt_imt, expected_wrt_imt,
+                                     stddev_wrt_imt, bandwidth=0.01,
+                                     multiplier=3.0):
+        """
+        Calculated the Euclidean Distanced-Based Rank for a set of
+        observed and expected values from a particular GMPE over imts
+        """
+        mde_norm_wrt_imt={}
+        edr_wrt_imt={}
+        kappa_wrt_imt={}
+
+        for imt in self.imts_appended:
+            nvals = len(obs_wrt_imt[imt])
+            min_d = bandwidth / 2.
+            kappa_wrt_imt[imt] = self._get_edr_kappa(obs_wrt_imt[imt],
+                                                     expected_wrt_imt[imt])
+            mu_d = obs_wrt_imt[imt] - expected_wrt_imt[imt]
+            d1c = np.fabs(obs_wrt_imt[imt] - (expected_wrt_imt[imt] - (
+                multiplier * stddev_wrt_imt[imt])))
+            d2c = np.fabs(obs_wrt_imt[imt] - (expected_wrt_imt[imt] + (
+                multiplier * stddev_wrt_imt[imt])))
+            dc_max = ceil(np.max(np.array([np.max(d1c), np.max(d2c)])))
+            num_d = len(np.arange(min_d, dc_max, bandwidth))
+            mde_wrt_imt = np.zeros(nvals)
+            for iloc in range(0, num_d):
+                d_val = (min_d + (float(iloc) * bandwidth)) * np.ones(nvals)
+                d_1 = d_val - min_d
+                d_2 = d_val + min_d
+                p_1 = norm.cdf((d_1 - mu_d) / stddev_wrt_imt[imt]) -\
+                norm.cdf((-d_1 - mu_d) / stddev_wrt_imt[imt])
+                p_2 = norm.cdf((d_2 - mu_d) / stddev_wrt_imt[imt]) -\
+                norm.cdf((-d_2 - mu_d) / stddev_wrt_imt[imt])
+                mde_wrt_imt += (p_2 - p_1) * d_val
+            inv_n = 1.0 / float(nvals)
+            mde_norm_wrt_imt[imt] = np.sqrt(inv_n * np.sum(mde_wrt_imt ** 2.))
+            edr_wrt_imt[imt] = np.sqrt(kappa_wrt_imt[imt] * inv_n * np.sum(
+                mde_wrt_imt ** 2.))
+
+        return mde_norm_wrt_imt, np.sqrt(pd.Series(kappa_wrt_imt)), edr_wrt_imt            
 
     def _get_edr_kappa(self, obs, expected):
         """
@@ -912,7 +1042,6 @@ class Residuals(object):
         de_orig = np.sum((obs - expected) ** 2.)
         de_corr = np.sum((obs - y_c) ** 2.)
         return de_orig / de_corr
-
 
 GSIM_MODEL_DATA_TESTS = {
     "Residuals": lambda residuals, config:

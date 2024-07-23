@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
@@ -17,9 +16,13 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with OpenQuake. If not, see <http://www.gnu.org/licenses/>.
 """
-Parser from the ESM Flatfile to SMTK
+Parser from the ESM22 flatfile format (i.e. flatfile downloaded from web
+service) to SMTK
 """
+import pandas as pd
 import os, sys
+import shutil
+import tempfile
 import csv
 import numpy as np
 import copy
@@ -29,8 +32,8 @@ from linecache import getline
 from collections import OrderedDict
 from datetime import datetime
 # In order to define default fault dimension import scaling relationships
-from openquake.hazardlib.scalerel.strasser2010 import (StrasserInterface,
-                                                       StrasserIntraslab)
+# from openquake.hazardlib.scalerel.strasser2010 import (StrasserInterface,
+#                                                       StrasserIntraslab)
 from openquake.hazardlib.scalerel.wc1994 import WC1994
 from openquake.hazardlib.geo.mesh import Mesh, RectangularMesh
 from openquake.hazardlib.geo.point import Point
@@ -97,16 +100,17 @@ COUNTRY_CODES = {"AL": "Albania", "AM": "Armenia", "AT": "Austria",
                  "UA": "Ukraine", "UZ": "Uzbekistan", "XK": "Kosovo"}
 
 
-class ESMFlatfileParser(SMDatabaseReader):
+class ESM22FlatfileParser(SMDatabaseReader):
+    
     """
     Parses the ESM metadata from the flatfile to a set of metadata objects
     """
+    
     M_PRECEDENCE = ["EMEC_Mw", "Mw", "Ms", "ML"]
     BUILD_FINITE_DISTANCES = False
 
-    def parse(self, location="./"):
+    def parse(self, location='./'):
         """
-
         """
         assert os.path.isfile(self.filename)
         headers = getline(self.filename, 1).rstrip("\n").split(";")
@@ -141,10 +145,26 @@ class ESMFlatfileParser(SMDatabaseReader):
             counter += 1
 
     @classmethod
-    def autobuild(cls, dbid, dbname, output_location, flatfile_location):
+    def autobuild(cls, dbid, dbname, output_location, ESM22_flatfile_directory):
         """
         Quick and dirty full database builder!
         """
+        
+        # Import ESM 2022 format strong-motion flatfile
+        ESM22 = pd.read_csv(ESM22_flatfile_directory) #Need to specify ESM22_flatfile_directory and filename
+ 
+        # Create default values for headers not considered in ESM22 flatfile format
+        default_string = pd.Series(np.full(np.size(ESM22.event_id),str("")))
+        
+        # Assign strike-slip to unknown faulting mechanism
+        r_fm_type = ESM22.fm_type_code.fillna('SS') 
+        
+        #Reformat datetime
+        r_datetime = ESM22.event_time.str.replace('T',' ')
+        
+        converted_base_data_path=_get_ESM18_headers(
+            ESM22,default_string,r_fm_type,r_datetime)
+                
         if os.path.exists(output_location):
             raise IOError("Target database directory %s already exists!"
                           % output_location)
@@ -152,7 +172,7 @@ class ESMFlatfileParser(SMDatabaseReader):
         # Add on the records folder
         os.mkdir(os.path.join(output_location, "records"))
         # Create an instance of the parser class
-        database = cls(dbid, dbname, flatfile_location)
+        database = cls(dbid, dbname, converted_base_data_path)
         # Parse the records
         print("Parsing Records ...")
         database.parse(location=output_location)
@@ -161,6 +181,7 @@ class ESMFlatfileParser(SMDatabaseReader):
         print("Storing metadata to file %s" % metadata_file)
         with open(metadata_file, "wb+") as f:
             pickle.dump(database.database, f)
+    
         return database
 
     def _sanitise(self, row, reader):
@@ -573,3 +594,368 @@ class ESMFlatfileParser(SMDatabaseReader):
                     scalars["U"][key] * scalars["V"][key])
         return scalars, spectra
 
+def _get_ESM18_headers(ESM22,default_string,r_fm_type,r_datetime):
+    
+    """
+    Convert first from ESM22 format flatfile to ESM18 format flatfile 
+    readable by parser
+    """
+    
+    #Construct dataframe with original ESM format 
+    ESM_original_headers = pd.DataFrame(
+    {
+    #Non-GMIM headers   
+    "event_id":ESM22.event_id,                                       
+    "event_time":r_datetime,
+    "ISC_ev_id":default_string,
+    "USGS_ev_id":default_string,
+    "INGV_ev_id":default_string,
+    "EMSC_ev_id":default_string,
+    "ev_nation_code":ESM22.ev_nation_code,
+    "ev_latitude":ESM22.ev_latitude,    
+    "ev_longitude":ESM22.ev_longitude,   
+    "ev_depth_km":ESM22.ev_depth_km,
+    "ev_hyp_ref":default_string,
+    "fm_type_code":r_fm_type,
+    "ML":ESM22.ML,
+    "ML_ref":default_string,
+    "Mw":ESM22.MW,
+    "Mw_ref":default_string,
+    "Ms":ESM22.MW,
+    "Ms_ref":default_string,
+    "EMEC_Mw":ESM22.MW,
+    "EMEC_Mw_type":default_string,
+    "EMEC_Mw_ref":default_string,
+    "event_source_id":default_string,
+ 
+    "es_strike":default_string,
+    "es_dip":default_string,
+    "es_rake":default_string,
+    "es_strike_dip_rake_ref":default_string, 
+    "es_z_top":default_string,
+    "es_z_top_ref":default_string,
+    "es_length":default_string,   
+    "es_width":default_string,
+    "es_geometry_ref":default_string,
+ 
+    "network_code":ESM22.network_code,
+    "station_code":ESM22.station_code,
+    "location_code":ESM22.location_code,
+    "instrument_code":ESM22.instrument_type,     
+    "sensor_depth_m":ESM22.sensor_depth_m,
+    "proximity_code":ESM22.proximity,
+    "housing_code":ESM22.housing,
+    "installation_code":ESM22.installation,
+    "st_nation_code":ESM22.st_nation_code,
+    "st_latitude":ESM22.st_latitude,
+    "st_longitude":ESM22.st_longitude,
+    "st_elevation":ESM22.st_elevation,
+    
+    "ec8_code":ESM22.preferred_ec8_code,
+    "ec8_code_method":default_string,
+    "ec8_code_ref":default_string,
+    "vs30_m_sec":ESM22.preferred_vs30_m_s,
+    "vs30_ref":default_string,
+    "vs30_calc_method":ESM22.method_ec8_vs30, 
+    "vs30_meas_type":default_string,
+    "slope_deg":default_string,
+    "vs30_m_sec_WA":default_string,
+ 
+    "epi_dist":ESM22.epi_dist,
+    "epi_az":default_string,   
+    "JB_dist":ESM22.JB_dist,
+    "rup_dist":ESM22.rup_dist, 
+    "Rx_dist":default_string, 
+    "Ry0_dist":default_string,
+ 
+    "instrument_type_code":ESM22.instrument_type_code,      
+    "late_triggered_flag_01":ESM22.Late_triggered,
+    "U_channel_code":ESM22.U_channel_code,
+    "U_azimuth_deg":ESM22.U_azimuth_deg,
+    "V_channel_code":ESM22.V_channel_code,
+    "V_azimuth_deg":ESM22.V_azimuth_deg,
+    "W_channel_code":ESM22.W_channel_code,
+    
+    "U_hp":ESM22.U_hp,
+    "V_hp":ESM22.V_hp,
+    "W_hp":ESM22.W_hp,  
+    "U_lp":ESM22.U_lp,
+    "V_lp":ESM22.V_lp,
+    "W_lp":ESM22.W_lp,
+
+    # GMIM headers --> equivalency assumed for geometric mean and RotD50 within
+    # parser if RotD50 empty (RotD is not provided in ESM22 format flatfile 
+    # from web service)
+     
+    "U_pga":ESM22.U_pga,
+    "V_pga":ESM22.V_pga,
+    "W_pga":ESM22.W_pga,
+    "rotD50_pga":default_string,
+    "rotD100_pga":default_string,
+    "rotD00_pga":default_string,
+    "U_pgv":ESM22.U_pgv,
+    "V_pgv":ESM22.V_pgv,
+    "W_pgv":ESM22.W_pgv,
+    "rotD50_pgv":default_string,
+    "rotD100_pgv":default_string,
+    "rotD00_pgv":default_string,
+    "U_pgd":ESM22.U_pgd,
+    "V_pgd":ESM22.V_pgd,
+    "W_pgd":ESM22.W_pgd,
+    "rotD50_pgd":default_string,
+    "rotD100_pgd":default_string,
+    "rotD00_pgd":default_string,
+    "U_T90":ESM22.U_T90,
+     "V_T90":ESM22.V_T90,
+    "W_T90":ESM22.W_T90,
+    "rotD50_T90":default_string,
+    "rotD100_T90":default_string,
+    "rotD00_T90":default_string,
+    "U_housner":ESM22.U_housner,
+    "V_housner":ESM22.V_housner,
+    "W_housner":ESM22.W_housner,
+    "rotD50_housner":default_string,
+    "rotD100_housner":default_string,
+    "rotD00_housner":default_string,
+    "U_CAV":default_string,
+    "V_CAV":default_string,
+    "W_CAV":default_string,
+    "rotD50_CAV":default_string,
+    "rotD100_CAV":default_string,
+    "rotD00_CAV":default_string,
+    "U_ia":ESM22.U_ia,
+    "V_ia":ESM22.V_ia,
+    "W_ia":ESM22.W_ia,
+    "rotD50_ia":ESM22.U_ia,
+    "rotD100_ia":ESM22.V_ia,
+    "rotD00_ia":ESM22.W_ia,
+    
+    "U_T0_010":ESM22.U_T0_010,
+    "U_T0_025":ESM22.U_T0_025,
+    "U_T0_040":ESM22.U_T0_040,
+    "U_T0_050":ESM22.U_T0_050,
+    "U_T0_070":ESM22.U_T0_070,
+    "U_T0_100":ESM22.U_T0_100,
+    "U_T0_150":ESM22.U_T0_150,
+    "U_T0_200":ESM22.U_T0_200,
+    "U_T0_250":ESM22.U_T0_250,
+    "U_T0_300":ESM22.U_T0_300,
+    "U_T0_350":ESM22.U_T0_350,
+    "U_T0_400":ESM22.U_T0_400,
+    "U_T0_450":ESM22.U_T0_450,
+    "U_T0_500":ESM22.U_T0_500,
+    "U_T0_600":ESM22.U_T0_600,
+    "U_T0_700":ESM22.U_T0_700,
+    "U_T0_750":ESM22.U_T0_750,
+    "U_T0_800":ESM22.U_T0_800,
+    "U_T0_900":ESM22.U_T0_900,
+    "U_T1_000":ESM22.U_T1_000,
+    "U_T1_200":ESM22.U_T1_200,
+    "U_T1_400":ESM22.U_T1_400,
+    "U_T1_600":ESM22.U_T1_600,
+    "U_T1_800":ESM22.U_T1_800,
+    "U_T2_000":ESM22.U_T2_000,
+    "U_T2_500":ESM22.U_T2_500,
+    "U_T3_000":ESM22.U_T3_000,
+    "U_T3_500":ESM22.U_T3_500,
+    "U_T4_000":ESM22.U_T4_000,
+    "U_T4_500":ESM22.U_T4_500,
+    "U_T5_000":ESM22.U_T5_000,
+    "U_T6_000":ESM22.U_T6_000,
+    "U_T7_000":ESM22.U_T7_000,
+    "U_T8_000":ESM22.U_T8_000,
+    "U_T9_000":ESM22.U_T9_000,
+    "U_T10_000":ESM22.U_T10_000,
+       
+    "V_T0_010":ESM22.V_T0_010,
+    "V_T0_025":ESM22.V_T0_025,
+    "V_T0_040":ESM22.V_T0_040,
+    "V_T0_050":ESM22.V_T0_050,
+    "V_T0_070":ESM22.V_T0_070,
+    "V_T0_100":ESM22.V_T0_100,
+    "V_T0_150":ESM22.V_T0_150,
+    "V_T0_200":ESM22.V_T0_200,
+    "V_T0_250":ESM22.V_T0_250,
+    "V_T0_300":ESM22.V_T0_300,
+    "V_T0_350":ESM22.V_T0_350,
+    "V_T0_400":ESM22.V_T0_400,
+    "V_T0_450":ESM22.V_T0_450,
+    "V_T0_500":ESM22.V_T0_500,
+    "V_T0_600":ESM22.V_T0_600,
+    "V_T0_700":ESM22.V_T0_700,
+    "V_T0_750":ESM22.V_T0_750,
+    "V_T0_800":ESM22.V_T0_800,
+    "V_T0_900":ESM22.V_T0_900,
+    "V_T1_000":ESM22.V_T1_000,
+    "V_T1_200":ESM22.V_T1_200,
+    "V_T1_400":ESM22.V_T1_400,
+    "V_T1_600":ESM22.V_T1_600,
+    "V_T1_800":ESM22.V_T1_800,
+    "V_T2_000":ESM22.V_T2_000,
+    "V_T2_500":ESM22.V_T2_500,
+    "V_T3_000":ESM22.V_T3_000,
+    "V_T3_500":ESM22.V_T3_500,
+    "V_T4_000":ESM22.V_T4_000,
+    "V_T4_500":ESM22.V_T4_500,
+    "V_T5_000":ESM22.V_T5_000,
+    "V_T6_000":ESM22.V_T6_000,
+    "V_T7_000":ESM22.V_T7_000,
+    "V_T8_000":ESM22.V_T8_000,
+    "V_T9_000":ESM22.V_T9_000,
+    "V_T10_000":ESM22.V_T10_000,
+    
+    "W_T0_010":ESM22.W_T0_010,
+    "W_T0_025":ESM22.W_T0_025,
+    "W_T0_040":ESM22.W_T0_040,
+    "W_T0_050":ESM22.W_T0_050,
+    "W_T0_070":ESM22.W_T0_070,
+    "W_T0_100":ESM22.W_T0_100,
+    "W_T0_150":ESM22.W_T0_150,
+    "W_T0_200":ESM22.W_T0_200,
+    "W_T0_250":ESM22.W_T0_250,
+    "W_T0_300":ESM22.W_T0_300,
+    "W_T0_350":ESM22.W_T0_350,
+    "W_T0_400":ESM22.W_T0_400,
+    "W_T0_450":ESM22.W_T0_450,
+    "W_T0_500":ESM22.W_T0_500,
+    "W_T0_600":ESM22.W_T0_600,
+    "W_T0_700":ESM22.W_T0_700,
+    "W_T0_750":ESM22.W_T0_750,
+    "W_T0_800":ESM22.W_T0_800,
+    "W_T0_900":ESM22.W_T0_900,
+    "W_T1_000":ESM22.W_T1_000,
+    "W_T1_200":ESM22.W_T1_200,
+    "W_T1_400":ESM22.W_T1_400,
+    "W_T1_600":ESM22.W_T1_600,
+    "W_T1_800":ESM22.W_T1_800,
+    "W_T2_000":ESM22.W_T2_000,
+    "W_T2_500":ESM22.W_T2_500,
+    "W_T3_000":ESM22.W_T3_000,
+    "W_T3_500":ESM22.W_T3_500,
+    "W_T4_000":ESM22.W_T4_000,
+    "W_T4_500":ESM22.W_T4_500,
+    "W_T5_000":ESM22.W_T5_000,
+    "W_T6_000":ESM22.W_T6_000,
+    "W_T7_000":ESM22.W_T7_000,
+    "W_T8_000":ESM22.W_T8_000,
+    "W_T9_000":ESM22.W_T9_000,
+    "W_T10_000":ESM22.W_T10_000,
+    
+    "rotD50_T0_010":default_string,
+    "rotD50_T0_025":default_string,
+    "rotD50_T0_040":default_string,
+    "rotD50_T0_050":default_string,
+    "rotD50_T0_070":default_string,
+    "rotD50_T0_100":default_string,
+    "rotD50_T0_150":default_string,
+    "rotD50_T0_200":default_string,
+    "rotD50_T0_250":default_string,
+    "rotD50_T0_300":default_string,
+    "rotD50_T0_350":default_string,
+    "rotD50_T0_400":default_string,
+    "rotD50_T0_450":default_string,
+    "rotD50_T0_500":default_string,
+    "rotD50_T0_600":default_string,
+    "rotD50_T0_700":default_string,
+    "rotD50_T0_750":default_string,
+    "rotD50_T0_800":default_string,
+    "rotD50_T0_900":default_string,
+    "rotD50_T1_000":default_string,
+    "rotD50_T1_200":default_string,
+    "rotD50_T1_400":default_string,
+    "rotD50_T1_600":default_string,
+    "rotD50_T1_800":default_string,
+    "rotD50_T2_000":default_string,
+    "rotD50_T2_500":default_string,
+    "rotD50_T3_000":default_string,
+    "rotD50_T3_500":default_string,
+    "rotD50_T4_000":default_string,
+    "rotD50_T4_500":default_string,
+    "rotD50_T5_000":default_string,
+    "rotD50_T6_000":default_string,
+    "rotD50_T7_000":default_string,
+    "rotD50_T8_000":default_string,
+    "rotD50_T9_000":default_string,
+    "rotD50_T10_000":default_string,
+       
+    "rotD100_T0_010":default_string,
+    "rotD100_T0_025":default_string,
+    "rotD100_T0_040":default_string,
+    "rotD100_T0_050":default_string,
+    "rotD100_T0_070":default_string,
+    "rotD100_T0_100":default_string,
+    "rotD100_T0_150":default_string,
+    "rotD100_T0_200":default_string,
+    "rotD100_T0_250":default_string,
+    "rotD100_T0_300":default_string,
+    "rotD100_T0_350":default_string,
+    "rotD100_T0_400":default_string,
+    "rotD100_T0_450":default_string,
+    "rotD100_T0_500":default_string,
+    "rotD100_T0_600":default_string,
+    "rotD100_T0_700":default_string,
+    "rotD100_T0_750":default_string,
+    "rotD100_T0_800":default_string,
+    "rotD100_T0_900":default_string,
+    "rotD100_T1_000":default_string,
+    "rotD100_T1_200":default_string,
+    "rotD100_T1_400":default_string,
+    "rotD100_T1_600":default_string,
+    "rotD100_T1_800":default_string,
+    "rotD100_T2_000":default_string,
+    "rotD100_T2_500":default_string,
+    "rotD100_T3_000":default_string,
+    "rotD100_T3_500":default_string,
+    "rotD100_T4_000":default_string,
+    "rotD100_T4_500":default_string,
+    "rotD100_T5_000":default_string,
+    "rotD100_T6_000":default_string,
+    "rotD100_T7_000":default_string,
+    "rotD100_T8_000":default_string,
+    "rotD100_T9_000":default_string,
+    "rotD100_T10_000":default_string,      
+ 
+    "rotD00_T0_010":default_string,
+    "rotD00_T0_025":default_string,
+    "rotD00_T0_040":default_string,
+    "rotD00_T0_050":default_string,
+    "rotD00_T0_070":default_string,
+    "rotD00_T0_100":default_string,
+    "rotD00_T0_150":default_string,
+    "rotD00_T0_200":default_string,
+    "rotD00_T0_250":default_string,
+    "rotD00_T0_300":default_string,
+    "rotD00_T0_350":default_string,
+    "rotD00_T0_400":default_string,
+    "rotD00_T0_450":default_string,
+    "rotD00_T0_500":default_string,
+    "rotD00_T0_600":default_string,
+    "rotD00_T0_700":default_string,
+    "rotD00_T0_750":default_string,
+    "rotD00_T0_800":default_string,
+    "rotD00_T0_900":default_string,
+    "rotD00_T1_000":default_string,
+    "rotD00_T1_200":default_string,
+    "rotD00_T1_400":default_string,
+    "rotD00_T1_600":default_string,
+    "rotD00_T1_800":default_string,
+    "rotD00_T2_000":default_string,
+    "rotD00_T2_500":default_string,
+    "rotD00_T3_000":default_string,
+    "rotD00_T3_500":default_string,
+    "rotD00_T4_000":default_string,
+    "rotD00_T4_500":default_string,
+    "rotD00_T5_000":default_string,
+    "rotD00_T6_000":default_string,
+    "rotD00_T7_000":default_string,
+    "rotD00_T8_000":default_string,
+    "rotD00_T9_000":default_string,
+    "rotD00_T10_000":default_string})
+    
+    # Output to folder where converted flatfile read into parser   
+    DATA = os.path.abspath('')
+    converted_base_data_path = tempfile.mkdtemp()
+    converted_base_data_path = os.path.join(DATA,'converted_flatfile.csv')
+    ESM_original_headers.to_csv(converted_base_data_path,sep=';')
+
+    return converted_base_data_path
