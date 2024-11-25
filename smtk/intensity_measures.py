@@ -625,9 +625,8 @@ def get_significant_duration(acceleration, time_step, start_level=0.,
     """
     assert end_level >= start_level
     husid, time_vector = get_husid(acceleration, time_step)
-    idx = np.where(np.logical_and(husid >= (start_level * husid[-1]),
-                                  husid <= (end_level * husid[-1])))[0]
-    return time_vector[idx[-1]] - time_vector[idx[0]] + time_step
+    idx = np.searchsorted(husid, [start_level * husid[-1], end_level * husid[-1]])
+    return np.diff(time_vector[idx])[0]
 
 
 def get_cav(acceleration, time_step, threshold=0.0):
