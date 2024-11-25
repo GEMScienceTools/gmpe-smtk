@@ -108,6 +108,7 @@ class ESMFlatfileParser(SMDatabaseReader):
         """
 
         """
+        assert os.path.isfile(self.filename)
         headers = getline(self.filename, 1).rstrip("\n").split(";")
         for hdr in HEADERS:
             if hdr not in headers:

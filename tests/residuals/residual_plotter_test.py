@@ -225,8 +225,8 @@ class ResidualsTestCase(unittest.TestCase):
 
                     # assert we called the right matplotlib plotting functions:
                     self.assertFalse(mocked_axes_obj.bar.called)
-                    self.assertFalse(mocked_axes_obj.plot.called)
-                    self.assertTrue(mocked_axes_obj.semilogx.called)
+                    self.assertTrue(mocked_axes_obj.plot.called)
+                    self.assertFalse(mocked_axes_obj.semilogx.called)
 
                     # check plot type:
                     ResidualWithDistance(residuals, gsim, imt,

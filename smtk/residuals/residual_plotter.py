@@ -1,4 +1,3 @@
-#!/usr/bin/env python 
 # -*- coding: utf-8 -*-
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
@@ -21,6 +20,7 @@ Class to hold GMPE residual plotting functions
 """
 
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from copy import deepcopy
 from collections import OrderedDict
@@ -28,6 +28,8 @@ from math import floor, ceil
 from scipy.stats import norm
 from smtk.sm_utils import _save_image
 from smtk.residuals.gmpe_residuals import Residuals, SingleStationAnalysis
+from IPython.display import display
+from cycler import cycler
 
 from smtk.residuals.residual_plots import (residuals_density_distribution,
                                            likelihood, residuals_with_magnitude,
@@ -35,6 +37,7 @@ from smtk.residuals.residual_plots import (residuals_density_distribution,
                                            residuals_with_distance,
                                            residuals_with_depth)
 
+from openquake.hazardlib.imt import imt2tup
 
 class BaseResidualPlot(object):
     """
@@ -74,7 +77,7 @@ class BaseResidualPlot(object):
         self.filetype = filetype
         self.dpi = dpi
         self.num_plots = len(residuals.types[gmpe][imt])
-        self.figure_size = kwargs.get("figure_size",  (7, 5))
+        self.figure_size = kwargs.get("figure_size",  (8, 8))
         self.show = kwargs.get("show", True)
         self.create_plot()
 
@@ -251,8 +254,8 @@ class ResidualHistogramPlot(BaseResidualPlot):
 
     def get_subplots_rowcols(self):
         if self.num_plots > 1:
-            nrow = 2
-            ncol = 2
+            nrow = 3
+            ncol = 1
         else:
             nrow = 1
             ncol = 1
@@ -283,9 +286,14 @@ class ResidualPlot(ResidualHistogramPlot):
         x = res_data['x']
         xdata = np.arange(x[0], x[-1] + self.bin_width + 0.01, 0.01)
         ax.plot(xdata, norm.pdf(xdata, mean, stddev), '-',
-                color="LightSlateGrey", linewidth=2.0)
+                color="LightSlateGrey", linewidth=2.0, 
+                label = 'Normal dist. from dataset')
         ax.plot(xdata, norm.pdf(xdata, 0.0, 1.0), '-',
-                color='k', linewidth=2.0)
+                color='k', linewidth=2.0, 
+                label = 'Standard. normal dist. \n (mean = 0, std. dev. = 1')
+        ax.legend(loc = 'best')
+        x_limit = max(abs(x))
+        ax.set_xlim(x_limit*-1,x_limit)
 
     def get_axis_title(self, res_data, res_type):
         mean, stddev = res_data["mean"], res_data["stddev"]
@@ -293,7 +301,6 @@ class ResidualPlot(ResidualHistogramPlot):
                                                             res_type,
                                                             mean,
                                                             stddev)
-
 
 class LikelihoodPlot(ResidualHistogramPlot):
     """
@@ -406,7 +413,7 @@ class ResidualWithDistance(ResidualScatterPlot):
     """
 
     def __init__(self, residuals, gmpe, imt, filename=None, filetype="png",
-                 dpi=300, plot_type='log', distance_type="rjb", **kwargs):
+                 dpi=300, plot_type='linear', distance_type="rjb", **kwargs):
         """
         Initializes a ResidualWithDistance object
 
@@ -725,3 +732,590 @@ class IntraEventResidualWithSite(ResidualPlot):
             data[site_id]["x-val"] =(float(iloc) + 0.5) *\
                 np.ones_like(data[site_id]["Intra event"])
         return data
+        
+def PlotLoglikelihoodWithSpectralPeriod(residuals,filename,custom_cycler=0,
+                                        filetype='jpg',dpi=200):
+    """
+    Definition to create a simple plot of loglikelihood values of Scherbaum
+    et al. 2009 (y-axis) versus spectral period (x-axis)
+    
+    :param custom_cycler: Default set to 0, to assign specific colours
+    and linestyle to each GMPE, a cycler can instead be specified manually,
+    where index value in the cycler corresponds to gmpe in residuals.gmpe_list
+    """
+        
+    #Preserve original residuals.imts
+    preserve_imts = residuals.imts
+    
+    #Remove non-acceleration imts from residuals.imts for generation of metrics
+    imt_append=pd.DataFrame(residuals.imts,index=residuals.imts)
+    imt_append.columns=['imt']
+    for imt_idx in range(0,np.size(residuals.imts)):
+         if residuals.imts[imt_idx]=='PGV':
+             imt_append=imt_append.drop(imt_append.loc['PGV'])
+         if residuals.imts[imt_idx]=='PGD':
+             imt_append=imt_append.drop(imt_append.loc['PGD'])
+         if residuals.imts[imt_idx]=='CAV':
+             imt_append=imt_append.drop(imt_append.loc['CAV'])
+         if residuals.imts[imt_idx]=='Ia':
+             imt_append=imt_append.drop(imt_append.loc['Ia'])
+        
+    imt_append_list=pd.DataFrame()
+    for idx in range(0,len(imt_append)):
+         imt_append_list[idx]=imt_append.iloc[idx]
+    imt_append=imt_append.reset_index()
+    imt_append_list.columns=imt_append.imt
+    residuals.imts=list(imt_append_list)
+
+    #Convert imt_list to array
+    x_llh=pd.DataFrame([imt2tup(imts) for imts in residuals.imts],columns=
+                       ['imt_str','imt_float'])
+    for imt_idx in range(0,np.size(residuals.imts)):
+         if x_llh.imt_str[imt_idx]=='PGA':
+            x_llh.imt_float.iloc[imt_idx]=0
+    x_llh=x_llh.dropna() #Remove any non-acceleration imt if still present    
+    
+    #Generate attributes required from residuals for table
+    residuals.get_loglikelihood_values(residuals.imts)
+
+    #Produce series of residuals.gmpe_list used to index llh_with_imt
+    gmpe_list_series=pd.Series(pd.DataFrame(
+        residuals.gmpe_list,index=np.arange(0,len(residuals.gmpe_list),1)).
+        columns)
+    
+    #Define colours for plots
+    colour_cycler = (cycler(color=['b', 'g', 'r', 'c','y','m']) *
+                  cycler(linestyle=['-', '--', '-.']))
+    
+    if type(custom_cycler)==type(cycler(colour='b')):
+       colour_cycler=custom_cycler
+        
+    #Plot LLH values w.r.t. spectral period
+    llh_with_imt=pd.DataFrame(residuals.llh).drop('All')
+    fig_llh, ax_llh = plt.subplots(figsize=(7, 4))
+    ax_llh.set_prop_cycle(colour_cycler)
+    for gmpe in range(0,len(gmpe_list_series)):
+        y_llh=np.array(llh_with_imt[gmpe_list_series[gmpe]])
+        ax_llh.scatter(x_llh.imt_float,y_llh)
+        ax_llh.plot(x_llh.imt_float,y_llh,label=str(gmpe_list_series[gmpe]))
+    ax_llh.set_xlabel('Spectral Period (s)')
+    ax_llh.set_ylabel('Loglikelihood Value')
+    ax_llh.set_title('Scherbaum et al. (2009) Loglikelihood Values')
+    ax_llh.legend(loc='best',ncol=2,fontsize='x-small')
+    _save_image(filename, plt.gcf(), filetype, dpi)
+    
+    #Reassign original imts to residuals.imts
+    residuals.imts = preserve_imts
+    
+def PlotModelWeightsWithSpectralPeriod(residuals,filename,custom_cycler=0,
+                                       filetype='jpg',dpi=200):
+    """
+    Definition to create a simple plot of model weights computed using the
+    sample loglikelihood of Scherbaum et al. 2009 (y-axis) versus spectral
+    period (x-axis)
+    
+    :param custom_cycler: Default set to 0, to assign specific colours
+    and linestyle to each GMPE, a cycler can instead be specified manually,
+    where index value in the cycler corresponds to gmpe in residuals.gmpe_list
+    """
+    
+    #Preserve original residuals.imts
+    preserve_imts = residuals.imts
+    
+    #Remove non-acceleration imts from residuals.imts for generation of metrics
+    imt_append=pd.DataFrame(residuals.imts,index=residuals.imts)
+    imt_append.columns=['imt']
+    for imt_idx in range(0,np.size(residuals.imts)):
+         if residuals.imts[imt_idx]=='PGV':
+             imt_append=imt_append.drop(imt_append.loc['PGV'])
+         if residuals.imts[imt_idx]=='PGD':
+             imt_append=imt_append.drop(imt_append.loc['PGD'])
+         if residuals.imts[imt_idx]=='CAV':
+             imt_append=imt_append.drop(imt_append.loc['CAV'])
+         if residuals.imts[imt_idx]=='Ia':
+             imt_append=imt_append.drop(imt_append.loc['Ia'])
+        
+    imt_append_list=pd.DataFrame()
+    for idx in range(0,len(imt_append)):
+         imt_append_list[idx]=imt_append.iloc[idx]
+    imt_append=imt_append.reset_index()
+    imt_append_list.columns=imt_append.imt
+    residuals.imts=list(imt_append_list)
+    
+    #Convert imt_list to array
+    x_model_weights=pd.DataFrame([imt2tup(imts) for imts in residuals.imts],
+                                 columns=['imt_str','imt_float'])
+    for imt_idx in range(0,np.size(residuals.imts)):
+         if x_model_weights.imt_str[imt_idx]=='PGA':
+            x_model_weights.imt_float.iloc[imt_idx]=0
+    x_model_weights=x_model_weights.dropna() #Remove any non-acceleration imt if still present
+    
+    #Generate attributes required from residuals for table
+    residuals.get_loglikelihood_values(residuals.imts)
+
+    #Produce series of residuals.gmpe_list used to index model_weights_with_imt
+    gmpe_list_series=pd.Series(pd.DataFrame(residuals.gmpe_list,index=
+                                            np.arange(0,len(residuals.gmpe_list)
+                                                      ,1)).columns)
+    
+    #Define colours for plots
+    colour_cycler = (cycler(color=['b', 'g', 'r', 'c','y','m']) *
+                  cycler(linestyle=['-', '--', '-.']))
+    if type(custom_cycler)==type(cycler(colour='b')):
+       colour_cycler=custom_cycler
+
+    #Plot model weights w.r.t. spectral period
+    model_weights_with_imt=pd.DataFrame(residuals.model_weights_with_imt)
+    fig_model_weights, ax_model_weights = plt.subplots(figsize=(7, 4))
+    ax_model_weights.set_prop_cycle(colour_cycler)
+    for gmpe in range(0,len(gmpe_list_series)):
+        y_model_weights=np.array(model_weights_with_imt.iloc[gmpe])
+        ax_model_weights.scatter(x_model_weights.imt_float,
+                                 y_model_weights)
+        ax_model_weights.plot(x_model_weights.imt_float,y_model_weights,
+                              label=str(gmpe_list_series[gmpe]))
+    ax_model_weights.set_xlabel('Spectral Period (s)')
+    ax_model_weights.set_ylabel('Model Weight')
+    ax_model_weights.set_title(
+        'Sample loglikelihood based model weights (Scherbaum et al., 2009)')
+    ax_model_weights.legend(loc='best',ncol=2,fontsize='x-small')
+    _save_image(filename, plt.gcf(), filetype, dpi)
+    
+    #Reassign original imts to residuals.imts
+    residuals.imts = preserve_imts
+    
+def PlotEDRWithSpectralPeriod(residuals,filename,custom_cycler=0,
+                              filetype='jpg',dpi=200):
+    """
+    Definition to create a simple plot of EDR computed using Kale and 
+    Akkar (2013) (y-axis) versus spectral period (x-axis)
+    
+    :param custom_cycler: Default set to 0, to assign specific colours
+    and linestyle to each GMPE, a cycler can instead be specified manually,
+    where index value in the cycler corresponds to gmpe in residuals.gmpe_list
+    """
+    
+    #Generate attributes required from residuals for table    
+    residuals.get_edr_values_wrt_spectral_period()
+    
+    #Convert imt_list to array
+    x_EDR_with_imt=pd.DataFrame([imt2tup(imts) for imts in residuals.imts],
+                                columns=['imt_str','imt_float'])
+    for imt_idx in range(0,np.size(residuals.imts)):
+         if x_EDR_with_imt.imt_str[imt_idx]=='PGA':
+            x_EDR_with_imt.imt_float.iloc[imt_idx]=0
+    x_EDR_with_imt=x_EDR_with_imt.dropna() #Remove any non-acceleration imt
+
+    #Define colours for plots
+    colour_cycler = (cycler(color=['b', 'g', 'r', 'c','y','m']) *
+                  cycler(linestyle=['-', '--', '-.']))
+    if type(custom_cycler)==type(cycler(colour='b')):
+       colour_cycler=custom_cycler
+    
+    #Plot EDR w.r.t. spectral period
+    EDR_with_imt={}
+    fig_EDR, ax_EDR = plt.subplots(figsize=(7, 4))
+    ax_EDR.set_prop_cycle(colour_cycler)
+    for gmpe in residuals.gmpe_list:
+        EDR_with_imt=pd.DataFrame(residuals.edr_values_wrt_imt[gmpe])
+        y_EDR=EDR_with_imt.EDR
+        ax_EDR.scatter(x_EDR_with_imt.imt_float,
+                                 y_EDR)
+        ax_EDR.plot(x_EDR_with_imt.imt_float,y_EDR,label=
+                    str(residuals.gmpe_list[gmpe]))
+    ax_EDR.set_xlabel('Spectral Period (s)')
+    ax_EDR.set_ylabel('EDR')
+    ax_EDR.set_title('Euclidian-Based Distance Ranking (Kale and Akkar, 2013)')
+    ax_EDR.legend(loc='best',ncol=2,fontsize='x-small')
+    _save_image(filename, plt.gcf(), filetype, dpi)
+    
+def PlotResidualPDFWithSpectralPeriod(residuals,filename,custom_cycler=0,
+                                      filetype='jpg',dpi=200):
+    """
+    Definition to create a simple plot of residual mean and residual sigma 
+    for each GMPE (y-axis) versus spectral period (x-axis)
+    
+    :param custom_cycler: Default set to 0, to assign specific colours
+    and linestyle to each GMPE, a cycler can instead be specified manually,
+    where index value in the cycler corresponds to gmpe in residuals.gmpe_list
+    """
+
+    #Preserve original residuals.imts
+    preserve_imts = residuals.imts
+    
+    #Remove non-acceleration imts from residuals.imts for generation of metrics
+    imt_append=pd.DataFrame(residuals.imts,index=residuals.imts)
+    imt_append.columns=['imt']
+    for imt_idx in range(0,np.size(residuals.imts)):
+        if residuals.imts[imt_idx]=='PGV':
+            imt_append=imt_append.drop(imt_append.loc['PGV'])
+        if residuals.imts[imt_idx]=='PGD':
+           imt_append=imt_append.drop(imt_append.loc['PGD'])
+        if residuals.imts[imt_idx]=='CAV':
+           imt_append=imt_append.drop(imt_append.loc['CAV'])
+        if residuals.imts[imt_idx]=='Ia':
+           imt_append=imt_append.drop(imt_append.loc['Ia'])
+        
+    imt_append_list=pd.DataFrame()
+    for idx in range(0,len(imt_append)):
+        imt_append_list[idx]=imt_append.iloc[idx]
+    imt_append=imt_append.reset_index()
+    imt_append_list.columns=imt_append.imt
+    residuals.imts=list(imt_append_list)
+    
+    #Convert imt_list to array
+    imts_to_plot=pd.DataFrame([imt2tup(imts) for imts in residuals.imts],
+                              columns=['imt_str','imt_float'])
+    for imt_idx in range(0,np.size(residuals.imts)):
+        if imts_to_plot.imt_str[imt_idx]=='PGA':
+           imts_to_plot.imt_float.iloc[imt_idx]=0
+    imts_to_plot=imts_to_plot.dropna() #Remove any non-acceleration imt
+
+    #Get all residuals for all gmpes at all imts
+    res_statistics={}
+    for gmpe in residuals.gmpe_list:
+        for imt in residuals.imts:
+            res_statistics[gmpe,imt] = residuals.get_residual_statistics_for(
+                gmpe, imt)
+    
+    Mean_Sigma_Intra={}
+    Mean_Sigma_Inter={}
+    Mean_Sigma_Total={}
+    for gmpe in residuals.gmpe_list:
+        for imt in residuals.imts:
+            Mean_Sigma_Intra[gmpe,imt]=res_statistics[gmpe,imt]['Intra event']
+            Mean_Sigma_Inter[gmpe,imt]=res_statistics[gmpe,imt]['Inter event']
+            Mean_Sigma_Total[gmpe,imt]=res_statistics[gmpe,imt]['Total']
+
+    Mean_Sigma_Intra_df = pd.DataFrame(Mean_Sigma_Intra)
+    Mean_Sigma_Inter_df = pd.DataFrame(Mean_Sigma_Inter)
+    Mean_Sigma_Total_df = pd.DataFrame(Mean_Sigma_Total)
+
+    #Create figure
+    fig, ax = plt.subplots(nrows=3,ncols=2,figsize=(14,14)) 
+
+    #Plot mean of zero and sigma of 1 for standard normal dist
+    for ax_idx in range(0,3):
+        ax[ax_idx,0].plot(imts_to_plot.imt_float,np.zeros(len(imts_to_plot)),
+                          color='k',linestyle='--')
+        ax[ax_idx,1].plot(imts_to_plot.imt_float,np.ones(len(imts_to_plot)),
+                          color='k',linestyle='--')
+
+    #Produce series of residuals.gmpe_list
+    gmpe_list_series=pd.Series(pd.DataFrame(
+        residuals.gmpe_list,index=np.arange(0,len(residuals.gmpe_list),1)).
+        columns)
+    
+    #Define colours for plots
+    colour_cycler = (cycler(color=['b', 'g', 'r', 'c','y','m'])*
+                     cycler(marker=['o','^','x']))
+    if type(custom_cycler)==type(cycler(colour='b')):
+       colour_cycler=custom_cycler
+    colour_cycler_df=pd.DataFrame(colour_cycler)
+    gmpe_colour={}
+    gmpe_marker={}
+    for gmpe in range(0,np.size(gmpe_list_series)):
+        gmpe_colour[gmpe] = colour_cycler_df.color.iloc[gmpe]
+        gmpe_marker[gmpe] = colour_cycler_df.marker.iloc[gmpe]
+    colour_cycler_df_appended=colour_cycler_df[:len(residuals.gmpe_list)]
+    colour_cycler_df_appended['gmpe']=residuals.gmpe_list
+
+    #Set plots
+    Mean_ymax = np.max([Mean_Sigma_Intra_df.loc['Mean'],
+                        Mean_Sigma_Inter_df.loc['Mean'],
+                        Mean_Sigma_Total_df.loc['Mean']])
+    Mean_ymin = np.min([Mean_Sigma_Intra_df.loc['Mean'],
+                        Mean_Sigma_Inter_df.loc['Mean'],
+                        Mean_Sigma_Total_df.loc['Mean']])
+    Mean_y_bound=np.max([np.abs(Mean_ymax),np.abs(Mean_ymin)])
+    Sigma_ymax = np.max([Mean_Sigma_Intra_df.loc['Std Dev'],
+                         Mean_Sigma_Inter_df.loc['Std Dev'],
+                         Mean_Sigma_Total_df.loc['Std Dev']])
+    Sigma_ymin = np.min([Mean_Sigma_Intra_df.loc['Std Dev'],
+                         Mean_Sigma_Inter_df.loc['Std Dev'],
+                         Mean_Sigma_Total_df.loc['Std Dev']])
+    Sigma_y_bound_non_centered=np.max([np.abs(Sigma_ymax),np.abs(Sigma_ymin)])
+    Sigma_y_bound=min(np.abs(1-Sigma_y_bound_non_centered),
+                      np.abs(1+Sigma_y_bound_non_centered))
+    for ax_index in range(0, 3):
+        ax[ax_index,0].set_ylim(-Mean_y_bound-0.5,Mean_y_bound+0.5)
+        ax[ax_index,1].set_ylim(0.9-Sigma_y_bound,1.1+Sigma_y_bound)
+        ax[ax_index,0].set_xlabel('Spectral Period (s)')
+        ax[ax_index,1].set_xlabel('Spectral Period (s)')
+        ax[ax_index,0].set_prop_cycle(colour_cycler)
+        ax[ax_index,1].set_prop_cycle(colour_cycler)
+    for ax_index in range(0,2):
+        ax[2,ax_index].set_ylabel('Intra-Event')
+        ax[1,ax_index].set_ylabel('Inter-Event')
+        ax[0,ax_index].set_ylabel('Total')
+    ax[0,0].set_title('Mean of GMPE Residuals')    
+    ax[0,1].set_title('Sigma of GMPE Residuals')
+
+    #Plot data
+    for gmpe in residuals.gmpe_list:
+        
+        #Assign colour and marker to each gmpe
+        input_df=pd.DataFrame(colour_cycler_df_appended.loc[
+            colour_cycler_df_appended['gmpe']==gmpe])
+        input_df.reset_index()
+        color_input=input_df['color'].iloc[0]
+        marker_input=input_df['marker'].iloc[0]
+        
+        #Plot residual data
+        ax[2,0].scatter(imts_to_plot.imt_float,Mean_Sigma_Intra_df[gmpe].loc[
+            'Mean'],color=color_input,marker=marker_input)
+        ax[1,0].scatter(imts_to_plot.imt_float,Mean_Sigma_Inter_df[gmpe].loc[
+            'Mean'],color=color_input,marker=marker_input)
+        ax[0,0].scatter(imts_to_plot.imt_float,Mean_Sigma_Total_df[gmpe].loc[
+            'Mean'],label=residuals.gmpe_list[gmpe],color=color_input,marker=
+            marker_input)
+        ax[2,1].scatter(imts_to_plot.imt_float,Mean_Sigma_Intra_df[gmpe].loc[
+            'Std Dev'],color=color_input,marker=marker_input)
+        ax[1,1].scatter(imts_to_plot.imt_float,Mean_Sigma_Inter_df[gmpe].loc[
+            'Std Dev'],color=color_input,marker=marker_input)
+        ax[0,1].scatter(imts_to_plot.imt_float,Mean_Sigma_Total_df[gmpe].loc[
+            'Std Dev'],color=color_input,marker=marker_input)
+        ax[0,0].legend(loc='best',ncol=3,fontsize='x-small')
+
+        _save_image(filename, plt.gcf(), filetype, dpi)
+    
+        #Reassign original imts to residuals.imts
+        residuals.imts = preserve_imts  
+    
+def LoglikelihoodTable(residuals,filename):
+    """
+    Definition to create a table of loglikelihood values per GMPE per imt
+    (Scherbaum et al. 2009)
+    """
+    
+    #Preserve original residuals.imts
+    preserve_imts = residuals.imts
+    
+    #Remove non-acceleration imts from residuals.imts for generation of metrics
+    imt_append=pd.DataFrame(residuals.imts,index=residuals.imts)
+    imt_append.columns=['imt']
+    for imt_idx in range(0,np.size(residuals.imts)):
+         if residuals.imts[imt_idx]=='PGV':
+             imt_append=imt_append.drop(imt_append.loc['PGV'])
+         if residuals.imts[imt_idx]=='PGD':
+             imt_append=imt_append.drop(imt_append.loc['PGD'])
+         if residuals.imts[imt_idx]=='CAV':
+             imt_append=imt_append.drop(imt_append.loc['CAV'])
+         if residuals.imts[imt_idx]=='Ia':
+             imt_append=imt_append.drop(imt_append.loc['Ia'])
+        
+    imt_append_list=pd.DataFrame()
+    for idx in range(0,len(imt_append)):
+         imt_append_list[idx]=imt_append.iloc[idx]
+    imt_append=imt_append.reset_index()
+    imt_append_list.columns=imt_append.imt
+    residuals.imts=list(imt_append_list)
+    
+    #Generate attributes required from residuals for table
+    residuals.get_loglikelihood_values(residuals.imts)
+
+    #Produce series of residuals.gmpe_list
+    gmpe_list_series=pd.Series(pd.DataFrame(residuals.gmpe_list,index=
+                                    np.arange(0,len(residuals.gmpe_list)
+                                              ,1)).columns)
+
+    #Get loglikelihood values per spectral period
+    llh_metrics={}
+    llh_metrics_df={} #First as dictionary
+    for gmpe in range(0,np.size(gmpe_list_series)):
+        llh_columns=pd.Series(gmpe_list_series)[gmpe]+' LLH'
+        llh_metrics[gmpe]=pd.DataFrame({llh_columns:(pd.Series(residuals.llh))
+                                        [gmpe]},index=residuals.imts)
+        llh_metrics_df[gmpe]=pd.DataFrame(llh_metrics[gmpe],
+                                          index=residuals.imts)
+
+    llh_metrics_df=pd.DataFrame() #Then to true dataframe once indexing by gmpe
+    for gmpe in range(0,np.size(gmpe_list_series)):
+        llh_metrics_df[gmpe]=pd.DataFrame(llh_metrics[gmpe],index=
+                                          residuals.imts)
+    llh_columns_all=pd.Series(gmpe_list_series) +' LLH' 
+    llh_metrics_df.columns=llh_columns_all
+    
+    average_llh_over_imts=np.arange(0,np.size(gmpe_list_series),1,
+                                    dtype='float')
+    for gmpe in range(0,np.size(gmpe_list_series)):
+        average_llh_over_imts[gmpe]=np.array(np.mean(
+            llh_metrics_df[llh_columns_all[gmpe]]))
+    average_llh_over_imts_df=pd.DataFrame([average_llh_over_imts],
+                                          index=['Avg over all periods'])
+    average_llh_over_imts_df.columns=llh_columns_all
+    final_llh_df=pd.concat([llh_metrics_df,average_llh_over_imts_df])
+
+    final_llh_df.to_csv(filename,sep=',')
+    display(final_llh_df)
+    
+    #Reassign original imts to residuals.imts
+    residuals.imts = preserve_imts
+    
+    #Assign final llh dataframe to residuals object (for test unit case use)
+    residuals.final_llh_df=final_llh_df
+    return residuals.final_llh_df
+    
+def WeightsTable(residuals,filename):
+    """
+    Definition to create a table of model weights per imt based
+    on sample loglikelihood (Scherbaum et al. 2009)
+    """     
+       
+    #Preserve original residuals.imts
+    preserve_imts = residuals.imts
+    
+    #Remove non-acceleration imts from residuals.imts for generation of metrics
+    imt_append=pd.DataFrame(residuals.imts,index=residuals.imts)
+    imt_append.columns=['imt']
+    for imt_idx in range(0,np.size(residuals.imts)):
+         if residuals.imts[imt_idx]=='PGV':
+             imt_append=imt_append.drop(imt_append.loc['PGV'])
+         if residuals.imts[imt_idx]=='PGD':
+             imt_append=imt_append.drop(imt_append.loc['PGD'])
+         if residuals.imts[imt_idx]=='CAV':
+             imt_append=imt_append.drop(imt_append.loc['CAV'])
+         if residuals.imts[imt_idx]=='Ia':
+             imt_append=imt_append.drop(imt_append.loc['Ia'])
+        
+    imt_append_list=pd.DataFrame()
+    for idx in range(0,len(imt_append)):
+         imt_append_list[idx]=imt_append.iloc[idx]
+    imt_append=imt_append.reset_index()
+    imt_append_list.columns=imt_append.imt
+    residuals.imts=list(imt_append_list)
+    
+    #Generate attributes required from residuals for table
+    residuals.get_loglikelihood_values(residuals.imts)
+
+    #Produce series of residuals.gmpe_list
+    gmpe_list_series=pd.Series(pd.DataFrame(residuals.gmpe_list,index=
+                                        np.arange(0,len(residuals.gmpe_list)
+                                                  ,1)).columns)
+    
+    #Get model weights per spectral period
+    model_weights_columns=pd.Series(gmpe_list_series) +' weighting'
+    model_weights=pd.DataFrame(residuals.model_weights_with_imt)
+
+    model_weights_df=pd.DataFrame()
+    for gmpe in residuals.gmpe_list:
+        model_weights_df[gmpe]=pd.Series(model_weights.loc[gmpe])
+    model_weights_df.columns=model_weights_columns
+    
+    model_weights_avg=np.array(np.mean(model_weights_df))
+    model_weights_avg_df=pd.DataFrame([model_weights_avg],index=
+                                      ['Avg over all periods'])
+    model_weights_avg_df.columns=model_weights_columns
+    final_model_weights_df=pd.concat([model_weights_df,model_weights_avg_df])
+    
+    final_model_weights_df.to_csv(filename,sep=',')
+    display(final_model_weights_df)
+    
+    #Reassign original imts to residuals.imts
+    residuals.imts = preserve_imts
+    
+    #Assign final model weights dataframe to residuals object (for unit test)
+    residuals.final_model_weights_df=final_model_weights_df
+    return residuals.final_model_weights_df
+
+def EDRTable(residuals,filename):
+    """
+    Definition to create a table of MDE Norm, sqrt(kappa) and 
+    EDR per imt per spectal period (Kale and Akkar, 2013)
+    """
+    
+    #Generate attributes required from residuals for table
+    residuals.get_edr_values_wrt_spectral_period()
+    
+    #Get Kale and Akkar (2013) ranking metrics
+    EDR_metrics={}
+    for gmpe in residuals.gmpe_list:
+        EDR_metrics[gmpe]=pd.DataFrame(
+            residuals.edr_values_wrt_imt[gmpe]).rename(
+                columns={'MDE Norm':str(gmpe)+' MDE Norm','sqrt Kappa': 
+                         str(gmpe)+ ' sqrt Kappa','EDR': str(gmpe)+ ' EDR'})
+        EDR_metrics_df=EDR_metrics[gmpe]
+        average_EDR_metrics_per_gmpe=np.arange(0,len(EDR_metrics_df.columns),
+                                               1,dtype='float')
+        for EDR_metric in range(0,len(EDR_metrics_df.columns)):
+            average_EDR_metrics_per_gmpe[EDR_metric]=np.array(np.mean(
+                EDR_metrics_df[EDR_metrics_df.columns[EDR_metric]]))      
+            average_EDR_metrics_over_imts_df=pd.DataFrame(
+                [average_EDR_metrics_per_gmpe],index=['Avg over all periods'])
+            average_EDR_metrics_over_imts_df.columns=EDR_metrics_df.columns
+            final_EDR_metrics_df=pd.concat([EDR_metrics_df,
+                                            average_EDR_metrics_over_imts_df])
+            final_EDR_metrics_df.to_csv(filename+'_%s' %(gmpe)+'.csv',sep=',')
+        display(final_EDR_metrics_df)
+        
+def PDFTable(residuals,filename):
+    """
+    Definition to create a table of mean and standard deviation for total,
+    inter- and intra-event residual distributions (for each GMPE at each
+    spectral period
+    """  
+   
+    #Preserve original residuals.imts
+    preserve_imts = residuals.imts
+    
+    #Remove non-acceleration imts from residuals.imts for generation of metrics
+    imt_append=pd.DataFrame(residuals.imts,index=residuals.imts)
+    imt_append.columns=['imt']
+    for imt_idx in range(0,np.size(residuals.imts)):
+        if residuals.imts[imt_idx]=='PGV':
+            imt_append=imt_append.drop(imt_append.loc['PGV'])
+        if residuals.imts[imt_idx]=='PGD':
+           imt_append=imt_append.drop(imt_append.loc['PGD'])
+        if residuals.imts[imt_idx]=='CAV':
+           imt_append=imt_append.drop(imt_append.loc['CAV'])
+        if residuals.imts[imt_idx]=='Ia':
+           imt_append=imt_append.drop(imt_append.loc['Ia'])
+        
+    imt_append_list=pd.DataFrame()
+    for idx in range(0,len(imt_append)):
+        imt_append_list[idx]=imt_append.iloc[idx]
+    imt_append=imt_append.reset_index()
+    imt_append_list.columns=imt_append.imt
+    residuals.imts=list(imt_append_list)
+    
+    #Convert imt_list to array
+    imts_to_plot=pd.DataFrame([imt2tup(imts) for imts in residuals.imts],
+                              columns=['imt_str','imt_float'])
+    for imt_idx in range(0,np.size(residuals.imts)):
+        if imts_to_plot.imt_str[imt_idx]=='PGA':
+           imts_to_plot.imt_float.iloc[imt_idx]=0
+    imts_to_plot=imts_to_plot.dropna() #Remove any non-acceleration imt
+
+    #Get all residuals for all gmpes at all imts
+    res_statistics={}
+    for gmpe in residuals.gmpe_list:
+        for imt in residuals.imts:
+            res_statistics[gmpe,imt] = residuals.get_residual_statistics_for(
+                gmpe, imt)
+    
+    Mean_Sigma_Intra={}
+    Mean_Sigma_Inter={}
+    Mean_Sigma_Total={}
+    for gmpe in residuals.gmpe_list:
+        for imt in residuals.imts:
+            Mean_Sigma_Intra[gmpe,imt]=res_statistics[gmpe,imt]['Intra event']
+            Mean_Sigma_Inter[gmpe,imt]=res_statistics[gmpe,imt]['Inter event']
+            Mean_Sigma_Total[gmpe,imt]=res_statistics[gmpe,imt]['Total']
+
+    Mean_Sigma_Intra_df = pd.DataFrame(Mean_Sigma_Intra)
+    Mean_Sigma_Inter_df = pd.DataFrame(Mean_Sigma_Inter)
+    Mean_Sigma_Total_df = pd.DataFrame(Mean_Sigma_Total)
+    
+    combined_df=pd.concat([Mean_Sigma_Total_df,
+                           Mean_Sigma_Inter_df,
+                           Mean_Sigma_Intra_df])
+    combined_df.index = ['Total Mean', 'Total Std Dev', 'Inter-Event Mean',
+                         'Inter-Event Std Dev','Intra-Event Mean',
+                         'Intra-Event Std Dev']
+    
+    combined_df.to_csv(filename,sep=',')
+    
+    display(combined_df)
+
+    #Reassign original imts to residuals.imts
+    residuals.imts = preserve_imts  
